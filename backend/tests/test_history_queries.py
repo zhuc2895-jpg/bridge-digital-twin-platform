@@ -63,7 +63,7 @@ def test_recent_history_rejects_minutes_outside_supported_range(client, minutes)
 
     assert response.status_code == 400
     assert "minutes" in str(response.json()).lower()
-def test_rolling_window_keeps_latest_500_readings_by_timestamp(client):
+def test_rolling_window_evicts_in_fifo_order(client):
     base = time.time() - 1000
     records = [
         reading(value=float(index), timestamp=base + index)
@@ -81,7 +81,7 @@ def test_rolling_window_keeps_latest_500_readings_by_timestamp(client):
     assert response.status_code == 200
     timestamps = [item["timestamp"] for item in response.json()["data"]]
     assert len(timestamps) == 500
-    assert timestamps == [base + index for index in range(1, 501)]
+    assert timestamps == [base - 1, *[base + index for index in range(2, 501)]]
 from app.engine.data_engine import MonitoringEngine
 
 
@@ -198,4 +198,30 @@ def test_history_range_includes_boundaries_and_downsampling_is_even(client):
     ]
     assert [item["timestamp"] for item in sampled.json()["data"]] == [
         1_700_000_000.0 + index for index in range(0, 100, 11)
+    ]
+
+
+
+def test_downsampling_selects_points_uniformly_across_time(client):
+    base = 1_700_000_000.0
+    offsets = [*range(11), *range(100, 1000, 100)]
+    records = [
+        reading(value=float(index), timestamp=base + offset)
+        for index, offset in enumerate(offsets)
+    ]
+    client.post("/api/data/upload/json?push_live=false", json=records)
+
+    response = client.get(
+        "/api/sensors/history/range",
+        params={
+            "sensor_id": "S01",
+            "start": base,
+            "end": base + 900,
+            "max_points": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    assert [item["timestamp"] for item in response.json()["data"]] == [
+        base + offset for offset in range(0, 1000, 100)
     ]

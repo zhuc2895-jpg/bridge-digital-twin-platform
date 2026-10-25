@@ -81,8 +81,8 @@ class MonitoringEngine:
 
     def ingest(self, sensor_data: List[dict]):
         """摄入一批传感器数据"""
-        touched_full_history = set()
-        unsorted_full_history = set()
+        ingested_sensor_ids = set()
+        sensors_needing_sort = set()
         for item in sensor_data:
             reading = SensorReading(
                 sensor_id=item["sensor_id"],
@@ -95,22 +95,18 @@ class MonitoringEngine:
             if current is None or reading.timestamp >= current.timestamp:
                 self._latest[reading.sensor_id] = reading
 
-            # 维护最近 500 条滚动窗口，并按读数时间保持有序。
-            history = self._history.setdefault(reading.sensor_id, deque())
-            if not history or reading.timestamp >= history[-1].timestamp:
-                history.append(reading)
-            else:
-                timestamps = [item.timestamp for item in history]
-                history.insert(bisect.bisect_right(timestamps, reading.timestamp), reading)
-            if len(history) > self.window_size:
-                history.popleft()
+            # 维护最近 500 条滚动窗口；超过容量后按到达顺序淘汰。
+            history = self._history.setdefault(
+                reading.sensor_id, deque(maxlen=self.window_size)
+            )
+            history.append(reading)
 
             # 维护全量历史；批量摄入结束后统一排序并按时间淘汰最旧数据。
             fh = self._full_history.setdefault(reading.sensor_id, [])
             if fh and reading.timestamp < fh[-1].timestamp:
-                unsorted_full_history.add(reading.sensor_id)
+                sensors_needing_sort.add(reading.sensor_id)
             fh.append(reading)
-            touched_full_history.add(reading.sensor_id)
+            ingested_sensor_ids.add(reading.sensor_id)
 
             # 更新全局时间范围
             ts = reading.timestamp
@@ -126,15 +122,15 @@ class MonitoringEngine:
 
             self._total_readings += 1
 
-        for sensor_id in touched_full_history:
+        for sensor_id in ingested_sensor_ids:
             fh = self._full_history[sensor_id]
-            if sensor_id in unsorted_full_history:
+            if sensor_id in sensors_needing_sort:
                 fh.sort(key=lambda reading: reading.timestamp)
             overflow = len(fh) - self._max_full_history
             if overflow > 0:
                 del fh[:overflow]
 
-        if touched_full_history:
+        if ingested_sensor_ids:
             histories = [history for history in self._full_history.values() if history]
             self._min_ts = min(history[0].timestamp for history in histories)
             self._max_ts = max(history[-1].timestamp for history in histories)
@@ -208,8 +204,10 @@ class MonitoringEngine:
         cutoff = time.time() - minutes * 60
         return [
             self._reading_to_dict(r)
-            for r in self._history[sensor_id]
-            if r.timestamp >= cutoff
+            for r in sorted(
+                (r for r in self._history[sensor_id] if r.timestamp >= cutoff),
+                key=lambda r: r.timestamp,
+            )
         ]
 
     def get_sensor_stats(self, sensor_id: str) -> Optional[dict]:
@@ -237,15 +235,44 @@ class MonitoringEngine:
             for r in self._full_history[sensor_id]
             if start_ts <= r.timestamp <= end_ts
         ]
-        data.sort(key=lambda x: x["timestamp"])
-        # 降采样时保留首尾数据点，并在时间轴上均匀抽取。
         if len(data) > max_points:
-            last_index = len(data) - 1
-            data = [
-                data[(index * last_index + (max_points - 1) // 2) // (max_points - 1)]
-                for index in range(max_points)
-            ]
+            data = self._select_uniform_time_points(data, max_points)
         return data
+
+    @staticmethod
+    def _select_uniform_time_points(data: List[dict], max_points: int) -> List[dict]:
+        """Select real source points nearest to uniformly spaced timestamps."""
+        timestamps = [item["timestamp"] for item in data]
+        first_timestamp = timestamps[0]
+        last_timestamp = timestamps[-1]
+        selected: List[dict] = []
+        cursor = 0
+        for index in range(max_points):
+            target = first_timestamp + (
+                (last_timestamp - first_timestamp) * index / (max_points - 1)
+            )
+            last_selectable = len(data) - (max_points - index)
+            insertion = bisect.bisect_left(
+                timestamps,
+                target,
+                cursor,
+                last_selectable + 1,
+            )
+            if insertion <= cursor:
+                chosen = cursor
+            elif insertion > last_selectable:
+                chosen = last_selectable
+            else:
+                left = insertion - 1
+                if left < cursor:
+                    chosen = insertion
+                elif target - timestamps[left] <= timestamps[insertion] - target:
+                    chosen = left
+                else:
+                    chosen = insertion
+            selected.append(data[chosen])
+            cursor = chosen + 1
+        return selected
 
     def get_time_range(self) -> dict:
         """获取全量数据的时间范围"""

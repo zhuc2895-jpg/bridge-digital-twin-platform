@@ -28,7 +28,11 @@ async def get_history_range(
     sensor_id: str = Query(...),
     start: float = Query(...),
     end: float = Query(...),
-    max_points: int = Query(default=500),
+    max_points: int = Query(
+        default=500,
+        ge=MIN_HISTORY_POINTS,
+        le=MAX_HISTORY_POINTS,
+    ),
     engine: MonitoringEngine = Depends(get_engine),
 ):
     """获取指定时间范围的历史数据"""
@@ -39,14 +43,6 @@ async def get_history_range(
         )
     if start > end:
         raise HTTPException(status_code=400, detail="start must not be after end")
-    if not MIN_HISTORY_POINTS <= max_points <= MAX_HISTORY_POINTS:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"max_points must be between {MIN_HISTORY_POINTS} "
-                f"and {MAX_HISTORY_POINTS}"
-            ),
-        )
     data = engine.get_history_range(sensor_id, start, end, max_points)
     return {
         "sensor_id": sensor_id,
@@ -100,15 +96,10 @@ async def get_sensor(
 @router.get("/{sensor_id}/history")
 async def get_sensor_history(
     sensor_id: str,
-    minutes: int = Query(default=60),
+    minutes: int = Query(default=60, ge=1, le=1440),
     engine: MonitoringEngine = Depends(get_engine),
 ):
     """获取指定传感器最近N分钟的历史数据"""
-    if not 1 <= minutes <= 1440:
-        raise HTTPException(
-            status_code=400,
-            detail="minutes must be between 1 and 1440",
-        )
     data = engine.get_history(sensor_id, minutes)
     return {
         "sensor_id": sensor_id,
