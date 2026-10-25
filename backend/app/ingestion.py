@@ -56,17 +56,16 @@ def validate_csv_batch(content: bytes) -> list[dict]:
 
         records: list[dict] = []
         for index, raw_row in enumerate(reader, start=1):
-            if len(records) >= MAX_BATCH_SIZE:
-                raise IngestionValidationError(
-                    f"batch size exceeds the maximum of {MAX_BATCH_SIZE}"
-                )
-
             row = {
                 (key.strip() if isinstance(key, str) else key): value
                 for key, value in raw_row.items()
             }
             if not any(_has_text(value) for value in row.values()):
                 continue
+            if len(records) >= MAX_BATCH_SIZE:
+                raise IngestionValidationError(
+                    f"batch size exceeds the maximum of {MAX_BATCH_SIZE}"
+                )
             records.append(_validate_csv_record(row, index))
         return records
     except csv.Error as exc:

@@ -7,6 +7,7 @@ import uuid
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -49,8 +50,10 @@ def create_app(services: Optional[AppServices] = None) -> FastAPI:
     @application.exception_handler(RequestValidationError)
     async def request_validation_error_handler(
         request: Request, exc: RequestValidationError
-    ) -> JSONResponse:
-        del request
+    ):
+        if not request.url.path.startswith("/api/data/upload/"):
+            return await request_validation_exception_handler(request, exc)
+
         errors = [
             {
                 "loc": list(error.get("loc", ())),

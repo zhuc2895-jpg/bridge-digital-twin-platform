@@ -307,3 +307,44 @@ def test_10000_csv_records_are_visible_within_500ms(client):
     assert latest.status_code == 200
     assert latest.json()["value"] == 100.0
     assert elapsed <= 0.5
+
+
+def test_csv_blank_rows_after_limit_are_ignored(client):
+    records = [
+        reading(value=100.0, timestamp=1_700_000_000.0 + index / 1000)
+        for index in range(10_000)
+    ]
+
+    response = client.post(
+        "/api/data/upload/csv",
+        files={
+            "file": (
+                "large-with-blank-rows.csv",
+                csv_text(records) + ",,,,\n\n",
+                "text/csv",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["records_ingested"] == 10_000
+    assert response.json()["sensors_updated"] == 1
+
+
+def test_request_validation_is_400_only_for_ingestion_endpoints(client):
+    upload_response = client.post(
+        "/api/data/upload/json",
+        json={"sensor_id": "S01"},
+    )
+    query_response = client.get(
+        "/api/sensors/history/range",
+        params={
+            "sensor_id": "S01",
+            "start": 0,
+            "end": 1,
+            "max_points": 1,
+        },
+    )
+
+    assert upload_response.status_code == 400
+    assert query_response.status_code == 422
