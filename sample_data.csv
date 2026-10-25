@@ -1,0 +1,9 @@
+sensor_id,name,type,value,timestamp
+S01,主跨跨中-应变,strain,250.5,1690000000.0
+S02,主跨1/4-应变,strain,180.2,1690000000.0
+S03,索塔顶部-位移,displacement,15.3,1690000000.0
+S04,拉索L01-加速度,acceleration,0.85,1690000000.0
+S05,主跨跨中-挠度,displacement,22.1,1690000000.0
+S06,索塔底部-应变,strain,320.8,1690000000.0
+S07,拉索L02-加速度,acceleration,1.25,1690000000.0
+S08,桥面温度,temperature,28.6,1690000000.0

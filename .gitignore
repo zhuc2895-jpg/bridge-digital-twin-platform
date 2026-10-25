@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+
+# Node and frontend build output
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/*.timestamp-*.mjs
+
+# Local test and runtime artifacts
+backend/tests/artifacts/
+.pytest_tmp/
+*.log
+*.pid
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
