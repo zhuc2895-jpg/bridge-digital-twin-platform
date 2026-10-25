@@ -331,12 +331,12 @@ def test_csv_blank_rows_after_limit_are_ignored(client):
     assert response.json()["sensors_updated"] == 1
 
 
-def test_request_validation_is_400_only_for_ingestion_endpoints(client):
+def test_request_validation_is_400_only_for_documented_endpoints(client):
     upload_response = client.post(
         "/api/data/upload/json",
         json={"sensor_id": "S01"},
     )
-    query_response = client.get(
+    history_response = client.get(
         "/api/sensors/history/range",
         params={
             "sensor_id": "S01",
@@ -345,6 +345,11 @@ def test_request_validation_is_400_only_for_ingestion_endpoints(client):
             "max_points": 1,
         },
     )
+    unrelated_response = client.get(
+        "/api/sensors/history/snapshot",
+        params={"ts": "not-a-number"},
+    )
 
     assert upload_response.status_code == 400
-    assert query_response.status_code == 422
+    assert history_response.status_code == 400
+    assert unrelated_response.status_code == 422

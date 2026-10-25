@@ -51,7 +51,12 @@ def create_app(services: Optional[AppServices] = None) -> FastAPI:
     async def request_validation_error_handler(
         request: Request, exc: RequestValidationError
     ):
-        if not request.url.path.startswith("/api/data/upload/"):
+        path = request.url.path
+        is_ingestion = path.startswith("/api/data/upload/")
+        is_history_query = path == "/api/sensors/history/range" or (
+            path.startswith("/api/sensors/") and path.endswith("/history")
+        )
+        if not (is_ingestion or is_history_query):
             return await request_validation_exception_handler(request, exc)
 
         errors = [

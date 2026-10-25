@@ -2,10 +2,15 @@
 传感器数据 REST API
 """
 
+import math
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.dependencies import get_engine
 from app.engine.data_engine import MonitoringEngine
+
+MIN_HISTORY_POINTS = 10
+MAX_HISTORY_POINTS = 5000
 
 router = APIRouter()
 
@@ -23,10 +28,25 @@ async def get_history_range(
     sensor_id: str = Query(...),
     start: float = Query(...),
     end: float = Query(...),
-    max_points: int = Query(default=500, ge=10, le=5000),
+    max_points: int = Query(default=500),
     engine: MonitoringEngine = Depends(get_engine),
 ):
     """获取指定时间范围的历史数据"""
+    if not math.isfinite(start) or not math.isfinite(end):
+        raise HTTPException(
+            status_code=400,
+            detail="start and end must be finite timestamps",
+        )
+    if start > end:
+        raise HTTPException(status_code=400, detail="start must not be after end")
+    if not MIN_HISTORY_POINTS <= max_points <= MAX_HISTORY_POINTS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"max_points must be between {MIN_HISTORY_POINTS} "
+                f"and {MAX_HISTORY_POINTS}"
+            ),
+        )
     data = engine.get_history_range(sensor_id, start, end, max_points)
     return {
         "sensor_id": sensor_id,
@@ -80,10 +100,15 @@ async def get_sensor(
 @router.get("/{sensor_id}/history")
 async def get_sensor_history(
     sensor_id: str,
-    minutes: int = Query(default=60, ge=1, le=1440),
+    minutes: int = Query(default=60),
     engine: MonitoringEngine = Depends(get_engine),
 ):
     """获取指定传感器最近N分钟的历史数据"""
+    if not 1 <= minutes <= 1440:
+        raise HTTPException(
+            status_code=400,
+            detail="minutes must be between 1 and 1440",
+        )
     data = engine.get_history(sensor_id, minutes)
     return {
         "sensor_id": sensor_id,
@@ -99,16 +124,7 @@ async def get_sensor_stats(
     engine: MonitoringEngine = Depends(get_engine),
 ):
     """获取指定传感器统计信息"""
-    data = engine.get_history(sensor_id, minutes=10)
-    if not data:
+    stats = engine.get_sensor_stats(sensor_id)
+    if stats is None:
         raise HTTPException(status_code=404, detail=f"No data for sensor {sensor_id}")
-
-    values = [d["value"] for d in data]
-    return {
-        "sensor_id": sensor_id,
-        "count": len(values),
-        "mean": round(sum(values) / len(values), 4),
-        "max": max(values),
-        "min": min(values),
-        "latest": values[-1] if values else None,
-    }
+    return stats

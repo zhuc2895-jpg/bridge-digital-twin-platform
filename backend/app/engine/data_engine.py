@@ -3,6 +3,7 @@
 负责传感器数据接入、存储、查询、统计
 """
 
+import bisect
 from collections import deque
 import heapq
 import time
@@ -80,6 +81,8 @@ class MonitoringEngine:
 
     def ingest(self, sensor_data: List[dict]):
         """摄入一批传感器数据"""
+        touched_full_history = set()
+        unsorted_full_history = set()
         for item in sensor_data:
             reading = SensorReading(
                 sensor_id=item["sensor_id"],
@@ -92,18 +95,22 @@ class MonitoringEngine:
             if current is None or reading.timestamp >= current.timestamp:
                 self._latest[reading.sensor_id] = reading
 
-            # 维护滚动窗口
-            if reading.sensor_id not in self._history:
-                self._history[reading.sensor_id] = deque(maxlen=self.window_size)
-            self._history[reading.sensor_id].append(reading)
+            # 维护最近 500 条滚动窗口，并按读数时间保持有序。
+            history = self._history.setdefault(reading.sensor_id, deque())
+            if not history or reading.timestamp >= history[-1].timestamp:
+                history.append(reading)
+            else:
+                timestamps = [item.timestamp for item in history]
+                history.insert(bisect.bisect_right(timestamps, reading.timestamp), reading)
+            if len(history) > self.window_size:
+                history.popleft()
 
-            # 维护全量历史（用于历史回放）
-            if reading.sensor_id not in self._full_history:
-                self._full_history[reading.sensor_id] = []
-            fh = self._full_history[reading.sensor_id]
+            # 维护全量历史；批量摄入结束后统一排序并按时间淘汰最旧数据。
+            fh = self._full_history.setdefault(reading.sensor_id, [])
+            if fh and reading.timestamp < fh[-1].timestamp:
+                unsorted_full_history.add(reading.sensor_id)
             fh.append(reading)
-            if len(fh) > self._max_full_history:
-                self._full_history[reading.sensor_id] = fh[-self._max_full_history:]
+            touched_full_history.add(reading.sensor_id)
 
             # 更新全局时间范围
             ts = reading.timestamp
@@ -118,6 +125,19 @@ class MonitoringEngine:
                 heapq.heappop(self._top_spikes)
 
             self._total_readings += 1
+
+        for sensor_id in touched_full_history:
+            fh = self._full_history[sensor_id]
+            if sensor_id in unsorted_full_history:
+                fh.sort(key=lambda reading: reading.timestamp)
+            overflow = len(fh) - self._max_full_history
+            if overflow > 0:
+                del fh[:overflow]
+
+        if touched_full_history:
+            histories = [history for history in self._full_history.values() if history]
+            self._min_ts = min(history[0].timestamp for history in histories)
+            self._max_ts = max(history[-1].timestamp for history in histories)
 
     def check_thresholds(self, sensor_data: List[dict]) -> List[Alert]:
         """第一层：物理阈值检测"""
@@ -192,6 +212,22 @@ class MonitoringEngine:
             if r.timestamp >= cutoff
         ]
 
+    def get_sensor_stats(self, sensor_id: str) -> Optional[dict]:
+        """Summarize the sensor's retained rolling window."""
+        readings = self._history.get(sensor_id)
+        if not readings:
+            return None
+        values = [reading.value for reading in readings]
+        latest = max(readings, key=lambda reading: reading.timestamp)
+        return {
+            "sensor_id": sensor_id,
+            "count": len(values),
+            "mean": round(sum(values) / len(values), 4),
+            "max": max(values),
+            "min": min(values),
+            "latest": latest.value,
+        }
+
     def get_history_range(self, sensor_id: str, start_ts: float, end_ts: float, max_points: int = 500) -> List[dict]:
         """获取指定时间范围的历史数据，支持降采样"""
         if sensor_id not in self._full_history:
@@ -202,10 +238,13 @@ class MonitoringEngine:
             if start_ts <= r.timestamp <= end_ts
         ]
         data.sort(key=lambda x: x["timestamp"])
-        # 降采样：如果数据点太多，均匀抽取
+        # 降采样时保留首尾数据点，并在时间轴上均匀抽取。
         if len(data) > max_points:
-            step = len(data) / max_points
-            data = [data[int(i * step)] for i in range(max_points)]
+            last_index = len(data) - 1
+            data = [
+                data[(index * last_index + (max_points - 1) // 2) // (max_points - 1)]
+                for index in range(max_points)
+            ]
         return data
 
     def get_time_range(self) -> dict:
