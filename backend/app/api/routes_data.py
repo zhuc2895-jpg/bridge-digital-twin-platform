@@ -134,40 +134,50 @@ async def update_thresholds(
     acceleration_yellow: Optional[float] = None,
     acceleration_orange: Optional[float] = None,
     acceleration_red: Optional[float] = None,
+    temperature_yellow: Optional[float] = None,
+    temperature_orange: Optional[float] = None,
+    temperature_red: Optional[float] = None,
     services: AppServices = Depends(get_services),
 ):
     """Dynamically adjust physical thresholds for the current app instance."""
-    engine = services.engine
-    updates = {}
-    if strain_yellow is not None:
-        engine.thresholds["strain"]["yellow"] = strain_yellow
-        updates["strain_yellow"] = strain_yellow
-    if strain_orange is not None:
-        engine.thresholds["strain"]["orange"] = strain_orange
-        updates["strain_orange"] = strain_orange
-    if strain_red is not None:
-        engine.thresholds["strain"]["red"] = strain_red
-        updates["strain_red"] = strain_red
-    if displacement_yellow is not None:
-        engine.thresholds["displacement"]["yellow"] = displacement_yellow
-        updates["displacement_yellow"] = displacement_yellow
-    if displacement_orange is not None:
-        engine.thresholds["displacement"]["orange"] = displacement_orange
-        updates["displacement_orange"] = displacement_orange
-    if displacement_red is not None:
-        engine.thresholds["displacement"]["red"] = displacement_red
-        updates["displacement_red"] = displacement_red
-    if acceleration_yellow is not None:
-        engine.thresholds["acceleration"]["yellow"] = acceleration_yellow
-        updates["acceleration_yellow"] = acceleration_yellow
-    if acceleration_orange is not None:
-        engine.thresholds["acceleration"]["orange"] = acceleration_orange
-        updates["acceleration_orange"] = acceleration_orange
-    if acceleration_red is not None:
-        engine.thresholds["acceleration"]["red"] = acceleration_red
-        updates["acceleration_red"] = acceleration_red
+    requested = {
+        "strain": {
+            "yellow": strain_yellow,
+            "orange": strain_orange,
+            "red": strain_red,
+        },
+        "displacement": {
+            "yellow": displacement_yellow,
+            "orange": displacement_orange,
+            "red": displacement_red,
+        },
+        "acceleration": {
+            "yellow": acceleration_yellow,
+            "orange": acceleration_orange,
+            "red": acceleration_red,
+        },
+        "temperature": {
+            "yellow": temperature_yellow,
+            "orange": temperature_orange,
+            "red": temperature_red,
+        },
+    }
+    try:
+        current_thresholds = services.engine.update_thresholds(requested)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return {"status": "ok", "updated": updates, "current_thresholds": engine.thresholds}
+    updates = {
+        f"{sensor_type}_{level}": value
+        for sensor_type, levels in requested.items()
+        for level, value in levels.items()
+        if value is not None
+    }
+    return {
+        "status": "ok",
+        "updated": updates,
+        "current_thresholds": current_thresholds,
+    }
 
 
 @router.get("/config/thresholds")

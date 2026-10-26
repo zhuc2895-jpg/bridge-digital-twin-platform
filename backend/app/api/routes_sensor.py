@@ -69,6 +69,13 @@ async def get_alerts_range(
     engine: MonitoringEngine = Depends(get_engine),
 ):
     """获取指定时间范围的告警"""
+    if not math.isfinite(start) or not math.isfinite(end):
+        raise HTTPException(
+            status_code=400,
+            detail="start and end must be finite timestamps",
+        )
+    if start > end:
+        raise HTTPException(status_code=400, detail="start must not be after end")
     data = engine.get_alerts_range(start, end)
     return {"start": start, "end": end, "count": len(data), "alerts": data}
 

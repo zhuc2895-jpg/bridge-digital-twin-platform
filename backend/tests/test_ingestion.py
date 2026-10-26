@@ -3,22 +3,7 @@ import time
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-
-
-def reading(
-    sensor_id: str = "S01",
-    name: str = "Main span strain",
-    sensor_type: str = "strain",
-    value: float = 100.0,
-    timestamp: float = 1_700_000_000.0,
-) -> dict:
-    return {
-        "sensor_id": sensor_id,
-        "name": name,
-        "type": sensor_type,
-        "value": value,
-        "timestamp": timestamp,
-    }
+from tests.factories import reading
 
 
 def csv_text(rows: list[dict]) -> str:
@@ -276,7 +261,7 @@ def test_latest_state_uses_timestamp_not_request_order(client):
 
 def test_health_counts_all_alerts_beyond_recent_20(client):
     records = [
-        reading(value=600.0, timestamp=1_700_000_000.0 + index)
+        reading(value=600.0, timestamp=1_700_000_000.0 + index * 10)
         for index in range(21)
     ]
 
@@ -346,8 +331,8 @@ def test_request_validation_is_400_only_for_documented_endpoints(client):
         },
     )
     unrelated_response = client.get(
-        "/api/sensors/history/snapshot",
-        params={"ts": "not-a-number"},
+        "/api/analysis/report",
+        params={"hours": "not-a-number"},
     )
 
     assert upload_response.status_code == 400

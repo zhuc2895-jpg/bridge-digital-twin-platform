@@ -6,6 +6,7 @@
 import bisect
 from collections import deque
 import heapq
+import math
 import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
@@ -31,7 +32,7 @@ class Alert:
     message: str
     value: float
     threshold: float
-    source: str        # rule / ml_stalwart / ml_gan_ae / dual_confirm
+    source: str        # rule / ai_* sources
     timestamp: float
 
 
@@ -43,6 +44,8 @@ class MonitoringEngine:
     - Top-K 峰值检测
     - 物理阈值告警
     """
+
+    MAX_ALERTS = 50_000
 
     def __init__(self, window_size: int = 500, top_k: int = 10):
         self.window_size = window_size
@@ -63,9 +66,12 @@ class MonitoringEngine:
         # Top-K 峰值堆
         self._top_spikes: List[tuple] = []  # (-value, sensor_id, timestamp)
 
-        # 告警列表
+        # 告警列表与同级告警冷却
         self._alerts: List[Alert] = []
         self._alert_counter = 0
+        self._alert_cooldowns: Dict[tuple[str, str], List[float]] = {}
+        self._alert_cooldown_events: deque[tuple[tuple[str, str], float]] = deque()
+        self._alert_cooldown_seconds = 10.0
 
         # 统计
         self._total_readings = 0
@@ -142,47 +148,141 @@ class MonitoringEngine:
             sensor_type = item.get("type", "unknown")
             value = item["value"]
             thresholds = self.thresholds.get(sensor_type, {})
+            level = next(
+                (
+                    candidate
+                    for candidate in ("red", "orange", "yellow")
+                    if candidate in thresholds
+                    and abs(value) >= thresholds[candidate]
+                ),
+                None,
+            )
+            if level is None:
+                continue
 
-            for level in ["red", "orange", "yellow"]:
-                if level in thresholds and abs(value) >= thresholds[level]:
-                    alert = Alert(
-                        id=f"ALT-{self._alert_counter}",
-                        sensor_id=item["sensor_id"],
-                        sensor_name=item.get("name", ""),
-                        level=level,
-                        message=f"{item.get('name', '')} 超过{level}阈值: {value:.2f} >= {thresholds[level]}",
-                        value=value,
-                        threshold=thresholds[level],
-                        source="rule",
-                        timestamp=item.get("timestamp", time.time())
-                    )
-                    alerts.append(alert)
-                    self._alert_counter += 1
-                    break  # 只取最高级别
+            timestamp = item.get("timestamp", time.time())
+            cooldown_key = (item["sensor_id"], level)
+            # Retain alert times so backfilled readings are checked against
+            # every nearby alert, not only the most recent arrival.
+            alert_times = self._alert_cooldowns.setdefault(cooldown_key, [])
+            first_possible_match = bisect.bisect_right(
+                alert_times,
+                timestamp - self._alert_cooldown_seconds,
+            )
+            if (
+                first_possible_match < len(alert_times)
+                and alert_times[first_possible_match]
+                < timestamp + self._alert_cooldown_seconds
+            ):
+                continue
+
+            threshold = thresholds[level]
+            alert = Alert(
+                id=f"ALT-{self._alert_counter}",
+                sensor_id=item["sensor_id"],
+                sensor_name=item.get("name", ""),
+                level=level,
+                message=(
+                    f"{item.get('name', '')} 超过{level}阈值: "
+                    f"{abs(value):.2f} >= {threshold}"
+                ),
+                value=value,
+                threshold=threshold,
+                source="rule",
+                timestamp=timestamp,
+            )
+            alerts.append(alert)
+            self._remember_alert_time(cooldown_key, timestamp)
+            self._alert_counter += 1
         return alerts
+
+    def _remember_alert_time(
+        self,
+        cooldown_key: tuple[str, str],
+        timestamp: float,
+    ) -> None:
+        alert_times = self._alert_cooldowns[cooldown_key]
+        bisect.insort(alert_times, timestamp)
+        self._alert_cooldown_events.append((cooldown_key, timestamp))
+        while len(self._alert_cooldown_events) > self.MAX_ALERTS:
+            old_key, old_timestamp = self._alert_cooldown_events.popleft()
+            old_times = self._alert_cooldowns.get(old_key)
+            if old_times is None:
+                continue
+            old_index = bisect.bisect_left(old_times, old_timestamp)
+            if old_index < len(old_times) and old_times[old_index] == old_timestamp:
+                old_times.pop(old_index)
+            if not old_times:
+                del self._alert_cooldowns[old_key]
+
+    def update_thresholds(
+        self,
+        updates: Dict[str, Dict[str, float]],
+    ) -> Dict[str, Dict[str, float]]:
+        """Validate and atomically replace configurable threshold values."""
+        candidate = {
+            sensor_type: dict(levels)
+            for sensor_type, levels in self.thresholds.items()
+        }
+        for sensor_type, levels in updates.items():
+            if sensor_type not in candidate:
+                raise ValueError(f"Unknown sensor type: {sensor_type}")
+            for level, value in levels.items():
+                if value is None:
+                    continue
+                if level not in candidate[sensor_type]:
+                    raise ValueError(f"Unknown threshold level: {sensor_type}.{level}")
+                candidate[sensor_type][level] = value
+
+        for sensor_type, levels in candidate.items():
+            ordered_values = [levels[level] for level in ("yellow", "orange", "red")]
+            if any(not math.isfinite(value) or value <= 0 for value in ordered_values):
+                raise ValueError(
+                    f"{sensor_type} thresholds must be finite positive numbers"
+                )
+            if ordered_values != sorted(ordered_values):
+                raise ValueError(
+                    f"{sensor_type} thresholds must be ordered yellow <= orange <= red"
+                )
+
+        self.thresholds = candidate
+        return candidate
 
     def add_alert(self, alert: Alert):
         """添加告警，全量保留用于历史回放（最多5万条）"""
         self._alerts.append(alert)
-        if len(self._alerts) > 50000:
-            self._alerts = self._alerts[-50000:]
+        if len(self._alerts) > self.MAX_ALERTS:
+            self._alerts = self._alerts[-self.MAX_ALERTS:]
 
     def get_active_alerts(self) -> List[dict]:
         """获取最近20条告警"""
         return [
-            {
-                "id": a.id,
-                "sensor_id": a.sensor_id,
-                "sensor_name": a.sensor_name,
-                "level": a.level,
-                "message": a.message,
-                "value": a.value,
-                "threshold": a.threshold,
-                "source": a.source,
-                "timestamp": a.timestamp
-            }
-            for a in self._alerts[-20:]
+            self._alert_to_dict(alert)
+            for alert in sorted(
+                self._alerts,
+                key=lambda alert: alert.timestamp,
+                reverse=True,
+            )[:20]
         ]
+
+    def get_alert_stats(self) -> dict:
+        """Summarize every retained alert, not only the recent page."""
+        levels = {"red": 0, "orange": 0, "yellow": 0, "green": 0}
+        sources = {
+            "rule": 0,
+            "ml_stalwart": 0,
+            "ml_gan_ae": 0,
+            "dual_confirm": 0,
+            "feature_arbitration": 0,
+        }
+        for alert in self._alerts:
+            levels[alert.level] = levels.get(alert.level, 0) + 1
+            sources[alert.source] = sources.get(alert.source, 0) + 1
+        return {
+            "total": len(self._alerts),
+            "by_level": levels,
+            "by_source": sources,
+        }
 
     def get_sensor_count(self) -> int:
         return len(self._latest)
@@ -283,24 +383,20 @@ class MonitoringEngine:
     def get_alerts_range(self, start_ts: float, end_ts: float) -> List[dict]:
         """获取指定时间范围的告警"""
         return [
-            {
-                "id": a.id,
-                "sensor_id": a.sensor_id,
-                "sensor_name": a.sensor_name,
-                "level": a.level,
-                "message": a.message,
-                "value": a.value,
-                "threshold": a.threshold,
-                "source": a.source,
-                "timestamp": a.timestamp
-            }
-            for a in self._alerts
-            if start_ts <= a.timestamp <= end_ts
+            self._alert_to_dict(alert)
+            for alert in sorted(
+                (
+                    alert
+                    for alert in self._alerts
+                    if start_ts <= alert.timestamp <= end_ts
+                ),
+                key=lambda alert: alert.timestamp,
+                reverse=True,
+            )
         ]
 
     def get_snapshot_at(self, ts: float) -> dict:
         """获取指定时间点的传感器快照（取该时间点之前最近的一条数据）"""
-        import bisect
         result = {}
         for sid, readings in self._full_history.items():
             if not readings:
@@ -330,6 +426,20 @@ class MonitoringEngine:
             "active_alerts": len(self._alerts),
             "throughput": round(self._total_readings / elapsed, 1) if elapsed > 0 else 0,
             "uptime_seconds": round(elapsed, 1)
+        }
+
+    @staticmethod
+    def _alert_to_dict(alert: Alert) -> dict:
+        return {
+            "id": alert.id,
+            "sensor_id": alert.sensor_id,
+            "sensor_name": alert.sensor_name,
+            "level": alert.level,
+            "message": alert.message,
+            "value": alert.value,
+            "threshold": alert.threshold,
+            "source": alert.source,
+            "timestamp": alert.timestamp,
         }
 
     def _reading_to_dict(self, r: SensorReading) -> dict:
