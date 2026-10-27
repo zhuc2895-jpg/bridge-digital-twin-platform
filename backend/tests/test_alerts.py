@@ -28,6 +28,55 @@ def test_same_level_alert_is_cooled_down_for_ten_seconds(client):
     assert len({alert["id"] for alert in alerts}) == 2
 
 
+def test_alert_lifecycle_uses_uuid_and_cross_source_cooldown(app, client):
+    import uuid
+
+    engine = app.state.services.engine
+    base = 1_700_000_000.0
+
+    first = engine.submit_alert(
+        sensor_id="S01",
+        sensor_name="Main span strain",
+        level="red",
+        message="threshold exceeded",
+        value=600.0,
+        threshold=600.0,
+        source="rule",
+        timestamp=base,
+    )
+    during_cooldown = engine.submit_alert(
+        sensor_id="S01",
+        sensor_name="Main span strain",
+        level="red",
+        message="AI anomaly confirmed",
+        value=610.0,
+        threshold=0.0,
+        source="ai_dual_confirm",
+        timestamp=base + 5,
+    )
+    after_cooldown = engine.submit_alert(
+        sensor_id="S01",
+        sensor_name="Main span strain",
+        level="red",
+        message="AI anomaly confirmed",
+        value=620.0,
+        threshold=0.0,
+        source="ai_dual_confirm",
+        timestamp=base + 10,
+    )
+
+    alerts = client.get("/api/alerts/").json()["alerts"]
+
+    assert first is not None
+    assert during_cooldown is None
+    assert after_cooldown is not None
+    assert [alert["source"] for alert in alerts] == ["ai_dual_confirm", "rule"]
+    assert len({alert["id"] for alert in alerts}) == 2
+    for alert in alerts:
+        assert alert["id"].startswith("ALT-")
+        uuid.UUID(alert["id"].removeprefix("ALT-"))
+
+
 def test_temperature_thresholds_can_be_read_changed_and_take_effect(client):
     defaults = client.get("/api/data/config/thresholds")
     update = client.post(
@@ -124,6 +173,66 @@ def test_all_sensor_threshold_boundaries_emit_only_highest_level(
     assert all(alert["sensor_name"] for alert in alerts)
     assert all(alert["message"] for alert in alerts)
     assert all(alert["timestamp"] >= 1_700_000_000.0 for alert in alerts)
+def test_alert_stats_use_canonical_levels_and_sources(app, client):
+    engine = app.state.services.engine
+    base = 1_700_000_000.0
+    for sensor_id, source in (
+        ("S-RULE", "rule"),
+        ("S-AI", "ai_stalwart"),
+    ):
+        engine.submit_alert(
+            sensor_id=sensor_id,
+            sensor_name=sensor_id,
+            level="orange",
+            message="anomaly",
+            value=10.0,
+            threshold=5.0,
+            source=source,
+            timestamp=base,
+        )
+
+    stats = client.get("/api/alerts/stats").json()
+
+    assert set(stats["by_level"]) == {"yellow", "orange", "red"}
+    assert stats["by_level"]["orange"] == 2
+    assert set(stats["by_source"]) == {
+        "rule",
+        "ai_stalwart",
+        "ai_gan_ae",
+        "ai_isolation_forest",
+        "ai_dual_confirm",
+        "ai_feature_arbitration",
+    }
+    assert stats["by_source"]["rule"] == 1
+    assert stats["by_source"]["ai_stalwart"] == 1
+    assert stats["by_source"]["ai_gan_ae"] == 0
+
+
+def test_same_event_time_alerts_use_detection_order(app, client):
+    engine = app.state.services.engine
+    timestamp = 1_700_000_000.0
+    for sensor_id in ("S-A", "S-B", "S-C"):
+        engine.submit_alert(
+            sensor_id=sensor_id,
+            sensor_name=sensor_id,
+            level="red",
+            message="anomaly",
+            value=600.0,
+            threshold=600.0,
+            source="rule",
+            timestamp=timestamp,
+        )
+
+    recent = client.get("/api/alerts/").json()["alerts"]
+    ranged = client.get(
+        "/api/sensors/history/alerts",
+        params={"start": timestamp, "end": timestamp},
+    ).json()["alerts"]
+
+    assert [alert["sensor_id"] for alert in recent] == ["S-C", "S-B", "S-A"]
+    assert [alert["sensor_id"] for alert in ranged] == ["S-C", "S-B", "S-A"]
+
+
 def test_recent_alerts_are_limited_to_twenty_and_newest_first(client):
     records = [
         reading(
@@ -198,7 +307,7 @@ def test_alert_stats_use_all_stored_alerts_not_only_recent_twenty(client):
 def test_alert_storage_keeps_only_newest_fifty_thousand(app):
     engine = app.state.services.engine
     for index in range(50_001):
-        engine.add_alert(
+        engine._retain_alert(
             Alert(
                 id=f"ALT-{index}",
                 sensor_id="S01",
@@ -222,6 +331,53 @@ def test_alert_storage_keeps_only_newest_fifty_thousand(app):
         "ALT-1"
     ]
     assert engine.get_alert_stats()["total"] == 50_000
+
+
+def test_alert_storage_evicts_the_oldest_alert_time_not_the_oldest_arrival(
+    app, client
+):
+    engine = app.state.services.engine
+    base = 1_700_000_000.0
+    for index in range(50_000):
+        engine._retain_alert(
+            Alert(
+                id=f"ALT-NEW-{index}",
+                sensor_id="S01",
+                sensor_name="Main span strain",
+                level="red",
+                message="threshold exceeded",
+                value=600.0,
+                threshold=600.0,
+                source="rule",
+                timestamp=base + index,
+            )
+        )
+
+    engine._retain_alert(
+        Alert(
+            id="ALT-BACKFILL",
+            sensor_id="S01",
+            sensor_name="Main span strain",
+            level="red",
+            message="threshold exceeded",
+            value=600.0,
+            threshold=600.0,
+            source="rule",
+            timestamp=base - 1,
+        )
+    )
+
+    recent = client.get("/api/alerts/").json()["alerts"]
+    backfill = client.get(
+        "/api/sensors/history/alerts",
+        params={"start": base - 1, "end": base - 1},
+    ).json()
+    stats = client.get("/api/alerts/stats").json()
+
+    assert stats["total"] == 50_000
+    assert backfill["count"] == 0
+    assert recent[0]["id"] == "ALT-NEW-49999"
+    assert recent[-1]["id"] == "ALT-NEW-49980"
 
 
 def test_all_sensor_thresholds_are_configurable(client):
@@ -305,12 +461,36 @@ def test_backfilled_readings_use_the_same_cooldown_window(client):
     assert [alert["timestamp"] for alert in alerts] == [base + 1000, base]
 
 
+def test_threshold_update_clears_cooldown_for_sensor_type(client):
+    base = 1_700_000_000.0
+    first = client.post(
+        "/api/data/upload/json?push_live=false",
+        json=[reading(value=600.0, timestamp=base)],
+    )
+    update = client.post(
+        "/api/data/config/thresholds",
+        params={"strain_red": 601},
+    )
+    after_update = client.post(
+        "/api/data/upload/json?push_live=false",
+        json=[reading(value=601.0, timestamp=base + 5)],
+    )
+
+    alerts = client.get("/api/alerts/").json()["alerts"]
+
+    assert first.json()["alerts_triggered"] == 1
+    assert update.status_code == 200
+    assert after_update.json()["alerts_triggered"] == 1
+    assert [alert["threshold"] for alert in alerts] == [601.0, 600.0]
+
+
 @pytest.mark.parametrize(
     "updates",
     [
         {"temperature_red": float("nan")},
         {"temperature_yellow": -1},
         {"temperature_yellow": 10, "temperature_orange": 15, "temperature_red": 5},
+        {"temperature_yellow": 45, "temperature_orange": 45, "temperature_red": 65},
     ],
 )
 def test_invalid_threshold_updates_are_rejected_without_partial_changes(

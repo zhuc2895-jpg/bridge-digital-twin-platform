@@ -67,7 +67,7 @@ export const useBridgeStore = defineStore('bridge', () => {
 
   // 获取最新告警（前5条）
   const latestAlerts = computed(() => {
-    return alerts.value.slice(-5).reverse()
+    return alerts.value.slice(0, 5)
   })
 
   // 获取应变传感器数据

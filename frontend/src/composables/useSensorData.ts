@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, type Ref } from 'vue'
 import type { SensorData } from './useWebSocket'
 
 /**

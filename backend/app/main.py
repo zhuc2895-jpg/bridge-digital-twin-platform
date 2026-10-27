@@ -3,7 +3,6 @@ Bridge Digital Twin Platform - FastAPI application assembly.
 """
 
 import asyncio
-import uuid
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Request, WebSocket, WebSocketDisconnect
@@ -14,7 +13,6 @@ from fastapi.responses import JSONResponse
 
 from app.api import routes_alert, routes_analysis, routes_data, routes_sensor
 from app.dependencies import AppServices, create_services, get_services
-from app.engine.data_engine import Alert
 
 
 def create_app(services: Optional[AppServices] = None) -> FastAPI:
@@ -53,9 +51,10 @@ def create_app(services: Optional[AppServices] = None) -> FastAPI:
     ):
         path = request.url.path
         is_ingestion = path.startswith("/api/data/upload/")
-        uses_history_query_validation = path.startswith(
-            "/api/sensors/history/"
-        ) or (path.startswith("/api/sensors/") and path.endswith("/history"))
+        uses_history_query_validation = path in {
+            "/api/sensors/history/range",
+            "/api/sensors/history/alerts",
+        } or (path.startswith("/api/sensors/") and path.endswith("/history"))
         if not (is_ingestion or uses_history_query_validation):
             return await request_validation_exception_handler(request, exc)
 
@@ -105,27 +104,19 @@ def create_app(services: Optional[AppServices] = None) -> FastAPI:
         try:
             async for sensor_data in simulator.generate():
                 engine.ingest(sensor_data)
-                rule_alerts = engine.check_thresholds(sensor_data)
+                engine.check_thresholds(sensor_data)
 
-                ml_alerts_raw = detector.detect(sensor_data)
-                ml_alerts = []
-                for ml_alert in ml_alerts_raw:
-                    ml_alerts.append(
-                        Alert(
-                            id=str(uuid.uuid4())[:8],
-                            sensor_id=ml_alert.sensor_id,
-                            sensor_name=ml_alert.sensor_name,
-                            level=ml_alert.level,
-                            message=ml_alert.message,
-                            value=ml_alert.value,
-                            threshold=0,
-                            source=f"ai_{ml_alert.source}",
-                            timestamp=ml_alert.timestamp,
-                        )
+                for ml_alert in detector.detect(sensor_data):
+                    engine.submit_alert(
+                        sensor_id=ml_alert.sensor_id,
+                        sensor_name=ml_alert.sensor_name,
+                        level=ml_alert.level,
+                        message=ml_alert.message,
+                        value=ml_alert.value,
+                        threshold=0,
+                        source=f"ai_{ml_alert.source}",
+                        timestamp=ml_alert.timestamp,
                     )
-
-                for alert in rule_alerts + ml_alerts:
-                    engine.add_alert(alert)
 
                 await ws_manager.broadcast(
                     {

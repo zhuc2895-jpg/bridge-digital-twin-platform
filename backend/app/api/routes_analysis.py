@@ -108,8 +108,14 @@ async def export_report(
         t = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(a["timestamp"]))
         level_text = level_names.get(a["level"], a["level"])
         color = level_colors.get(a["level"], "#333")
-        source_map = {"rule": "物理阈值", "ai_stalwart": "AI-STALWART", "ai_gan_ae": "AI-GAN-AE",
-                      "ai_iforest": "AI-IForest", "ai_dual_confirm": "AI多模型确认", "ai_feature_arbitration": "AI特征仲裁"}
+        source_map = {
+            "rule": "物理阈值",
+            "ai_stalwart": "AI-STALWART",
+            "ai_gan_ae": "AI-GAN-AE",
+            "ai_isolation_forest": "AI-Isolation Forest",
+            "ai_dual_confirm": "AI多模型确认",
+            "ai_feature_arbitration": "AI特征仲裁",
+        }
         source_text = source_map.get(a["source"], a["source"])
         alert_rows += f"""
         <tr>

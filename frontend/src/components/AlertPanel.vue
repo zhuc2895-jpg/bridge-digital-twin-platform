@@ -64,10 +64,11 @@ const store = useBridgeStore()
 function sourceLabel(source: string): string {
   const map: Record<string, string> = {
     rule: '物理阈值',
-    ml_stalwart: 'STALWART',
-    ml_gan_ae: 'GAN+AE',
-    dual_confirm: '双模型确认',
-    feature_arbitration: '特征仲裁'
+    ai_stalwart: 'STALWART',
+    ai_gan_ae: 'GAN+AE',
+    ai_isolation_forest: 'Isolation Forest',
+    ai_dual_confirm: '双模型确认',
+    ai_feature_arbitration: '特征仲裁'
   }
   return map[source] || source
 }

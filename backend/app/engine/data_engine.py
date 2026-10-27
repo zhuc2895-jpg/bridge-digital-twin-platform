@@ -8,7 +8,8 @@ from collections import deque
 import heapq
 import math
 import time
-from dataclasses import dataclass, field
+import uuid
+from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 
@@ -28,12 +29,13 @@ class Alert:
     id: str
     sensor_id: str
     sensor_name: str
-    level: str         # green / yellow / orange / red
+    level: str         # yellow / orange / red
     message: str
     value: float
     threshold: float
     source: str        # rule / ai_* sources
     timestamp: float
+    detection_sequence: int = 0
 
 
 class MonitoringEngine:
@@ -46,6 +48,15 @@ class MonitoringEngine:
     """
 
     MAX_ALERTS = 50_000
+    ALERT_LEVELS = ("yellow", "orange", "red")
+    ALERT_SOURCES = (
+        "rule",
+        "ai_stalwart",
+        "ai_gan_ae",
+        "ai_isolation_forest",
+        "ai_dual_confirm",
+        "ai_feature_arbitration",
+    )
 
     def __init__(self, window_size: int = 500, top_k: int = 10):
         self.window_size = window_size
@@ -68,7 +79,7 @@ class MonitoringEngine:
 
         # 告警列表与同级告警冷却
         self._alerts: List[Alert] = []
-        self._alert_counter = 0
+        self._detection_sequence = 0
         self._alert_cooldowns: Dict[tuple[str, str], List[float]] = {}
         self._alert_cooldown_events: deque[tuple[tuple[str, str], float]] = deque()
         self._alert_cooldown_seconds = 10.0
@@ -142,7 +153,7 @@ class MonitoringEngine:
             self._max_ts = max(history[-1].timestamp for history in histories)
 
     def check_thresholds(self, sensor_data: List[dict]) -> List[Alert]:
-        """第一层：物理阈值检测"""
+        """Evaluate physical thresholds and submit every matched alert."""
         alerts = []
         for item in sensor_data:
             sensor_type = item.get("type", "unknown")
@@ -160,25 +171,8 @@ class MonitoringEngine:
             if level is None:
                 continue
 
-            timestamp = item.get("timestamp", time.time())
-            cooldown_key = (item["sensor_id"], level)
-            # Retain alert times so backfilled readings are checked against
-            # every nearby alert, not only the most recent arrival.
-            alert_times = self._alert_cooldowns.setdefault(cooldown_key, [])
-            first_possible_match = bisect.bisect_right(
-                alert_times,
-                timestamp - self._alert_cooldown_seconds,
-            )
-            if (
-                first_possible_match < len(alert_times)
-                and alert_times[first_possible_match]
-                < timestamp + self._alert_cooldown_seconds
-            ):
-                continue
-
             threshold = thresholds[level]
-            alert = Alert(
-                id=f"ALT-{self._alert_counter}",
+            alert = self.submit_alert(
                 sensor_id=item["sensor_id"],
                 sensor_name=item.get("name", ""),
                 level=level,
@@ -189,19 +183,72 @@ class MonitoringEngine:
                 value=value,
                 threshold=threshold,
                 source="rule",
-                timestamp=timestamp,
+                timestamp=item.get("timestamp", time.time()),
             )
-            alerts.append(alert)
-            self._remember_alert_time(cooldown_key, timestamp)
-            self._alert_counter += 1
+            if alert is not None:
+                alerts.append(alert)
         return alerts
+
+    def submit_alert(
+        self,
+        *,
+        sensor_id: str,
+        sensor_name: str,
+        level: str,
+        message: str,
+        value: float,
+        threshold: float,
+        source: str,
+        timestamp: float,
+    ) -> Optional[Alert]:
+        """Create one alert through the shared lifecycle policy."""
+        if level not in self.ALERT_LEVELS:
+            raise ValueError(f"Unknown alert level: {level}")
+        if source not in self.ALERT_SOURCES:
+            raise ValueError(f"Unknown alert source: {source}")
+        if self._is_alert_in_cooldown(sensor_id, level, timestamp):
+            return None
+
+        alert = Alert(
+            id=f"ALT-{uuid.uuid4()}",
+            sensor_id=sensor_id,
+            sensor_name=sensor_name,
+            level=level,
+            message=message,
+            value=value,
+            threshold=threshold,
+            source=source,
+            timestamp=timestamp,
+        )
+        self._remember_alert_time((sensor_id, level), timestamp)
+        self._retain_alert(alert)
+        return alert
+
+    def _is_alert_in_cooldown(
+        self,
+        sensor_id: str,
+        level: str,
+        timestamp: float,
+    ) -> bool:
+        alert_times = self._alert_cooldowns.get((sensor_id, level))
+        if not alert_times:
+            return False
+        first_possible_match = bisect.bisect_right(
+            alert_times,
+            timestamp - self._alert_cooldown_seconds,
+        )
+        return (
+            first_possible_match < len(alert_times)
+            and alert_times[first_possible_match]
+            < timestamp + self._alert_cooldown_seconds
+        )
 
     def _remember_alert_time(
         self,
         cooldown_key: tuple[str, str],
         timestamp: float,
     ) -> None:
-        alert_times = self._alert_cooldowns[cooldown_key]
+        alert_times = self._alert_cooldowns.setdefault(cooldown_key, [])
         bisect.insort(alert_times, timestamp)
         self._alert_cooldown_events.append((cooldown_key, timestamp))
         while len(self._alert_cooldown_events) > self.MAX_ALERTS:
@@ -240,19 +287,61 @@ class MonitoringEngine:
                 raise ValueError(
                     f"{sensor_type} thresholds must be finite positive numbers"
                 )
-            if ordered_values != sorted(ordered_values):
+            if any(
+                lower >= higher
+                for lower, higher in zip(ordered_values, ordered_values[1:])
+            ):
                 raise ValueError(
-                    f"{sensor_type} thresholds must be ordered yellow <= orange <= red"
+                    f"{sensor_type} thresholds must be strictly ordered "
+                    "yellow < orange < red"
                 )
 
+        changed_types = {
+            sensor_type
+            for sensor_type, levels in candidate.items()
+            if levels != self.thresholds[sensor_type]
+        }
         self.thresholds = candidate
+        self._clear_cooldowns_for_sensor_types(changed_types)
         return candidate
 
-    def add_alert(self, alert: Alert):
-        """添加告警，全量保留用于历史回放（最多5万条）"""
+    def _clear_cooldowns_for_sensor_types(self, sensor_types: set[str]) -> None:
+        if not sensor_types:
+            return
+        affected_keys = {
+            key
+            for key in self._alert_cooldowns
+            if key[0] in self._latest
+            and self._latest[key[0]].type in sensor_types
+        }
+        for key in affected_keys:
+            del self._alert_cooldowns[key]
+        if affected_keys:
+            self._alert_cooldown_events = deque(
+                event
+                for event in self._alert_cooldown_events
+                if event[0] not in affected_keys
+            )
+
+    def _retain_alert(self, alert: Alert):
+        """Retain an alert created by submit_alert."""
+        if alert.detection_sequence <= 0:
+            self._detection_sequence += 1
+            alert.detection_sequence = self._detection_sequence
+        else:
+            self._detection_sequence = max(
+                self._detection_sequence,
+                alert.detection_sequence,
+            )
         self._alerts.append(alert)
         if len(self._alerts) > self.MAX_ALERTS:
-            self._alerts = self._alerts[-self.MAX_ALERTS:]
+            self._alerts.sort(
+                key=lambda alert_record: (
+                    alert_record.timestamp,
+                    alert_record.detection_sequence,
+                )
+            )
+            del self._alerts[:-self.MAX_ALERTS]
 
     def get_active_alerts(self) -> List[dict]:
         """获取最近20条告警"""
@@ -260,24 +349,20 @@ class MonitoringEngine:
             self._alert_to_dict(alert)
             for alert in sorted(
                 self._alerts,
-                key=lambda alert: alert.timestamp,
+                key=lambda alert: (alert.timestamp, alert.detection_sequence),
                 reverse=True,
             )[:20]
         ]
 
     def get_alert_stats(self) -> dict:
         """Summarize every retained alert, not only the recent page."""
-        levels = {"red": 0, "orange": 0, "yellow": 0, "green": 0}
-        sources = {
-            "rule": 0,
-            "ml_stalwart": 0,
-            "ml_gan_ae": 0,
-            "dual_confirm": 0,
-            "feature_arbitration": 0,
-        }
+        levels = {level: 0 for level in self.ALERT_LEVELS}
+        sources = {source: 0 for source in self.ALERT_SOURCES}
         for alert in self._alerts:
-            levels[alert.level] = levels.get(alert.level, 0) + 1
-            sources[alert.source] = sources.get(alert.source, 0) + 1
+            if alert.level in levels:
+                levels[alert.level] += 1
+            if alert.source in sources:
+                sources[alert.source] += 1
         return {
             "total": len(self._alerts),
             "by_level": levels,
@@ -390,7 +475,7 @@ class MonitoringEngine:
                     for alert in self._alerts
                     if start_ts <= alert.timestamp <= end_ts
                 ),
-                key=lambda alert: alert.timestamp,
+                key=lambda alert: (alert.timestamp, alert.detection_sequence),
                 reverse=True,
             )
         ]

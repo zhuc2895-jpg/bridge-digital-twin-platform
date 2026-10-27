@@ -67,10 +67,6 @@ class AnomalyDetector:
         self._baseline_ready: Dict[str, bool] = {}
         self._warmup_count = 100  # 预热样本数
 
-        # 告警冷却（避免重复告警）
-        self._cooldown: Dict[str, float] = {}
-        self._cooldown_period = 10  # 同一传感器告警冷却10秒
-
         # 统计
         self._total_detections = 0
         self._stalwart_detections = 0
@@ -78,9 +74,6 @@ class AnomalyDetector:
         self._iforest_detections = 0
         self._dual_confirmations = 0
         self._ml_alerts_triggered = 0
-
-        # 告警计数器
-        self._alert_counter = 0
 
     def detect(self, sensor_data: List[dict]) -> List[MLAlert]:
         """
@@ -120,10 +113,6 @@ class AnomalyDetector:
             if len(self._buffers[sid]) < 50 or not self._baseline_ready[sid]:
                 continue
 
-            # 冷却期内不重复告警
-            if sid in self._cooldown and (time.time() - self._cooldown[sid]) < self._cooldown_period:
-                continue
-
             # === Layer 2: 三模型投票 ===
             score_stalwart = self._score_stalwart(sid, value)
             score_gan_ae = self._score_gan_ae(sid, value)
@@ -139,7 +128,6 @@ class AnomalyDetector:
             if votes >= 2:
                 # 多模型一致确认 → 直接告警
                 self._dual_confirmations += 1
-                self._cooldown[sid] = time.time()
 
                 level = "red" if max_score > 0.85 else "orange"
                 sources = []
@@ -165,7 +153,6 @@ class AnomalyDetector:
                 # 单模型告警 → 第三层仲裁
                 arb_result = self._feature_arbitration(sid, value, name, ts)
                 if arb_result:
-                    self._cooldown[sid] = time.time()
                     alerts.append(arb_result)
                     self._ml_alerts_triggered += 1
 

@@ -331,8 +331,8 @@ def test_request_validation_is_400_only_for_documented_endpoints(client):
         },
     )
     unrelated_response = client.get(
-        "/api/analysis/report",
-        params={"hours": "not-a-number"},
+        "/api/sensors/history/snapshot",
+        params={"ts": "not-a-number"},
     )
 
     assert upload_response.status_code == 400

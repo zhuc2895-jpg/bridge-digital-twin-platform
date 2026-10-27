@@ -23,10 +23,7 @@ router = APIRouter()
 def _ingest(records: list[dict], engine: MonitoringEngine):
     """Ingest validated records and persist the resulting rule alerts."""
     engine.ingest(records)
-    alerts = engine.check_thresholds(records)
-    for alert in alerts:
-        engine.add_alert(alert)
-    return alerts
+    return engine.check_thresholds(records)
 
 
 async def _broadcast_update(

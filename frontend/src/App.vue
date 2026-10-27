@@ -144,7 +144,7 @@
             </span>
           </div>
           <div class="alert-list" v-if="alerts.length">
-            <div v-for="a in alerts.slice(-6).reverse()" :key="a.id" class="alert-item" :class="a.level">
+            <div v-for="a in alerts.slice(0, 6)" :key="a.id" class="alert-item" :class="a.level">
               <span class="ai-icon">{{ levelIcon(a.level) }}</span>
               <div class="ai-body">
                 <div class="ai-msg">{{ a.message }}</div>
