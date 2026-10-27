@@ -210,7 +210,7 @@ class MonitoringEngine:
             return None
 
         alert = Alert(
-            id=f"ALT-{uuid.uuid4()}",
+            id=str(uuid.uuid4()),
             sensor_id=sensor_id,
             sensor_name=sensor_name,
             level=level,
@@ -343,7 +343,7 @@ class MonitoringEngine:
             )
             del self._alerts[:-self.MAX_ALERTS]
 
-    def get_active_alerts(self) -> List[dict]:
+    def get_recent_alerts(self) -> List[dict]:
         """获取最近20条告警"""
         return [
             self._alert_to_dict(alert)
@@ -509,7 +509,7 @@ class MonitoringEngine:
         return {
             "total_readings": self._total_readings,
             "sensor_count": len(self._latest),
-            "active_alerts": len(self._alerts),
+            "recent_alerts": len(self._alerts),
             "throughput": round(self._total_readings / elapsed, 1) if elapsed > 0 else 0,
             "uptime_seconds": round(elapsed, 1)
         }

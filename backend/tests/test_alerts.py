@@ -73,8 +73,9 @@ def test_alert_lifecycle_uses_uuid_and_cross_source_cooldown(app, client):
     assert [alert["source"] for alert in alerts] == ["ai_dual_confirm", "rule"]
     assert len({alert["id"] for alert in alerts}) == 2
     for alert in alerts:
-        assert alert["id"].startswith("ALT-")
-        uuid.UUID(alert["id"].removeprefix("ALT-"))
+        alert_id = uuid.UUID(alert["id"])
+        assert alert_id.version == 4
+        assert alert_id.variant == uuid.RFC_4122
 
 
 def test_temperature_thresholds_can_be_read_changed_and_take_effect(client):
@@ -321,7 +322,7 @@ def test_alert_storage_keeps_only_newest_fifty_thousand(app):
             )
         )
 
-    recent = engine.get_active_alerts()
+    recent = engine.get_recent_alerts()
 
     assert engine.get_alert_count() == 50_000
     assert len(recent) == 20

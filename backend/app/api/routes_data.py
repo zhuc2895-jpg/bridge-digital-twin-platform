@@ -38,7 +38,7 @@ async def _broadcast_update(
         {
             "type": "sensor_update",
             "sensors": records,
-            "alerts": engine.get_active_alerts(),
+            "alerts": engine.get_recent_alerts(),
             "stats": engine.get_stats(),
         }
     )

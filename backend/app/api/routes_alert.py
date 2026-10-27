@@ -13,14 +13,14 @@ router = APIRouter()
 @router.get("/")
 async def get_alerts(engine: MonitoringEngine = Depends(get_engine)):
     """获取最近告警列表"""
-    alerts = engine.get_active_alerts()
+    alerts = engine.get_recent_alerts()
     return {"count": len(alerts), "alerts": alerts}
 
 
 @router.get("/active")
-async def get_active_alerts(engine: MonitoringEngine = Depends(get_engine)):
-    """获取活跃告警（最近20条）"""
-    return engine.get_active_alerts()
+async def get_recent_alerts(engine: MonitoringEngine = Depends(get_engine)):
+    """获取最近告警（最近20条）"""
+    return engine.get_recent_alerts()
 
 
 @router.get("/stats")

@@ -30,7 +30,7 @@ export interface Alert {
 export interface Stats {
   total_readings: number
   sensor_count: number
-  active_alerts: number
+  recent_alerts: number
   throughput: number
   uptime_seconds: number
 }
