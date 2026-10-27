@@ -483,15 +483,16 @@ class MonitoringEngine:
     def get_snapshot_at(self, ts: float) -> dict:
         """获取指定时间点的传感器快照（取该时间点之前最近的一条数据）"""
         result = {}
-        for sid, readings in self._full_history.items():
+        for sensor_id, readings in self._full_history.items():
             if not readings:
                 continue
-            # 按时间排序后二分查找
-            sorted_readings = sorted(readings, key=lambda r: r.timestamp)
-            timestamps = [r.timestamp for r in sorted_readings]
-            idx = bisect.bisect_right(timestamps, ts) - 1
-            if idx >= 0:
-                result[sid] = self._reading_to_dict(sorted_readings[idx])
+            index = bisect.bisect_right(
+                readings,
+                ts,
+                key=lambda reading: reading.timestamp,
+            ) - 1
+            if index >= 0:
+                result[sensor_id] = self._reading_to_dict(readings[index])
         return result
 
     def get_top_spikes(self) -> List[dict]:

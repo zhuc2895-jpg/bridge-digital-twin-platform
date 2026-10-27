@@ -59,6 +59,11 @@ async def get_snapshot(
     engine: MonitoringEngine = Depends(get_engine),
 ):
     """获取指定时间点的传感器快照"""
+    if not math.isfinite(ts):
+        raise HTTPException(
+            status_code=400,
+            detail="ts must be a finite timestamp",
+        )
     return engine.get_snapshot_at(ts)
 
 

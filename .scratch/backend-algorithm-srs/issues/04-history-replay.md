@@ -6,9 +6,13 @@
 
 **Status:** ready-for-agent
 
-- [ ] 时间点快照包含当前已有数据的全部传感器；每个传感器返回时间戳不大于查询时间戳的最近一条读数。
-- [ ] 在传感器首条读数之前查询时不返回该传感器数据，不伪造数值。
-- [ ] 快照接口在 8 个传感器、每传感器 100000 条历史的代表性数据量下响应时间不超过 100ms。
-- [ ] 时段告警接口返回 `start`、`end`、`count` 和倒序告警列表，边界时间戳可用，数量与实际存储一致。
-- [ ] 使用 24 小时数据以 4 倍速模拟轮询时，快照和告警结果保持稳定且与源数据一致。
-- [ ] 覆盖无数据、部分传感器已有数据、精确时间戳、时间戳之间和恶意超大范围查询的测试。
+- [x] 时间点快照包含当前已有数据的全部传感器；每个传感器返回时间戳不大于查询时间戳的最近一条读数。
+- [x] 在传感器首条读数之前查询时不返回该传感器数据，不伪造数值。
+- [x] 快照接口在 8 个传感器、每传感器 100000 条历史的代表性数据量下响应时间不超过 100ms。
+- [x] 时段告警接口返回 `start`、`end`、`count` 和倒序告警列表，边界时间戳可用，数量与实际存储一致。
+- [x] 使用 24 小时数据以 4 倍速模拟轮询时，快照和告警结果保持稳定且与源数据一致。
+- [x] 覆盖无数据、部分传感器已有数据、精确时间戳、时间戳之间和恶意超大范围查询的测试。
+
+## Comments
+
+- 2026-10-27: History replay contract implemented with per-sensor binary-search snapshots, inclusive reverse-chronological alert ranges, finite-input validation, and coverage for empty/partial/exact/between, 800k-point latency, 24-hour 4x replay, and huge finite bounds.
