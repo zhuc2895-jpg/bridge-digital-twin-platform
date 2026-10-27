@@ -17,7 +17,7 @@ async def get_alerts(engine: MonitoringEngine = Depends(get_engine)):
     return {"count": len(alerts), "alerts": alerts}
 
 
-@router.get("/active")
+@router.get("/recent")
 async def get_recent_alerts(engine: MonitoringEngine = Depends(get_engine)):
     """获取最近告警（最近20条）"""
     return engine.get_recent_alerts()

@@ -85,7 +85,7 @@ def create_app(services: Optional[AppServices] = None) -> FastAPI:
         return {
             "status": "healthy",
             "sensor_count": engine.get_sensor_count(),
-            "recent_alerts": engine.get_alert_count(),
+            "retained_alerts": engine.get_alert_count(),
             "simulator_running": services.simulator.is_running,
         }
 

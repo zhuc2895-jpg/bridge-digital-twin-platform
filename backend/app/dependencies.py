@@ -2,7 +2,9 @@
 
 from dataclasses import dataclass
 
-from fastapi import Depends, Request
+from fastapi import Depends
+
+from starlette.requests import HTTPConnection
 
 from app.engine.data_engine import MonitoringEngine
 from app.engine.simulator import DataSimulator
@@ -30,8 +32,8 @@ def create_services() -> AppServices:
     )
 
 
-def get_services(request: Request) -> AppServices:
-    return request.app.state.services
+def get_services(connection: HTTPConnection) -> AppServices:
+    return connection.app.state.services
 
 
 def get_engine(services: AppServices = Depends(get_services)) -> MonitoringEngine:

@@ -74,8 +74,8 @@ def check_backend():
         if r.status_code == 200:
             info = r.json()
             print(f"✅ 后端连接成功!")
-            print(f"   传感器在线: {info['engine_sensors']}")
-            print(f"   当前告警: {info['active_alerts']}")
+            print(f"   传感器在线: {info['sensor_count']}")
+            print(f"   当前告警: {info['retained_alerts']}")
             return True
     except:
         pass

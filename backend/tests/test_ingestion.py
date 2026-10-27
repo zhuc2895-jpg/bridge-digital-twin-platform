@@ -65,7 +65,8 @@ def test_json_upload_updates_latest_state_and_health(client, app):
     assert health.status_code == 200
     assert health.json()["status"] == "healthy"
     assert health.json()["sensor_count"] == 2
-    assert health.json()["recent_alerts"] == 1
+    assert health.json()["retained_alerts"] == 1
+    assert "recent_alerts" not in health.json()
     assert "active_alerts" not in health.json()
     assert health.json()["simulator_running"] is False
 
@@ -260,7 +261,7 @@ def test_latest_state_uses_timestamp_not_request_order(client):
     assert latest.json()["timestamp"] == 200.0
 
 
-def test_health_counts_all_alerts_beyond_recent_20(client):
+def test_health_counts_all_retained_alerts_beyond_recent_twenty(client):
     records = [
         reading(value=600.0, timestamp=1_700_000_000.0 + index * 10)
         for index in range(21)
@@ -270,7 +271,7 @@ def test_health_counts_all_alerts_beyond_recent_20(client):
 
     assert response.status_code == 200
     assert response.json()["alerts_triggered"] == 21
-    assert client.get("/api/health").json()["recent_alerts"] == 21
+    assert client.get("/api/health").json()["retained_alerts"] == 21
 
 
 def test_10000_csv_records_are_visible_within_500ms(client):

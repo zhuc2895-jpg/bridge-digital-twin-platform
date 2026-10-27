@@ -26,7 +26,7 @@ class SensorReading:
 @dataclass
 class Alert:
     """告警记录"""
-    id: str
+    id: uuid.UUID
     sensor_id: str
     sensor_name: str
     level: str         # yellow / orange / red
@@ -210,7 +210,7 @@ class MonitoringEngine:
             return None
 
         alert = Alert(
-            id=str(uuid.uuid4()),
+            id=uuid.uuid4(),
             sensor_id=sensor_id,
             sensor_name=sensor_name,
             level=level,
@@ -509,7 +509,7 @@ class MonitoringEngine:
         return {
             "total_readings": self._total_readings,
             "sensor_count": len(self._latest),
-            "recent_alerts": len(self._alerts),
+            "retained_alerts": len(self._alerts),
             "throughput": round(self._total_readings / elapsed, 1) if elapsed > 0 else 0,
             "uptime_seconds": round(elapsed, 1)
         }
@@ -517,7 +517,7 @@ class MonitoringEngine:
     @staticmethod
     def _alert_to_dict(alert: Alert) -> dict:
         return {
-            "id": alert.id,
+            "id": str(alert.id),
             "sensor_id": alert.sensor_id,
             "sensor_name": alert.sensor_name,
             "level": alert.level,

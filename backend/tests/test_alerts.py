@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 
 from app.engine.data_engine import Alert
@@ -29,8 +31,6 @@ def test_same_level_alert_is_cooled_down_for_ten_seconds(client):
 
 
 def test_alert_lifecycle_uses_uuid_and_cross_source_cooldown(app, client):
-    import uuid
-
     engine = app.state.services.engine
     base = 1_700_000_000.0
 
@@ -287,6 +287,20 @@ def test_alert_range_is_inclusive_and_newest_first(client):
     ]
 
 
+def test_recent_alerts_endpoint_uses_recent_path_without_active_alias(client):
+    client.post(
+        "/api/data/upload/json?push_live=false",
+        json=[reading(value=600.0, timestamp=1_700_000_000.0)],
+    )
+
+    recent = client.get("/api/alerts/recent")
+    legacy = client.get("/api/alerts/active")
+
+    assert recent.status_code == 200
+    assert len(recent.json()) == 1
+    assert recent.json()[0]["source"] == "rule"
+    assert legacy.status_code == 404
+
 def test_alert_stats_use_all_stored_alerts_not_only_recent_twenty(client):
     records = [
         reading(
@@ -310,7 +324,7 @@ def test_alert_storage_keeps_only_newest_fifty_thousand(app):
     for index in range(50_001):
         engine._retain_alert(
             Alert(
-                id=f"ALT-{index}",
+                id=uuid.UUID(int=index + 1),
                 sensor_id="S01",
                 sensor_name="Main span strain",
                 level="red",
@@ -326,10 +340,10 @@ def test_alert_storage_keeps_only_newest_fifty_thousand(app):
 
     assert engine.get_alert_count() == 50_000
     assert len(recent) == 20
-    assert recent[0]["id"] == "ALT-50000"
-    assert recent[-1]["id"] == "ALT-49981"
+    assert recent[0]["id"] == str(uuid.UUID(int=50001))
+    assert recent[-1]["id"] == str(uuid.UUID(int=49982))
     assert [alert["id"] for alert in engine.get_alerts_range(0.0, 1.0)] == [
-        "ALT-1"
+        str(uuid.UUID(int=2))
     ]
     assert engine.get_alert_stats()["total"] == 50_000
 
@@ -342,7 +356,7 @@ def test_alert_storage_evicts_the_oldest_alert_time_not_the_oldest_arrival(
     for index in range(50_000):
         engine._retain_alert(
             Alert(
-                id=f"ALT-NEW-{index}",
+                id=uuid.UUID(int=index + 1),
                 sensor_id="S01",
                 sensor_name="Main span strain",
                 level="red",
@@ -356,7 +370,7 @@ def test_alert_storage_evicts_the_oldest_alert_time_not_the_oldest_arrival(
 
     engine._retain_alert(
         Alert(
-            id="ALT-BACKFILL",
+            id=uuid.UUID(int=50001),
             sensor_id="S01",
             sensor_name="Main span strain",
             level="red",
@@ -377,8 +391,8 @@ def test_alert_storage_evicts_the_oldest_alert_time_not_the_oldest_arrival(
 
     assert stats["total"] == 50_000
     assert backfill["count"] == 0
-    assert recent[0]["id"] == "ALT-NEW-49999"
-    assert recent[-1]["id"] == "ALT-NEW-49980"
+    assert recent[0]["id"] == str(uuid.UUID(int=50000))
+    assert recent[-1]["id"] == str(uuid.UUID(int=49981))
 
 
 def test_all_sensor_thresholds_are_configurable(client):
