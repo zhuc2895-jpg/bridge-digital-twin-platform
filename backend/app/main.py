@@ -97,26 +97,13 @@ def create_app(services: Optional[AppServices] = None) -> FastAPI:
         """Stream simulator readings and alerts to a connected client."""
         engine = services.engine
         simulator = services.simulator
-        detector = services.detector
+        processor = services.processor
         ws_manager = services.ws_manager
 
         await ws_manager.connect(websocket)
         try:
             async for sensor_data in simulator.generate():
-                engine.ingest(sensor_data)
-                engine.check_thresholds(sensor_data)
-
-                for ml_alert in detector.detect(sensor_data):
-                    engine.submit_alert(
-                        sensor_id=ml_alert.sensor_id,
-                        sensor_name=ml_alert.sensor_name,
-                        level=ml_alert.level,
-                        message=ml_alert.message,
-                        value=ml_alert.value,
-                        threshold=0,
-                        source=f"ai_{ml_alert.source}",
-                        timestamp=ml_alert.timestamp,
-                    )
+                processor.process(sensor_data)
 
                 await ws_manager.broadcast(
                     {

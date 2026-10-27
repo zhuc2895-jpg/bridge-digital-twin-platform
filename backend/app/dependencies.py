@@ -3,12 +3,13 @@
 from dataclasses import dataclass
 
 from fastapi import Depends
-
 from starlette.requests import HTTPConnection
 
 from app.engine.data_engine import MonitoringEngine
 from app.engine.simulator import DataSimulator
 from app.ml.anomaly_detector import AnomalyDetector
+from app.ml.registry import DetectorManager, DetectorRegistry
+from app.processing import SensorDataProcessor
 from app.ws.websocket_manager import WebSocketManager
 
 
@@ -18,16 +19,25 @@ class AppServices:
 
     engine: MonitoringEngine
     simulator: DataSimulator
-    detector: AnomalyDetector
+    detectors: DetectorManager
+    processor: SensorDataProcessor
     ws_manager: WebSocketManager
+
+
+def build_detector_registry() -> DetectorRegistry:
+    """Assemble the detector plugins enabled at application startup."""
+    return DetectorRegistry([AnomalyDetector()])
 
 
 def create_services() -> AppServices:
     """Create a fresh, isolated set of services for an application instance."""
+    engine = MonitoringEngine()
+    detectors = DetectorManager(build_detector_registry())
     return AppServices(
-        engine=MonitoringEngine(),
+        engine=engine,
         simulator=DataSimulator(),
-        detector=AnomalyDetector(),
+        detectors=detectors,
+        processor=SensorDataProcessor(engine, detectors),
         ws_manager=WebSocketManager(),
     )
 

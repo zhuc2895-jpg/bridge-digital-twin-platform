@@ -10,7 +10,6 @@ from typing import Any, Optional
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 
 from app.dependencies import AppServices, get_services
-from app.engine.data_engine import MonitoringEngine
 from app.ingestion import (
     IngestionValidationError,
     validate_csv_batch,
@@ -18,12 +17,6 @@ from app.ingestion import (
 )
 
 router = APIRouter()
-
-
-def _ingest(records: list[dict], engine: MonitoringEngine):
-    """Ingest validated records and persist the resulting rule alerts."""
-    engine.ingest(records)
-    return engine.check_thresholds(records)
 
 
 async def _broadcast_update(
@@ -57,13 +50,13 @@ async def upload_csv(
     except IngestionValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    alerts = _ingest(records, services.engine)
+    result = services.processor.process(records)
     await _broadcast_update(services, records, push_live)
 
     return {
         "status": "ok",
         "records_ingested": len(records),
-        "alerts_triggered": len(alerts),
+        "alerts_triggered": len(result.rule_alerts),
         "sensors_updated": services.engine.get_sensor_count(),
     }
 
@@ -80,13 +73,13 @@ async def upload_json(
     except IngestionValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    alerts = _ingest(records, services.engine)
+    result = services.processor.process(records)
     await _broadcast_update(services, records, push_live)
 
     return {
         "status": "ok",
         "records_ingested": len(records),
-        "alerts_triggered": len(alerts),
+        "alerts_triggered": len(result.rule_alerts),
         "sensors_updated": services.engine.get_sensor_count(),
     }
 
@@ -115,7 +108,7 @@ async def push_single(
     except IngestionValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    _ingest(records, services.engine)
+    services.processor.process(records)
     await _broadcast_update(services, records, push_live)
     return {"status": "ok", "sensor_id": sensor_id, "value": value}
 

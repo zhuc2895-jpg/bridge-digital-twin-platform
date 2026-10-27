@@ -3,9 +3,10 @@
 """
 
 import time
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from app.dependencies import AppServices, get_services
+from app.ml.registry import DetectorRegistryError
 
 router = APIRouter()
 
@@ -14,7 +15,7 @@ router = APIRouter()
 async def get_overview(services: AppServices = Depends(get_services)):
     """获取系统总览"""
     engine = services.engine
-    detector = services.detector
+    detector = services.detectors
     simulator = services.simulator
     return {
         "engine": engine.get_stats(),
@@ -22,6 +23,28 @@ async def get_overview(services: AppServices = Depends(get_services)):
         "simulator_running": simulator.is_running,
         "top_spikes": engine.get_top_spikes()
     }
+
+
+@router.get("/detectors")
+async def get_detector_status(
+    services: AppServices = Depends(get_services),
+):
+    """Return detector health, baseline readiness, and learning reading counts."""
+    return services.detectors.get_stats()
+
+
+@router.post("/detectors/relearn")
+async def relearn_detector_baselines(
+    sensor_id: str | None = Query(default=None),
+    services: AppServices = Depends(get_services),
+):
+    """Start a fresh baseline for one sensor or every known sensor."""
+    if sensor_id is not None and services.engine.get_latest(sensor_id) is None:
+        raise HTTPException(status_code=404, detail=f"Sensor {sensor_id} not found")
+    try:
+        return services.detectors.relearn(sensor_id)
+    except DetectorRegistryError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/inject-anomaly")
@@ -54,7 +77,7 @@ async def export_report(
 ):
     """导出HTML格式监测报告（可直接打印为PDF）"""
     engine = services.engine
-    detector = services.detector
+    detector = services.detectors
     end_ts = time.time()
     start_ts = end_ts - hours * 3600
 
@@ -67,7 +90,7 @@ async def export_report(
     alerts = engine.get_alerts_range(start_ts, end_ts)
     stats = engine.get_stats()
     detector_stats = detector.get_stats()
-    latest = engine.get_latest()
+    latest = engine.get_latest() or {}
 
     # 统计各等级告警
     red_count = len([a for a in alerts if a["level"] == "red"])
@@ -229,7 +252,7 @@ async def export_report(
             <tr><td>数据吞吐量</td><td>{stats.get('throughput', 0):.1f} 条/秒</td></tr>
             <tr><td>AI检测器状态</td><td>已加载（STALWART + GAN-AE + IsolationForest）</td></tr>
             <tr><td>AI检测总数</td><td>{detector_stats.get('total_detections', 0)}</td></tr>
-            <tr><td>基线学习样本</td><td>{detector_stats.get('baseline_samples', 0)}</td></tr>
+            <tr><td>基线学习读数</td><td>{detector_stats.get('baseline_readings', 0)}</td></tr>
         </table>
     </div>
 

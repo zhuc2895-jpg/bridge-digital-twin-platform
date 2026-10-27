@@ -10,7 +10,12 @@ import math
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+
+from app.alert_contracts import (
+    ALERT_LEVELS as CANONICAL_ALERT_LEVELS,
+    ALERT_SOURCES as CANONICAL_ALERT_SOURCES,
+)
+from typing import Any, Dict, List, Mapping, Optional
 
 
 @dataclass
@@ -48,15 +53,8 @@ class MonitoringEngine:
     """
 
     MAX_ALERTS = 50_000
-    ALERT_LEVELS = ("yellow", "orange", "red")
-    ALERT_SOURCES = (
-        "rule",
-        "ai_stalwart",
-        "ai_gan_ae",
-        "ai_isolation_forest",
-        "ai_dual_confirm",
-        "ai_feature_arbitration",
-    )
+    ALERT_LEVELS = CANONICAL_ALERT_LEVELS
+    ALERT_SOURCES = CANONICAL_ALERT_SOURCES
 
     def __init__(self, window_size: int = 500, top_k: int = 10):
         self.window_size = window_size
@@ -89,14 +87,14 @@ class MonitoringEngine:
         self._start_time = time.time()
 
         # 物理阈值配置（可动态调整）
-        self.thresholds = {
+        self.thresholds: Dict[str, Dict[str, float]] = {
             "strain": {"yellow": 300, "orange": 450, "red": 600},
             "displacement": {"yellow": 30, "orange": 50, "red": 80},
             "acceleration": {"yellow": 2.0, "orange": 3.5, "red": 5.0},
             "temperature": {"yellow": 45, "orange": 55, "red": 65},
         }
 
-    def ingest(self, sensor_data: List[dict]):
+    def ingest(self, sensor_data: List[dict[str, Any]]):
         """摄入一批传感器数据"""
         ingested_sensor_ids = set()
         sensors_needing_sort = set()
@@ -152,7 +150,7 @@ class MonitoringEngine:
             self._min_ts = min(history[0].timestamp for history in histories)
             self._max_ts = max(history[-1].timestamp for history in histories)
 
-    def check_thresholds(self, sensor_data: List[dict]) -> List[Alert]:
+    def check_thresholds(self, sensor_data: List[dict[str, Any]]) -> List[Alert]:
         """Evaluate physical thresholds and submit every matched alert."""
         alerts = []
         for item in sensor_data:
@@ -188,6 +186,13 @@ class MonitoringEngine:
             if alert is not None:
                 alerts.append(alert)
         return alerts
+
+    def is_normal_reading(self, item: Mapping[str, Any]) -> bool:
+        """Return whether a reading is below its type's yellow threshold."""
+        thresholds = self.thresholds.get(item.get("type", "unknown"))
+        if not thresholds:
+            return True
+        return abs(float(item["value"])) < thresholds["yellow"]
 
     def submit_alert(
         self,
@@ -264,10 +269,10 @@ class MonitoringEngine:
 
     def update_thresholds(
         self,
-        updates: Dict[str, Dict[str, float]],
+        updates: Dict[str, Dict[str, Optional[float]]],
     ) -> Dict[str, Dict[str, float]]:
         """Validate and atomically replace configurable threshold values."""
-        candidate = {
+        candidate: Dict[str, Dict[str, float]] = {
             sensor_type: dict(levels)
             for sensor_type, levels in self.thresholds.items()
         }
@@ -281,9 +286,14 @@ class MonitoringEngine:
                     raise ValueError(f"Unknown threshold level: {sensor_type}.{level}")
                 candidate[sensor_type][level] = value
 
-        for sensor_type, levels in candidate.items():
-            ordered_values = [levels[level] for level in ("yellow", "orange", "red")]
-            if any(not math.isfinite(value) or value <= 0 for value in ordered_values):
+        for sensor_type, candidate_levels in candidate.items():
+            ordered_values = [
+                candidate_levels[level] for level in ("yellow", "orange", "red")
+            ]
+            if any(
+                not math.isfinite(threshold_value) or threshold_value <= 0
+                for threshold_value in ordered_values
+            ):
                 raise ValueError(
                     f"{sensor_type} thresholds must be finite positive numbers"
                 )
@@ -376,7 +386,7 @@ class MonitoringEngine:
         """Return the number of retained alerts, not only the recent page."""
         return len(self._alerts)
 
-    def get_latest(self, sensor_id: str = None) -> Optional[dict]:
+    def get_latest(self, sensor_id: Optional[str] = None) -> Optional[dict]:
         if sensor_id:
             r = self._latest.get(sensor_id)
             return self._reading_to_dict(r) if r else None
