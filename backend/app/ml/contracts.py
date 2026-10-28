@@ -77,6 +77,7 @@ class BaseDetector(ABC):
 
     detector_id = ""
     display_name = ""
+    source: str | None = None
 
     @abstractmethod
     def detect_one(self, reading: Mapping[str, Any]) -> DetectionResult:
@@ -106,6 +107,35 @@ class BaseDetector(ABC):
     def get_stats(self) -> dict:
         """Return detector-specific operational statistics."""
 
+    def make_result(
+        self,
+        reading: Mapping[str, Any],
+        *,
+        anomalous: bool,
+        score: float = 0.0,
+        confidence: float = 0.0,
+        reason: str = "",
+        details: Mapping[str, Any] | None = None,
+    ) -> DetectionResult:
+        """Build a detector result with this detector's identity and source."""
+        sensor_id = str(reading["sensor_id"])
+        name = str(reading.get("name", sensor_id))
+        return DetectionResult(
+            sensor_id=sensor_id,
+            name=name,
+            value=float(reading["value"]),
+            timestamp=float(reading["timestamp"]),
+            detector_id=self.detector_id,
+            anomalous=anomalous,
+            score=score,
+            confidence=confidence,
+            reason=reason,
+            level=None,
+            source=self.source,
+            message=None,
+            details=details or {},
+        )
+
     def detect_batch(
         self,
         readings: Sequence[Mapping[str, Any]],
@@ -118,7 +148,9 @@ class BaseDetector(ABC):
             sensor_id = str(reading["sensor_id"])
             status = self.get_baseline_status(sensor_id)
             if not isinstance(status, BaselineStatus):
-                raise TypeError("single-sensor baseline lookup must return BaselineStatus")
+                raise TypeError(
+                    "single-sensor baseline lookup must return BaselineStatus"
+                )
 
             if not status.ready:
                 is_normal = (

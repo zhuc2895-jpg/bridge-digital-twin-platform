@@ -6,8 +6,12 @@
 
 **Status:** ready-for-agent
 
-- [ ] STALWART-inspired 模型维护快速 EMA（alpha=0.3）和慢速 EMA（alpha=0.05），以基线标准差归一化偏差；偏差超过 3 倍标准差时判定异常。
-- [ ] Isolation Forest 模型在每传感器滑动窗口上训练，支持可配置异常分数阈值，并在样本不足时安全返回“未就绪”而不是报错。
-- [ ] 两个模型对同一读数分别返回是否异常、异常分数、置信度和触发原因，模型参数与就绪状态可查询。
-- [ ] 正常稳态数据不触发异常；阶跃突变触发 STALWART-inspired；远离分布簇的离群点触发 Isolation Forest。
-- [ ] 模型单条推理不阻塞其他传感器，且有自动化测试覆盖样本不足、正常、突变、离群和参数变化。
+- [x] STALWART-inspired 模型维护快速 EMA（alpha=0.3）和慢速 EMA（alpha=0.05），以基线标准差归一化偏差；偏差超过 3 倍标准差时判定异常。
+- [x] Isolation Forest 模型在每传感器滑动窗口上训练，支持可配置异常分数阈值，并在样本不足时安全返回“未就绪”而不是报错。
+- [x] 两个模型对同一读数分别返回是否异常、异常分数、置信度和触发原因，模型参数与就绪状态可查询。
+- [x] 正常稳态数据不触发异常；阶跃突变触发 STALWART-inspired；远离分布簇的离群点触发 Isolation Forest。
+- [x] 模型单条推理不阻塞其他传感器，且有自动化测试覆盖样本不足、正常、突变、离群和参数变化。
+
+## Comments
+
+- 2026-10-28: Implemented STALWART-inspired fast/slow EMA and per-sensor sliding-window Isolation Forest detectors behind BaseDetector, including votes, scores, confidence, reasons, configurable parameters, independent readiness, safe insufficient-sample results, and automated coverage. Three-model voting remains scoped to issue 07.
