@@ -14,4 +14,5 @@
 
 ## Comments
 
-- 2026-10-28: Implemented STALWART-inspired fast/slow EMA and per-sensor sliding-window Isolation Forest detectors behind BaseDetector, including votes, scores, confidence, reasons, configurable parameters, independent readiness, safe insufficient-sample results, and automated coverage. Three-model voting remains scoped to issue 07.
+- 2026-10-28: Implemented STALWART-inspired fast/slow EMA and per-sensor sliding-window Isolation Forest detectors behind BaseDetector, including votes, scores, confidence, reasons, configurable parameters, independent readiness, safe insufficient-reading results, and automated coverage. Three-model voting remains scoped to issue 07.
+- 2026-10-28: Calibrated Isolation Forest scores against each sensor's training distribution, added a zero-variance fallback, and added regression coverage for sustained normal readings, distant outliers, and cross-sensor readiness/inference.

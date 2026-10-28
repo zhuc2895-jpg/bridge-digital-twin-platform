@@ -1,3 +1,6 @@
+import math
+import time
+
 from app.ml.isolation_forest import IsolationForestDetector
 from app.ml.stalwart import StalwartDetector
 from tests.factories import reading
@@ -66,10 +69,10 @@ def test_stalwart_threshold_is_configurable():
     assert tolerant.get_stats()["parameters"]["threshold_sigma"] == 10.0
 
 
-def test_isolation_forest_waits_for_enough_samples_without_training_on_candidates():
+def test_isolation_forest_waits_for_enough_readings_without_training_on_candidates():
     detector = IsolationForestDetector(
         required_readings=5,
-        min_samples=20,
+        min_readings=20,
         window_size=50,
     )
     base = 1_700_000_000.0
@@ -86,18 +89,17 @@ def test_isolation_forest_waits_for_enough_samples_without_training_on_candidate
     assert result.anomalous is False
     assert untrusted_candidate.anomalous is False
     assert waiting_stats["model_ready"] is False
-    assert waiting_stats["training_samples"] == 5
+    assert waiting_stats["training_readings"] == 5
     assert ready_stats["baseline_ready"] is True
     assert ready_stats["model_ready"] is True
-    assert ready_stats["training_samples"] == 20
+    assert ready_stats["training_readings"] == 20
 
 
 def test_isolation_forest_learns_a_cluster_and_flags_a_distant_outlier():
     detector = IsolationForestDetector(
         required_readings=100,
         window_size=150,
-        min_samples=50,
-        score_threshold=0.05,
+        min_readings=50,
     )
     base = 1_700_000_000.0
     warmup = varying_warmup(base)
@@ -117,12 +119,11 @@ def test_isolation_forest_learns_a_cluster_and_flags_a_distant_outlier():
     assert detector.get_stats()["parameters"]["window_size"] == 150
 
 
-def test_isolation_forest_readiness_is_independent_per_sensor():
+def test_isolation_forest_ready_sensor_detects_while_other_is_learning():
     detector = IsolationForestDetector(
         required_readings=10,
         window_size=50,
-        min_samples=5,
-        score_threshold=0.05,
+        min_readings=5,
     )
     base = 1_700_000_000.0
     detector.detect_batch(
@@ -140,6 +141,7 @@ def test_isolation_forest_readiness_is_independent_per_sensor():
         ]
     )
 
+    started = time.perf_counter()
     learning_result, ready_result = detector.detect_batch(
         [
             reading(
@@ -156,8 +158,10 @@ def test_isolation_forest_readiness_is_independent_per_sensor():
             ),
         ]
     )
+    elapsed = time.perf_counter() - started
     stats = detector.get_stats()["sensors"]
 
+    assert elapsed < 0.2
     assert learning_result.reason == "baseline_learning"
     assert learning_result.anomalous is False
     assert ready_result.anomalous is True
@@ -168,27 +172,25 @@ def test_isolation_forest_readiness_is_independent_per_sensor():
 def test_isolation_forest_score_threshold_is_configurable():
     base = 1_700_000_000.0
     warmup = varying_warmup(base)
-    sensitive = IsolationForestDetector(score_threshold=0.01)
-    tolerant = IsolationForestDetector(score_threshold=1.0)
+    sensitive = IsolationForestDetector(score_threshold=0.45)
+    tolerant = IsolationForestDetector(score_threshold=0.6)
     sensitive.detect_batch(warmup)
     tolerant.detect_batch(warmup)
 
-    sensitive_outlier = sensitive.detect_one(
-        reading(value=1000.0, timestamp=base + 100)
-    )
-    tolerant_outlier = tolerant.detect_one(reading(value=1000.0, timestamp=base + 100))
+    sensitive_outlier = sensitive.detect_one(reading(value=120.0, timestamp=base + 100))
+    tolerant_outlier = tolerant.detect_one(reading(value=120.0, timestamp=base + 100))
 
     assert sensitive_outlier.anomalous is True
     assert tolerant_outlier.anomalous is False
-    assert sensitive.get_stats()["parameters"]["score_threshold"] == 0.01
-    assert tolerant.get_stats()["parameters"]["score_threshold"] == 1.0
+    assert sensitive.get_stats()["parameters"]["score_threshold"] == 0.45
+    assert tolerant.get_stats()["parameters"]["score_threshold"] == 0.6
 
 
 def test_isolation_forest_training_window_stays_bounded():
     detector = IsolationForestDetector(
         required_readings=20,
         window_size=30,
-        min_samples=20,
+        min_readings=20,
         refit_interval=5,
     )
     base = 1_700_000_000.0
@@ -197,4 +199,54 @@ def test_isolation_forest_training_window_stays_bounded():
     sensor_stats = detector.get_stats()["sensors"]["S01"]
 
     assert sensor_stats["model_ready"] is True
-    assert sensor_stats["training_samples"] == 30
+    assert sensor_stats["training_readings"] == 30
+
+
+def test_isolation_forest_flags_outlier_against_zero_variance_baseline():
+    detector = IsolationForestDetector()
+    base = 1_700_000_000.0
+    detector.detect_batch(
+        [reading(value=100.0, timestamp=base + index) for index in range(100)]
+    )
+
+    outlier = detector.detect_one(reading(value=1000.0, timestamp=base + 100))
+
+    assert outlier.anomalous is True
+    assert outlier.score > 0
+    assert outlier.details["vote"] is True
+
+
+def test_isolation_forest_keeps_sustained_in_distribution_readings_normal():
+    detector = IsolationForestDetector()
+    base = 1_700_000_000.0
+    training_readings = [
+        reading(
+            value=100.0 + 5.0 * math.sin(0.3 * index),
+            timestamp=base + index,
+        )
+        for index in range(100)
+    ]
+    detector.detect_batch(training_readings)
+
+    results = [
+        detector.detect_one(
+            reading(
+                value=100.0 + 5.0 * math.sin(0.3 * (100 + index)),
+                timestamp=base + 100 + index,
+            )
+        )
+        for index in range(200)
+    ]
+
+    anomalies = [result for result in results if result.anomalous]
+    assert not anomalies, [
+        (
+            result.value,
+            result.score,
+            result.details["decision_score"],
+            result.details["decision_center"],
+            result.details["decision_scale"],
+            result.details["value_deviation_sigma"],
+        )
+        for result in anomalies
+    ]

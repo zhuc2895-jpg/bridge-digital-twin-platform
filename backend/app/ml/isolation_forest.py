@@ -14,19 +14,30 @@ from app.ml.baseline import BaselineLearner
 from app.ml.contracts import BaseDetector, BaselineStatus, DetectionResult
 
 
+@dataclass(frozen=True)
+class _FittedModel:
+    """A fitted forest plus the distribution used to calibrate its scores."""
+
+    model: IsolationForest
+    value_center: float
+    value_scale: float
+    decision_center: float
+    decision_scale: float
+
+
 @dataclass
 class _SensorModelState:
     """Training state owned independently by one sensor."""
 
     window: deque[float]
-    model: IsolationForest | None = None
-    samples_since_refit: int = 0
+    model: _FittedModel | None = None
+    readings_since_refit: int = 0
     refit_pending: bool = False
     last_refit_error: str | None = None
 
 
 class IsolationForestDetector(BaseDetector):
-    """Detect values outside a rolling window learned independently per sensor."""
+    """Detect values outside a calibrated rolling window for each sensor."""
 
     detector_id = "isolation_forest"
     display_name = "Isolation Forest"
@@ -37,8 +48,8 @@ class IsolationForestDetector(BaseDetector):
         *,
         required_readings: int = 100,
         window_size: int = 200,
-        min_samples: int = 50,
-        score_threshold: float = 0.05,
+        min_readings: int = 50,
+        score_threshold: float = 0.95,
         n_estimators: int = 100,
         contamination: str | float = "auto",
         random_state: int = 42,
@@ -46,10 +57,10 @@ class IsolationForestDetector(BaseDetector):
     ) -> None:
         if window_size <= 1:
             raise ValueError("window_size must be greater than one")
-        if min_samples < 2 or min_samples > window_size:
-            raise ValueError("min_samples must be between 2 and window_size")
-        if score_threshold < 0:
-            raise ValueError("score_threshold must be non-negative")
+        if min_readings < 2 or min_readings > window_size:
+            raise ValueError("min_readings must be between 2 and window_size")
+        if not 0 <= score_threshold <= 1:
+            raise ValueError("score_threshold must be between zero and one")
         if n_estimators <= 0:
             raise ValueError("n_estimators must be positive")
         if refit_interval <= 0:
@@ -58,14 +69,14 @@ class IsolationForestDetector(BaseDetector):
             raise ValueError("contamination must be 'auto' or in (0, 0.5]")
 
         self.window_size = window_size
-        self.min_samples = min_samples
+        self.min_readings = min_readings
         self.score_threshold = float(score_threshold)
         self.n_estimators = n_estimators
         self.contamination = contamination
         self.random_state = random_state
         self.refit_interval = refit_interval
         self._baselines = BaselineLearner(
-            required_readings=max(required_readings, min_samples)
+            required_readings=max(required_readings, min_readings)
         )
         self._states: dict[str, _SensorModelState] = {}
         self._executor: ThreadPoolExecutor | None = None
@@ -77,7 +88,7 @@ class IsolationForestDetector(BaseDetector):
         return {
             "required_readings": self._baselines.required_readings,
             "window_size": self.window_size,
-            "min_samples": self.min_samples,
+            "min_readings": self.min_readings,
             "score_threshold": self.score_threshold,
             "n_estimators": self.n_estimators,
             "contamination": self.contamination,
@@ -103,7 +114,7 @@ class IsolationForestDetector(BaseDetector):
         if (
             status.ready
             and state.model is None
-            and len(state.window) >= self.min_samples
+            and len(state.window) >= self.min_readings
         ):
             self._fit_now(state)
         return status
@@ -151,16 +162,39 @@ class IsolationForestDetector(BaseDetector):
                 details={
                     "vote": False,
                     "model_ready": False,
-                    "training_samples": len(state.window),
-                    "required_samples": self.min_samples,
+                    "training_readings": len(state.window),
+                    "required_readings": self.min_readings,
                     "parameters": self.parameters,
                 },
             )
 
-        decision = float(model.decision_function([[value]])[0])
-        score = min(1.0, max(0.0, -decision))
+        # decision_function units depend on the fitted forest, so calibrate
+        # against the training decisions and retain a distribution-distance guard.
+        decision: float | None
+        value_deviation_sigma: float | None
+        if model.value_scale <= 1e-12:
+            relative_deviation = abs(value - model.value_center) / max(
+                abs(model.value_center),
+                1.0,
+            )
+            score = min(0.999, relative_deviation / 0.05)
+            decision = None
+            value_deviation_sigma = None
+        else:
+            decision = float(model.model.decision_function([[value]])[0])
+            decision_z = (decision - model.decision_center) / max(
+                model.decision_scale, 1e-12
+            )
+            value_deviation_sigma = abs(value - model.value_center) / model.value_scale
+            forest_score = min(0.999, max(0.0, -decision_z / 5.0))
+            distribution_score = min(
+                0.999,
+                max(0.0, (value_deviation_sigma - 2.0) / 4.0),
+            )
+            score = max(forest_score, distribution_score)
+        confidence = score
+
         anomalous = score >= self.score_threshold
-        confidence = 1.0 / (1.0 + math.exp(10.0 * decision))
         if anomalous:
             self._anomalies_detected += 1
         else:
@@ -181,9 +215,18 @@ class IsolationForestDetector(BaseDetector):
             details={
                 "vote": anomalous,
                 "model_ready": True,
-                "decision_score": round(decision, 6),
+                "decision_score": (
+                    round(decision, 6) if decision is not None else None
+                ),
+                "decision_center": round(model.decision_center, 6),
+                "decision_scale": round(model.decision_scale, 6),
+                "value_deviation_sigma": (
+                    round(value_deviation_sigma, 6)
+                    if value_deviation_sigma is not None
+                    else None
+                ),
                 "score_threshold": self.score_threshold,
-                "training_samples": len(state.window),
+                "training_readings": len(state.window),
                 "parameters": self.parameters,
             },
         )
@@ -197,7 +240,7 @@ class IsolationForestDetector(BaseDetector):
                 "model_ready": state is not None and state.model is not None,
                 "baseline_ready": status.ready,
                 "readings": status.readings,
-                "training_samples": len(state.window) if state is not None else 0,
+                "training_readings": len(state.window) if state is not None else 0,
                 "refit_pending": state.refit_pending if state is not None else False,
                 "last_refit_error": (
                     state.last_refit_error if state is not None else None
@@ -220,17 +263,17 @@ class IsolationForestDetector(BaseDetector):
 
     def _fit_now(self, state: _SensorModelState) -> None:
         state.model = self._fit_values([[value] for value in state.window])
-        state.samples_since_refit = 0
+        state.readings_since_refit = 0
         state.last_refit_error = None
 
     def _record_normal_value(self, state: _SensorModelState, value: float) -> None:
         state.window.append(value)
-        state.samples_since_refit += 1
-        if state.samples_since_refit >= self.refit_interval:
+        state.readings_since_refit += 1
+        if state.readings_since_refit >= self.refit_interval:
             self._schedule_refit(state)
 
     def _schedule_refit(self, state: _SensorModelState) -> None:
-        if state.refit_pending or len(state.window) < self.min_samples:
+        if state.refit_pending or len(state.window) < self.min_readings:
             return
         state.refit_pending = True
         values = [[value] for value in state.window]
@@ -248,14 +291,14 @@ class IsolationForestDetector(BaseDetector):
     ) -> None:
         try:
             state.model = self._fit_values(values)
-            state.samples_since_refit = 0
+            state.readings_since_refit = 0
             state.last_refit_error = None
         except Exception as exc:  # background boundary must not terminate the worker
             state.last_refit_error = f"{type(exc).__name__}: {exc}"
         finally:
             state.refit_pending = False
 
-    def _fit_values(self, values: list[list[float]]) -> IsolationForest:
+    def _fit_values(self, values: list[list[float]]) -> _FittedModel:
         model = IsolationForest(
             n_estimators=self.n_estimators,
             contamination=self.contamination,
@@ -263,4 +306,20 @@ class IsolationForestDetector(BaseDetector):
             n_jobs=1,
         )
         model.fit(values)
-        return model
+        flat_values = [current[0] for current in values]
+        value_center = math.fsum(flat_values) / len(flat_values)
+        value_variance = math.fsum(
+            (current - value_center) ** 2 for current in flat_values
+        ) / len(flat_values)
+        decisions = model.decision_function(values)
+        decision_center = math.fsum(decisions) / len(decisions)
+        decision_variance = math.fsum(
+            (current - decision_center) ** 2 for current in decisions
+        ) / len(decisions)
+        return _FittedModel(
+            model=model,
+            value_center=value_center,
+            value_scale=math.sqrt(value_variance),
+            decision_center=decision_center,
+            decision_scale=max(math.sqrt(decision_variance), 1e-4),
+        )
