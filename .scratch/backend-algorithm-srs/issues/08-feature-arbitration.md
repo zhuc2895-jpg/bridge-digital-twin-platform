@@ -6,9 +6,13 @@
 
 **Status:** ready-for-agent
 
-- [ ] 同时计算近期窗口 20 条和历史窗口 60 条，并产出均值偏移量、方差变化率、趋势斜率三项特征。
-- [ ] 每项特征有明确阈值和超限判定；至少两项超限时确认异常，仅一项超限时标记为疑似并降级。
-- [ ] 仲裁告警包含触发模型、三项特征的数值、超限项和最终结论，来源为 `ai_feature_arbitration`。
-- [ ] 确认和疑似告警采用正确的级别映射，不得出现异常越严重级别反而更低的情况。
-- [ ] 使用可复现的稳态、均值漂移、方差突增、趋势变化和单特征异常样本验证仲裁结果。
-- [ ] 覆盖窗口不足、历史方差接近零、上下异常方向和至少两项超限的测试。
+- [x] 同时计算近期窗口 20 条和历史窗口 60 条，并产出均值偏移量、方差变化率、趋势斜率三项特征。
+- [x] 每项特征有明确阈值和超限判定；至少两项超限时确认异常，仅一项超限时标记为疑似并降级。
+- [x] 仲裁告警包含触发模型、三项特征的数值、超限项和最终结论，来源为 `ai_feature_arbitration`。
+- [x] 确认和疑似告警采用正确的级别映射，不得出现异常越严重级别反而更低的情况。
+- [x] 使用可复现的稳态、均值漂移、方差突增、趋势变化和单特征异常样本验证仲裁结果。
+- [x] 覆盖窗口不足、历史方差接近零、上下异常方向和至少两项超限的测试。
+
+## Comments
+
+- 2026-10-30: Implemented a per-sensor third-layer arbitrator over event-time ordered 60 historical and 20 recent normal readings, with standardized mean shift, variance ratio, and normalized trend slope. Physically abnormal readings are excluded from the arbitration window so rule alerts cannot contaminate later decisions. One exceeded feature produces a yellow suspected alert, two produce an orange confirmation, and three produce a red confirmation; every candidate alert retains its trigger model, feature evidence, thresholds, exceeded features, conclusion, and `ai_feature_arbitration` source through the ingestion alert lifecycle.

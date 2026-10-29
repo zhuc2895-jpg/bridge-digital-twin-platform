@@ -7,6 +7,7 @@ from starlette.requests import HTTPConnection
 
 from app.engine.data_engine import MonitoringEngine
 from app.engine.simulator import DataSimulator
+from app.ml.feature_arbitration import FeatureArbitrationDetector
 from app.ml.registry import DetectorManager, DetectorRegistry
 from app.ml.voting import VotingDetector
 from app.processing import SensorDataProcessor
@@ -26,7 +27,7 @@ class AppServices:
 
 def build_detector_registry() -> DetectorRegistry:
     """Assemble the detector plugins enabled at application startup."""
-    return DetectorRegistry([VotingDetector()])
+    return DetectorRegistry([FeatureArbitrationDetector(VotingDetector())])
 
 
 def create_services() -> AppServices:

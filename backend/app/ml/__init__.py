@@ -7,6 +7,11 @@ from app.ml.contracts import (
     BaselineStatus,
     DetectionResult,
 )
+from app.ml.feature_arbitration import (
+    ArbitrationDecision,
+    FeatureArbitrationDetector,
+    FeatureArbitrator,
+)
 from app.ml.gan_ae import GanAEDetector
 from app.ml.isolation_forest import IsolationForestDetector
 from app.ml.registry import (
@@ -26,6 +31,9 @@ __all__ = [
     "DetectorManager",
     "DetectorRegistry",
     "DetectorRegistryError",
+    "ArbitrationDecision",
+    "FeatureArbitrationDetector",
+    "FeatureArbitrator",
     "GanAEDetector",
     "IsolationForestDetector",
     "StalwartDetector",
