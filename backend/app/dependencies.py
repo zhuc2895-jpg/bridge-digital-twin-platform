@@ -7,8 +7,8 @@ from starlette.requests import HTTPConnection
 
 from app.engine.data_engine import MonitoringEngine
 from app.engine.simulator import DataSimulator
-from app.ml.anomaly_detector import AnomalyDetector
 from app.ml.registry import DetectorManager, DetectorRegistry
+from app.ml.voting import VotingDetector
 from app.processing import SensorDataProcessor
 from app.ws.websocket_manager import WebSocketManager
 
@@ -26,7 +26,7 @@ class AppServices:
 
 def build_detector_registry() -> DetectorRegistry:
     """Assemble the detector plugins enabled at application startup."""
-    return DetectorRegistry([AnomalyDetector()])
+    return DetectorRegistry([VotingDetector()])
 
 
 def create_services() -> AppServices:

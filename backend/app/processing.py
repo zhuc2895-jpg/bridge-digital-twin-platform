@@ -55,6 +55,7 @@ class SensorDataProcessor:
                     threshold=0.0,
                     source=detection.source or "ai_dual_confirm",
                     timestamp=detection.timestamp,
+                    details=dict(detection.details),
                 )
             except Exception:
                 logger.exception(

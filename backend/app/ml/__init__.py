@@ -7,11 +7,15 @@ from app.ml.contracts import (
     BaselineStatus,
     DetectionResult,
 )
+from app.ml.gan_ae import GanAEDetector
+from app.ml.isolation_forest import IsolationForestDetector
 from app.ml.registry import (
     DetectorManager,
     DetectorRegistry,
     DetectorRegistryError,
 )
+from app.ml.stalwart import StalwartDetector
+from app.ml.voting import VotingDetector
 
 __all__ = [
     "BASELINE_READING_TARGET",
@@ -22,4 +26,8 @@ __all__ = [
     "DetectorManager",
     "DetectorRegistry",
     "DetectorRegistryError",
+    "GanAEDetector",
+    "IsolationForestDetector",
+    "StalwartDetector",
+    "VotingDetector",
 ]

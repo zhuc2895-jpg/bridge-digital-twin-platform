@@ -6,9 +6,11 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 import math
-from typing import Any, Mapping
 
-from sklearn.ensemble import IsolationForest
+import numpy as np
+from typing import Any, Mapping, Sequence
+
+from sklearn.ensemble import IsolationForest  # type: ignore[import-untyped]
 
 from app.ml.baseline import BaselineLearner
 from app.ml.contracts import BaseDetector, BaselineStatus, DetectionResult
@@ -142,67 +144,153 @@ class IsolationForestDetector(BaseDetector):
         self._total_detections += 1
 
         if not status.ready:
-            return self.make_result(
-                reading=reading,
-                anomalous=False,
-                score=0.0,
-                confidence=0.0,
-                reason=f"baseline_{status.state}",
-                details={"vote": False, "baseline": status.to_dict()},
-            )
+            return self._waiting_result(reading, status)
 
         model = state.model
         if model is None:
-            return self.make_result(
-                reading=reading,
+            return self._model_not_ready_result(reading, state)
+
+        scores, decisions, deviations = self._score_values(model, [value])
+        return self._result_for_score(
+            reading,
+            state,
+            model,
+            score=float(scores[0]),
+            decision=float(decisions[0]) if not np.isnan(decisions[0]) else None,
+            value_deviation_sigma=(
+                float(deviations[0]) if not np.isnan(deviations[0]) else None
+            ),
+            schedule_refit=True,
+        )
+
+    def detect_batch(
+        self,
+        readings: Sequence[Mapping[str, Any]],
+        *,
+        normal_predicate=None,
+    ) -> list[DetectionResult]:
+        """Vectorize calibrated forest inference while preserving warm-up state."""
+        batch = list(readings)
+        results: list[DetectionResult | None] = [None] * len(batch)
+        pending: dict[str, list[tuple[int, Mapping[str, Any]]]] = {}
+
+        for index, reading in enumerate(batch):
+            sensor_id = str(reading["sensor_id"])
+            status = self._baselines.get_status(sensor_id)
+            if status.ready:
+                pending.setdefault(sensor_id, []).append((index, reading))
+                continue
+
+            is_normal = (
+                normal_predicate(reading) if normal_predicate is not None else True
+            )
+            updated = self.learn_baseline(reading, is_normal=is_normal)
+            results[index] = DetectionResult(
+                sensor_id=sensor_id,
+                name=str(reading.get("name", sensor_id)),
+                value=float(reading["value"]),
+                timestamp=float(reading["timestamp"]),
+                detector_id=self.detector_id,
                 anomalous=False,
-                score=0.0,
-                confidence=0.0,
-                reason="isolation_forest_not_ready",
-                details={
-                    "vote": False,
-                    "model_ready": False,
-                    "training_readings": len(state.window),
-                    "required_readings": self.min_readings,
-                    "parameters": self.parameters,
-                },
+                reason=f"baseline_{updated.state}",
+                details={"baseline": updated.to_dict()},
             )
 
-        # decision_function units depend on the fitted forest, so calibrate
-        # against the training decisions and retain a distribution-distance guard.
-        decision: float | None
-        value_deviation_sigma: float | None
-        if model.value_scale <= 1e-12:
-            relative_deviation = abs(value - model.value_center) / max(
-                abs(model.value_center),
-                1.0,
-            )
-            score = min(0.999, relative_deviation / 0.05)
-            decision = None
-            value_deviation_sigma = None
-        else:
-            decision = float(model.model.decision_function([[value]])[0])
-            decision_z = (decision - model.decision_center) / max(
-                model.decision_scale, 1e-12
-            )
-            value_deviation_sigma = abs(value - model.value_center) / model.value_scale
-            forest_score = min(0.999, max(0.0, -decision_z / 5.0))
-            distribution_score = min(
-                0.999,
-                max(0.0, (value_deviation_sigma - 2.0) / 4.0),
-            )
-            score = max(forest_score, distribution_score)
-        confidence = score
+        for sensor_id, items in pending.items():
+            state = self._state_for(sensor_id)
+            model = state.model
+            if model is None:
+                for index, reading in items:
+                    self._total_detections += 1
+                    results[index] = self._model_not_ready_result(reading, state)
+                continue
 
+            values = [float(reading["value"]) for _, reading in items]
+            scores, decisions, deviations = self._score_values(model, values)
+            self._total_detections += len(items)
+            for position, (index, reading) in enumerate(items):
+                decision = decisions[position]
+                results[index] = self._result_for_score(
+                    reading,
+                    state,
+                    model,
+                    score=float(scores[position]),
+                    decision=float(decision) if not np.isnan(decision) else None,
+                    value_deviation_sigma=(
+                        float(deviations[position])
+                        if not np.isnan(deviations[position])
+                        else None
+                    ),
+                    schedule_refit=False,
+                )
+            if state.readings_since_refit >= self.refit_interval:
+                self._schedule_refit(state)
+
+        return [result for result in results if result is not None]
+
+    def _waiting_result(
+        self,
+        reading: Mapping[str, Any],
+        status: BaselineStatus,
+    ) -> DetectionResult:
+        sensor_id = str(reading["sensor_id"])
+        return DetectionResult(
+            sensor_id=sensor_id,
+            name=str(reading.get("name", sensor_id)),
+            value=float(reading["value"]),
+            timestamp=float(reading["timestamp"]),
+            detector_id=self.detector_id,
+            anomalous=False,
+            reason=f"baseline_{status.state}",
+            details={"vote": False, "baseline": status.to_dict()},
+        )
+
+    def _model_not_ready_result(
+        self,
+        reading: Mapping[str, Any],
+        state: _SensorModelState,
+    ) -> DetectionResult:
+        sensor_id = str(reading["sensor_id"])
+        return DetectionResult(
+            sensor_id=sensor_id,
+            name=str(reading.get("name", sensor_id)),
+            value=float(reading["value"]),
+            timestamp=float(reading["timestamp"]),
+            detector_id=self.detector_id,
+            anomalous=False,
+            reason="isolation_forest_not_ready",
+            details={
+                "vote": False,
+                "model_ready": False,
+                "training_readings": len(state.window),
+                "required_readings": self.min_readings,
+                "parameters": self.parameters,
+            },
+        )
+
+    def _result_for_score(
+        self,
+        reading: Mapping[str, Any],
+        state: _SensorModelState,
+        model: _FittedModel,
+        *,
+        score: float,
+        decision: float | None,
+        value_deviation_sigma: float | None,
+        schedule_refit: bool,
+    ) -> DetectionResult:
         anomalous = score >= self.score_threshold
         if anomalous:
             self._anomalies_detected += 1
         else:
-            self._record_normal_value(state, value)
+            self._record_normal_value(
+                state,
+                float(reading["value"]),
+                schedule_refit=schedule_refit,
+            )
 
         reason = (
-            f"isolation score {score:.4f} reaches threshold "
-            f"{self.score_threshold:.4f}"
+            f"isolation score {score:.4f} reaches threshold {self.score_threshold:.4f}"
             if anomalous
             else f"isolation score {score:.4f} is within threshold"
         )
@@ -210,7 +298,7 @@ class IsolationForestDetector(BaseDetector):
             reading=reading,
             anomalous=anomalous,
             score=round(score, 6),
-            confidence=round(confidence, 6),
+            confidence=round(score, 6),
             reason=reason,
             details={
                 "vote": anomalous,
@@ -229,6 +317,39 @@ class IsolationForestDetector(BaseDetector):
                 "training_readings": len(state.window),
                 "parameters": self.parameters,
             },
+        )
+
+    def _score_values(
+        self,
+        model: _FittedModel,
+        values: Sequence[float],
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        array = np.asarray(values, dtype=float)
+        if model.value_scale <= 1e-12:
+            relative = np.abs(array - model.value_center) / max(
+                abs(model.value_center),
+                1.0,
+            )
+            scores = np.minimum(0.999, relative / 0.05)
+            no_decisions = np.full(array.shape, np.nan, dtype=float)
+            no_deviations = np.full(array.shape, np.nan, dtype=float)
+            return scores, no_decisions, no_deviations
+
+        decisions = model.model.decision_function(array.reshape(-1, 1))
+        decision_values = np.asarray(decisions, dtype=float)
+        decision_z = (decision_values - model.decision_center) / max(
+            model.decision_scale, 1e-12
+        )
+        deviations = np.abs(array - model.value_center) / model.value_scale
+        forest_scores = np.minimum(0.999, np.maximum(0.0, -decision_z / 5.0))
+        distribution_scores = np.minimum(
+            0.999,
+            np.maximum(0.0, (deviations - 2.0) / 4.0),
+        )
+        return (
+            np.maximum(forest_scores, distribution_scores),
+            decision_values,
+            deviations,
         )
 
     def get_stats(self) -> dict:
@@ -266,10 +387,16 @@ class IsolationForestDetector(BaseDetector):
         state.readings_since_refit = 0
         state.last_refit_error = None
 
-    def _record_normal_value(self, state: _SensorModelState, value: float) -> None:
+    def _record_normal_value(
+        self,
+        state: _SensorModelState,
+        value: float,
+        *,
+        schedule_refit: bool = True,
+    ) -> None:
         state.window.append(value)
         state.readings_since_refit += 1
-        if state.readings_since_refit >= self.refit_interval:
+        if schedule_refit and state.readings_since_refit >= self.refit_interval:
             self._schedule_refit(state)
 
     def _schedule_refit(self, state: _SensorModelState) -> None:

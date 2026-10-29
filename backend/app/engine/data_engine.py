@@ -9,7 +9,7 @@ import heapq
 import math
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.alert_contracts import (
     ALERT_LEVELS as CANONICAL_ALERT_LEVELS,
@@ -41,6 +41,7 @@ class Alert:
     source: str        # rule / ai_* sources
     timestamp: float
     detection_sequence: int = 0
+    details: Dict[str, Any] = field(default_factory=dict)
 
 
 class MonitoringEngine:
@@ -205,6 +206,7 @@ class MonitoringEngine:
         threshold: float,
         source: str,
         timestamp: float,
+        details: Optional[Mapping[str, Any]] = None,
     ) -> Optional[Alert]:
         """Create one alert through the shared lifecycle policy."""
         if level not in self.ALERT_LEVELS:
@@ -224,6 +226,7 @@ class MonitoringEngine:
             threshold=threshold,
             source=source,
             timestamp=timestamp,
+            details=dict(details or {}),
         )
         self._remember_alert_time((sensor_id, level), timestamp)
         self._retain_alert(alert)
@@ -536,6 +539,7 @@ class MonitoringEngine:
             "threshold": alert.threshold,
             "source": alert.source,
             "timestamp": alert.timestamp,
+            "details": alert.details,
         }
 
     def _reading_to_dict(self, r: SensorReading) -> dict:
