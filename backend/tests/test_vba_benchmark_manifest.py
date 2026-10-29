@@ -117,6 +117,10 @@ def test_vba_benchmark_manifest_defines_reproducible_gates_and_snapshot_scope():
             "pending_refit_jobs",
         ],
     }
+    assert manifest["checksums"] == {
+        "conversion_source": "source.sha256",
+        "evaluation_input": "normalized_csv.sha256",
+    }
     assert manifest["artifacts"]["include"] == [
         "environment",
         "code_version",

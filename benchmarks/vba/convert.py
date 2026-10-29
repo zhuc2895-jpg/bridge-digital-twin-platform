@@ -199,7 +199,7 @@ def verify_source_mat(path: Path, manifest: Mapping[str, Any]) -> None:
     """Verify the raw MAT source against the benchmark manifest."""
     _verify_sha256(
         path,
-        manifest["source"]["sha256"],
+        _mapped_checksum(manifest, "conversion_source"),
         label="VBA source",
     )
 
@@ -208,9 +208,21 @@ def verify_normalized_csv(path: Path, manifest: Mapping[str, Any]) -> None:
     """Verify the committed normalized CSV against the benchmark manifest."""
     _verify_sha256(
         path,
-        manifest["normalized_csv"]["sha256"],
+        _mapped_checksum(manifest, "evaluation_input"),
         label="normalized CSV",
     )
+
+
+def _mapped_checksum(manifest: Mapping[str, Any], stage: str) -> str:
+    path = manifest["checksums"][stage].split(".")
+    value: Any = manifest
+    for part in path:
+        value = value[part]
+    if not isinstance(value, str):
+        raise ValueError(
+            f"Manifest checksum at {manifest['checksums'][stage]} is invalid"
+        )
+    return value
 
 
 def _verify_sha256(path: Path, expected: str, *, label: str) -> None:

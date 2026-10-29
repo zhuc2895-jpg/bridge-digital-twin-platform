@@ -86,7 +86,10 @@ def test_normalized_csv_verifier_rejects_a_manifest_hash_mismatch(tmp_path):
     csv_path = tmp_path / "normalized.csv"
     csv_path.write_bytes(b"normalized readings")
     digest = hashlib.sha256(csv_path.read_bytes()).hexdigest().upper()
-    manifest = {"normalized_csv": {"sha256": digest}}
+    manifest = {
+        "checksums": {"evaluation_input": "normalized_csv.sha256"},
+        "normalized_csv": {"sha256": digest},
+    }
 
     verify_normalized_csv(csv_path, manifest)
 

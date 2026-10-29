@@ -88,6 +88,48 @@
       "damage_label"
     ]
   },
+  "metrics": [
+    "accuracy",
+    "false_positive_rate",
+    "recall",
+    "precision",
+    "f1",
+    "confusion_matrix",
+    "per_case",
+    "per_fold",
+    "per_sensor_alert_counts",
+    "alert_source_counts",
+    "alert_level_counts"
+  ],
+  "acceptance": {
+    "accuracy_min": 0.9,
+    "false_positive_rate_max": 0.1,
+    "require_all_components": true,
+    "require_all_baselines_ready": true
+  },
+  "artifacts": {
+    "formats": [
+      "json",
+      "markdown"
+    ],
+    "directory": "benchmarks/vba/runs",
+    "include": [
+      "environment",
+      "code_version",
+      "threshold_profile_version",
+      "source_identity",
+      "dataset_sha256",
+      "reproduction_command",
+      "fold_assignments",
+      "sample_counts",
+      "metrics",
+      "exit_reason"
+    ]
+  },
+  "checksums": {
+    "conversion_source": "source.sha256",
+    "evaluation_input": "normalized_csv.sha256"
+  },
   "evaluation": {
     "primary_unit": "recording",
     "required_components": [
@@ -154,43 +196,5 @@
     "full_pipeline_cooldown_seconds": 10,
     "component_diagnostics": "raw per-reading verdicts",
     "primary_aggregation": "pooled out-of-fold recordings"
-  },
-  "metrics": [
-    "accuracy",
-    "false_positive_rate",
-    "recall",
-    "precision",
-    "f1",
-    "confusion_matrix",
-    "per_case",
-    "per_fold",
-    "per_sensor_alert_counts",
-    "alert_source_counts",
-    "alert_level_counts"
-  ],
-  "acceptance": {
-    "accuracy_min": 0.9,
-    "false_positive_rate_max": 0.1,
-    "require_all_components": true,
-    "require_all_baselines_ready": true
-  },
-  "artifacts": {
-    "formats": [
-      "json",
-      "markdown"
-    ],
-    "directory": "benchmarks/vba/runs",
-    "include": [
-      "environment",
-      "code_version",
-      "threshold_profile_version",
-      "source_identity",
-      "dataset_sha256",
-      "reproduction_command",
-      "fold_assignments",
-      "sample_counts",
-      "metrics",
-      "exit_reason"
-    ]
   }
 }
