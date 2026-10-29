@@ -67,3 +67,37 @@ _Avoid_: alert timestamp, alert ID order
 **Normal State**:
 A sensor condition below its yellow physical threshold; green represents this state visually but is not an alert level.
 _Avoid_: green alert
+
+### Vibration Benchmark
+
+**Vibration Case**:
+A named VBA test condition combining a structural condition with a speed label, such as `INT 40km` or `DMG1 40km`.
+_Avoid_: class, damage label
+
+**Vibration Recording**:
+A time-indexed multichannel acceleration capture from one vibration case.
+_Avoid_: waveform sample, row
+
+**Acceleration Channel**:
+One measured acceleration signal within a vibration recording.
+_Avoid_: column, sensor (until a channel-to-sensor mapping is established)
+
+**Intact Vibration Case**:
+A Vibration Case whose structural condition is `INT`.
+_Avoid_: baseline case, clean sample
+
+**Recovery Vibration Case**:
+A Vibration Case whose structural condition is `RCV`, treated as normal for evaluation.
+_Avoid_: damaged case, repaired anomaly
+
+**Damage Vibration Case**:
+A Vibration Case whose structural condition is `DMG1`, `DMG2`, or `DMG3`.
+_Avoid_: anomaly sample, failure case
+
+**VBA Benchmark**:
+An acceptance benchmark using the `VBA` variable from `Old_ADA_Bridge-damage_vibration_data.mat` and recording-level damage labels.
+_Avoid_: validation dataset, training set
+
+**Damage Label**:
+A binary classification of a Vibration Recording as normal (`INT`, `RCV`) or damaged (`DMG1`, `DMG2`, `DMG3`).
+_Avoid_: anomaly flag, alert label

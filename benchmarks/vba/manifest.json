@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "vba-recording-level",
+  "title": "VBA recording-level benchmark",
+  "repository_path": "benchmarks/vba",
+  "source": {
+    "file_name": "Old_ADA_Bridge-damage_vibration_data.mat",
+    "matlab_variable": "VBA",
+    "sha256": "001F8A1ADD06649A6156FA7D33440D889A9E0CB036C17895E9F357BD1E281DA5",
+    "size_bytes": 58836651,
+    "storage": "external"
+  },
+  "corpus": {
+    "recording_count": 68,
+    "case_counts": {
+      "INT": 26,
+      "RCV": 10,
+      "DMG1": 12,
+      "DMG2": 10,
+      "DMG3": 10
+    },
+    "damage_labels": {
+      "INT": 0,
+      "RCV": 0,
+      "DMG1": 1,
+      "DMG2": 1,
+      "DMG3": 1
+    },
+    "ignored_columns": [10, 11, 12]
+  },
+  "conversion": {
+    "time_column": 1,
+    "signal_columns": [2, 3, 4, 5, 6, 7, 8, 9],
+    "sensor_ids": {
+      "2": "S01",
+      "3": "S02",
+      "4": "S03",
+      "5": "S04",
+      "6": "S05",
+      "7": "S06",
+      "8": "S07",
+      "9": "S08"
+    },
+    "source_unit": "g",
+    "target_unit": "m/s^2",
+    "unit_factor": 9.80665,
+    "aggregation": "rms",
+    "bucket_seconds": 1,
+    "partial_bucket_policy": "discard",
+    "utc_start": "2021-04-07T00:00:00Z",
+    "recording_gap_seconds": 60
+  },
+  "normalized_csv": {
+    "path": "benchmarks/vba/normalized.csv",
+    "sha256": "15857EB70FFF4F075CA73B1D58F5541882A2BF18F5208A206F76E576F8942E8F",
+    "columns": [
+      "recording_id",
+      "vibration_case",
+      "repetition",
+      "sensor_id",
+      "sensor_name",
+      "sensor_type",
+      "timestamp",
+      "relative_time_seconds",
+      "value",
+      "damage_label"
+    ]
+  },
+  "evaluation": {
+    "primary_unit": "recording",
+    "fold_count": 5,
+    "stratify_by": "vibration_case",
+    "random_seed": 42,
+    "baseline_cases": ["INT"],
+    "baseline_scope": "all out-of-fold INT recordings",
+    "ignored_training_outputs": true,
+    "detector_state": "fresh restored post-baseline state per held-out recording",
+    "sensor_alert_scope": "any sensor",
+    "full_pipeline_cooldown_seconds": 10,
+    "component_diagnostics": "raw per-reading verdicts",
+    "primary_aggregation": "pooled out-of-fold recordings"
+  },
+  "metrics": [
+    "accuracy",
+    "false_positive_rate",
+    "recall",
+    "precision",
+    "f1",
+    "confusion_matrix",
+    "per_case",
+    "per_fold",
+    "per_sensor_alert_counts",
+    "alert_source_counts",
+    "alert_level_counts"
+  ],
+  "acceptance": {
+    "accuracy_min": 0.9,
+    "false_positive_rate_max": 0.1,
+    "require_all_components": true,
+    "require_all_baselines_ready": true
+  },
+  "artifacts": {
+    "formats": ["json", "markdown"],
+    "directory": "benchmarks/vba/runs",
+    "include": [
+      "environment",
+      "dataset_sha256",
+      "fold_assignments",
+      "metrics",
+      "exit_reason"
+    ]
+  }
+}
