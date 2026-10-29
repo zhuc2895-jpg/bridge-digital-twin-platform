@@ -29,7 +29,7 @@ def convert_recording(
 ) -> list[dict[str, Any]]:
     """Convert one multichannel VBA recording into scalar RMS readings."""
     conversion = manifest["conversion"]
-    time_column = int(conversion["time_column_one_based"]) - 1
+    time_column = _time_column_index(conversion)
     signal_columns = [
         int(column) - 1 for column in conversion["signal_columns_one_based"]
     ]
@@ -62,7 +62,7 @@ def convert_recording(
     if not np.all(np.isfinite(signals)):
         raise ValueError("VBA signal channels must be finite")
 
-    condition = vibration_case.split()[0]
+    condition = _structural_condition(vibration_case)
     damage_labels = manifest["corpus"]["damage_labels"]
     if condition not in damage_labels:
         raise ValueError(f"Unknown VBA structural condition: {condition}")
@@ -120,6 +120,7 @@ def convert_mat_file(
         for vibration_case in manifest["corpus"]["vibration_case_counts"]
     }
     recording_total = 0
+    time_column = _time_column_index(manifest["conversion"])
     session_start = (
         datetime.fromisoformat(
             manifest["conversion"]["utc_start"].replace("Z", "+00:00")
@@ -130,7 +131,7 @@ def convert_mat_file(
 
     for case_row in range(1, vba.shape[0]):
         vibration_case = str(vba[case_row, 0].item())
-        condition = vibration_case.split()[0]
+        condition = _structural_condition(vibration_case)
         if condition not in condition_counts:
             raise ValueError(f"Unknown VBA structural condition: {condition}")
         if vibration_case not in vibration_case_counts:
@@ -153,7 +154,7 @@ def convert_mat_file(
                 manifest=manifest,
             )
             rows.extend(converted)
-            duration = float(record[-1, 0] - record[0, 0])
+            duration = float(record[-1, time_column] - record[0, time_column])
             session_start += duration + manifest["conversion"]["recording_gap_seconds"]
 
     expected_total = manifest["corpus"]["recording_count"]
@@ -184,6 +185,14 @@ def write_csv(
             writer.writerow(row)
             count += 1
     return count
+
+
+def _time_column_index(conversion: Mapping[str, Any]) -> int:
+    return int(conversion["time_column_one_based"]) - 1
+
+
+def _structural_condition(vibration_case: str) -> str:
+    return vibration_case.split()[0]
 
 
 def verify_source_mat(path: Path, manifest: Mapping[str, Any]) -> None:

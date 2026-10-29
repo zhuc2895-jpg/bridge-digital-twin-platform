@@ -87,6 +87,7 @@ def test_vba_benchmark_manifest_defines_reproducible_gates_and_snapshot_scope():
     assert evaluation["splitter"] == {
         "method": "StratifiedKFold",
         "unit": "recording_id",
+        "stratify_by": "vibration_case",
         "n_splits": 5,
         "shuffle": True,
         "random_state": 42,
@@ -115,10 +116,6 @@ def test_vba_benchmark_manifest_defines_reproducible_gates_and_snapshot_scope():
             "detector_detection_counters",
             "pending_refit_jobs",
         ],
-    }
-    assert manifest["checksums"] == {
-        "conversion_source": "source.sha256",
-        "evaluation_input": "normalized_csv.sha256",
     }
     assert manifest["artifacts"]["include"] == [
         "environment",

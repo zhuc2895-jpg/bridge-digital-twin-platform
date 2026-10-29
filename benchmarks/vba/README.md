@@ -53,7 +53,7 @@ The normalized CSV columns are defined by `manifest.json.normalized_csv.columns`
 
 ## Evaluation protocol
 
-Use `StratifiedKFold` over recording IDs with `n_splits=5`, `shuffle=true`, and `random_state=42`. Every Vibration Recording belongs to exactly one test fold.
+Use `StratifiedKFold` over recording IDs, stratified by `vibration_case`, with `n_splits=5`, `shuffle=true`, and `random_state=42`. Every Vibration Recording belongs to exactly one test fold.
 
 For each fold, learn and update sensor baselines using all out-of-fold `INT` recordings while ignoring their outputs. `RCV` and `DMG` recordings never train a baseline. Feed baseline and evaluation readings in ascending `timestamp`, then `sensor_id` order.
 

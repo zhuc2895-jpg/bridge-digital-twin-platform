@@ -6,8 +6,13 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from scipy.io import savemat
 
-from benchmarks.vba.convert import convert_recording, verify_normalized_csv
+from benchmarks.vba.convert import (
+    convert_mat_file,
+    convert_recording,
+    verify_normalized_csv,
+)
 
 
 def test_convert_recording_emits_full_bucket_rms_readings():
@@ -92,3 +97,45 @@ def test_normalized_csv_verifier_rejects_a_manifest_hash_mismatch(tmp_path):
 
 def test_committed_normalized_csv_matches_its_manifest_checksum():
     verify_normalized_csv(NORMALIZED_CSV_PATH, MANIFEST)
+
+
+def test_convert_mat_file_uses_configured_time_column_for_session_gaps(tmp_path):
+    def recording(duration_seconds):
+        time = np.arange(-5.0, -5.0 + duration_seconds, 0.005)
+        record = np.zeros((time.size, 4), dtype=float)
+        record[:, 0] = 999.0
+        record[:, 1] = time
+        record[:, 2:4] = 1.0
+        return record
+
+    first = recording(2.5)
+    second = recording(3.5)
+    vba = np.empty((2, 3), dtype=object)
+    vba[0, :] = ["Case", "No1", "No2"]
+    vba[1, 0] = "INT 40km"
+    vba[1, 1] = first
+    vba[1, 2] = second
+    mat_path = tmp_path / "vba.mat"
+    savemat(mat_path, {"VBA": vba})
+
+    manifest = json.loads(json.dumps(MANIFEST))
+    manifest["source"]["file_name"] = mat_path.name
+    manifest["source"]["sha256"] = (
+        hashlib.sha256(mat_path.read_bytes()).hexdigest().upper()
+    )
+    manifest["corpus"]["recording_count"] = 2
+    manifest["corpus"]["structural_condition_counts"] = {"INT": 2}
+    manifest["corpus"]["vibration_case_counts"] = {"INT 40km": 2}
+    manifest["corpus"]["damage_labels"] = {"INT": 0}
+    manifest["conversion"]["time_column_one_based"] = 2
+    manifest["conversion"]["signal_columns_one_based"] = [3, 4]
+    manifest["conversion"]["sensor_ids"] = {"3": "S01", "4": "S02"}
+
+    rows = convert_mat_file(mat_path, manifest=manifest)
+    first_timestamps = {}
+    for row in rows:
+        first_timestamps.setdefault(row["recording_id"], row["timestamp"])
+    expected_gap = (first[-1, 1] - first[0, 1]) + 60.0
+    assert first_timestamps["INT_40km_02"] - first_timestamps[
+        "INT_40km_01"
+    ] == pytest.approx(expected_gap)

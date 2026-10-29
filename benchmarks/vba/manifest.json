@@ -88,10 +88,6 @@
       "damage_label"
     ]
   },
-  "checksums": {
-    "conversion_source": "source.sha256",
-    "evaluation_input": "normalized_csv.sha256"
-  },
   "evaluation": {
     "primary_unit": "recording",
     "required_components": [
@@ -115,6 +111,7 @@
     "splitter": {
       "method": "StratifiedKFold",
       "unit": "recording_id",
+      "stratify_by": "vibration_case",
       "n_splits": 5,
       "shuffle": true,
       "random_state": 42
