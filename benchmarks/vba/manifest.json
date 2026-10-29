@@ -12,12 +12,21 @@
   },
   "corpus": {
     "recording_count": 68,
-    "case_counts": {
+    "structural_condition_counts": {
       "INT": 26,
       "RCV": 10,
       "DMG1": 12,
       "DMG2": 10,
       "DMG3": 10
+    },
+    "vibration_case_counts": {
+      "INT 30km": 11,
+      "INT 50km": 5,
+      "INT 40km": 10,
+      "DMG1 40km": 12,
+      "DMG2 40km": 10,
+      "RCV 40km": 10,
+      "DMG3 40km": 10
     },
     "damage_labels": {
       "INT": 0,
@@ -26,11 +35,24 @@
       "DMG2": 1,
       "DMG3": 1
     },
-    "ignored_columns": [10, 11, 12]
+    "ignored_columns_one_based": [
+      10,
+      11,
+      12
+    ]
   },
   "conversion": {
-    "time_column": 1,
-    "signal_columns": [2, 3, 4, 5, 6, 7, 8, 9],
+    "time_column_one_based": 1,
+    "signal_columns_one_based": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
     "sensor_ids": {
       "2": "S01",
       "3": "S02",
@@ -52,7 +74,7 @@
   },
   "normalized_csv": {
     "path": "benchmarks/vba/normalized.csv",
-    "sha256": "15857EB70FFF4F075CA73B1D58F5541882A2BF18F5208A206F76E576F8942E8F",
+    "sha256": "BE13A4CAE46E877C6613FABA9ABF164449CFC58EAA73AC86599473EF078FF7A3",
     "columns": [
       "recording_id",
       "vibration_case",
@@ -66,15 +88,71 @@
       "damage_label"
     ]
   },
+  "checksums": {
+    "conversion_source": "source.sha256",
+    "evaluation_input": "normalized_csv.sha256"
+  },
   "evaluation": {
     "primary_unit": "recording",
-    "fold_count": 5,
-    "stratify_by": "vibration_case",
-    "random_seed": 42,
-    "baseline_cases": ["INT"],
+    "required_components": [
+      "rule",
+      "ai_stalwart",
+      "ai_gan_ae",
+      "ai_isolation_forest",
+      "ai_dual_confirm",
+      "ai_feature_arbitration"
+    ],
+    "required_sensors": [
+      "S01",
+      "S02",
+      "S03",
+      "S04",
+      "S05",
+      "S06",
+      "S07",
+      "S08"
+    ],
+    "splitter": {
+      "method": "StratifiedKFold",
+      "unit": "recording_id",
+      "n_splits": 5,
+      "shuffle": true,
+      "random_state": 42
+    },
+    "baseline_cases": [
+      "INT"
+    ],
     "baseline_scope": "all out-of-fold INT recordings",
+    "baseline_feed_order": [
+      "timestamp",
+      "sensor_id"
+    ],
+    "evaluation_feed_order": [
+      "timestamp",
+      "sensor_id"
+    ],
     "ignored_training_outputs": true,
-    "detector_state": "fresh restored post-baseline state per held-out recording",
+    "snapshot_scope": {
+      "capture_after": "all out-of-fold INT recordings processed and pending refits completed",
+      "include": [
+        "baseline_learner_state",
+        "ema_state",
+        "rolling_windows",
+        "fitted_isolation_forest_models",
+        "score_calibration",
+        "gan_ae_distribution_state",
+        "voting_configuration"
+      ],
+      "reset_per_recording": [
+        "engine_latest_state",
+        "engine_history",
+        "retained_alerts",
+        "alert_cooldowns",
+        "detector_failure_counters",
+        "detector_detection_counters",
+        "pending_refit_jobs"
+      ]
+    },
     "sensor_alert_scope": "any sensor",
     "full_pipeline_cooldown_seconds": 10,
     "component_diagnostics": "raw per-reading verdicts",
@@ -100,12 +178,20 @@
     "require_all_baselines_ready": true
   },
   "artifacts": {
-    "formats": ["json", "markdown"],
+    "formats": [
+      "json",
+      "markdown"
+    ],
     "directory": "benchmarks/vba/runs",
     "include": [
       "environment",
+      "code_version",
+      "threshold_profile_version",
+      "source_identity",
       "dataset_sha256",
+      "reproduction_command",
       "fold_assignments",
+      "sample_counts",
       "metrics",
       "exit_reason"
     ]

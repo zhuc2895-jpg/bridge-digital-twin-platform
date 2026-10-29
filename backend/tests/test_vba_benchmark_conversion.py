@@ -1,10 +1,13 @@
 import csv
+from datetime import datetime, timezone
+import hashlib
+import json
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from benchmarks.vba.convert import convert_recording
+from benchmarks.vba.convert import convert_recording, verify_normalized_csv
 
 
 def test_convert_recording_emits_full_bucket_rms_readings():
@@ -19,6 +22,7 @@ def test_convert_recording_emits_full_bucket_rms_readings():
         vibration_case="INT 40km",
         repetition=1,
         recording_start_epoch=1_617_753_600.0,
+        manifest=MANIFEST,
     )
 
     assert len(rows) == 16
@@ -29,15 +33,19 @@ def test_convert_recording_emits_full_bucket_rms_readings():
     assert {row["damage_label"] for row in rows} == {0}
     assert {row["relative_time_seconds"] for row in rows} == {-4.0, -3.0}
     assert all(row["value"] == pytest.approx(9.80665) for row in rows)
-    assert all(
-        row["timestamp"] - row["relative_time_seconds"] == 1_617_753_600.0
-        for row in rows
-    )
+    timestamps_by_relative_time = {
+        row["relative_time_seconds"]: row["timestamp"] for row in rows
+    }
+    assert timestamps_by_relative_time == {
+        -4.0: 1_617_753_601.0,
+        -3.0: 1_617_753_602.0,
+    }
 
 
-NORMALIZED_CSV_PATH = (
-    Path(__file__).resolve().parents[2] / "benchmarks" / "vba" / "normalized.csv"
-)
+BENCHMARK_DIR = Path(__file__).resolve().parents[2] / "benchmarks" / "vba"
+MANIFEST_PATH = BENCHMARK_DIR / "manifest.json"
+NORMALIZED_CSV_PATH = BENCHMARK_DIR / "normalized.csv"
+MANIFEST = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
 
 
 def test_committed_normalized_csv_matches_the_benchmark_contract():
@@ -45,34 +53,42 @@ def test_committed_normalized_csv_matches_the_benchmark_contract():
         rows = list(csv.DictReader(handle))
 
     assert len(rows) == 24_552
-    assert list(rows[0]) == [
-        "recording_id",
-        "vibration_case",
-        "repetition",
-        "sensor_id",
-        "sensor_name",
-        "sensor_type",
-        "timestamp",
-        "relative_time_seconds",
-        "value",
-        "damage_label",
-    ]
+    assert list(rows[0]) == MANIFEST["normalized_csv"]["columns"]
     assert {row["sensor_id"] for row in rows} == {
         f"S{index:02d}" for index in range(1, 9)
     }
     assert {row["sensor_type"] for row in rows} == {"acceleration"}
     assert len({row["recording_id"] for row in rows}) == 68
+    utc_start = (
+        datetime.fromisoformat(
+            MANIFEST["conversion"]["utc_start"].replace("Z", "+00:00")
+        )
+        .astimezone(timezone.utc)
+        .timestamp()
+    )
+    assert min(float(row["timestamp"]) for row in rows) >= utc_start
 
-    cases_by_recording = {
+    conditions_by_recording = {
         row["recording_id"]: row["vibration_case"].split()[0] for row in rows
     }
     assert {
-        case: list(cases_by_recording.values()).count(case)
-        for case in {"INT", "RCV", "DMG1", "DMG2", "DMG3"}
-    } == {
-        "INT": 26,
-        "RCV": 10,
-        "DMG1": 12,
-        "DMG2": 10,
-        "DMG3": 10,
-    }
+        condition: list(conditions_by_recording.values()).count(condition)
+        for condition in {"INT", "RCV", "DMG1", "DMG2", "DMG3"}
+    } == MANIFEST["corpus"]["structural_condition_counts"]
+
+
+def test_normalized_csv_verifier_rejects_a_manifest_hash_mismatch(tmp_path):
+    csv_path = tmp_path / "normalized.csv"
+    csv_path.write_bytes(b"normalized readings")
+    digest = hashlib.sha256(csv_path.read_bytes()).hexdigest().upper()
+    manifest = {"normalized_csv": {"sha256": digest}}
+
+    verify_normalized_csv(csv_path, manifest)
+
+    manifest["normalized_csv"]["sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="normalized CSV checksum mismatch"):
+        verify_normalized_csv(csv_path, manifest)
+
+
+def test_committed_normalized_csv_matches_its_manifest_checksum():
+    verify_normalized_csv(NORMALIZED_CSV_PATH, MANIFEST)

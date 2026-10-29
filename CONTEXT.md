@@ -70,6 +70,10 @@ _Avoid_: green alert
 
 ### Vibration Benchmark
 
+**Structural Condition**:
+The intact, recovered, or damaged condition encoded in a Vibration Case label: `INT`, `RCV`, `DMG1`, `DMG2`, or `DMG3`.
+_Avoid_: case count, damage class_
+
 **Vibration Case**:
 A named VBA test condition combining a structural condition with a speed label, such as `INT 40km` or `DMG1 40km`.
 _Avoid_: class, damage label
