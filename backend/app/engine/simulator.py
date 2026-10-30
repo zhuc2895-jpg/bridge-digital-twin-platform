@@ -16,6 +16,8 @@ from app.sensor_ids import SensorIdentifier
 from app.sensor_types import SensorType
 
 AUTOMATIC_INJECTION_TARGET = SensorIdentifier("S01")
+AUTOMATIC_MIN_MULTIPLIER = 2.5
+AUTOMATIC_MAX_MULTIPLIER = 4.0
 MIN_INJECTION_MULTIPLIER = 2.5
 MAX_INJECTION_MULTIPLIER = 4.0
 MIN_INJECTION_OFFSET = 50.0
@@ -52,7 +54,7 @@ class SimulatorSensor:
 
 @dataclass(frozen=True)
 class AnomalyInjection:
-    """One queued, single-reading anomaly transformation."""
+    """A one-shot anomaly transformation applied to one Sensor Reading."""
 
     sensor_id: SensorIdentifier
     multiplier: float
@@ -172,11 +174,17 @@ class DataSimulator:
         value = normal_value
 
         if (
-            sensor_tick % self.anomaly_inject_interval == 0
+            injection is None
             and sensor.identifier == AUTOMATIC_INJECTION_TARGET
+            and self.tick % self.anomaly_inject_interval == 0
         ):
-            value = normal_value * (2.5 + random.random() * 1.5)
-            value += float(np.random.normal(0, sensor.normal_std * 0.5))
+            value = normal_value * random.uniform(
+                AUTOMATIC_MIN_MULTIPLIER,
+                AUTOMATIC_MAX_MULTIPLIER,
+            )
+            value += float(
+                np.random.normal(0, sensor.normal_std * 0.5)
+            )
 
         if injection is not None:
             value = injection.apply(normal_value)

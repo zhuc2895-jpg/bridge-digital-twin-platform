@@ -108,6 +108,27 @@ def _reading_for(frame: list[dict], sensor_id: str) -> dict:
     return next(item for item in frame if item["sensor_id"] == sensor_id)
 
 
+def _advance_normal_frames(simulator) -> None:
+    for index in range(simulator.anomaly_inject_interval - 1):
+        simulator.next_readings(timestamp=float(index))
+
+
+def _prepare_automatic_simulator(monkeypatch):
+    simulator = DataSimulator()
+    _set_normal_values(monkeypatch)
+    monkeypatch.setattr(
+        "app.engine.simulator.random.uniform",
+        lambda low, high: low,
+    )
+    return simulator
+
+
+def _automatic_s01_value(simulator) -> float:
+    timestamp = float(simulator.anomaly_inject_interval - 1)
+    automatic_frame = simulator.next_readings(timestamp=timestamp)
+    return _reading_for(automatic_frame, "S01")["value"]
+
+
 def _run_concurrently(*operations):
     barrier = threading.Barrier(len(operations) + 1)
 
@@ -350,34 +371,90 @@ def test_consecutive_injections_are_consumed_in_order_without_contamination(
     )
 
 
-def test_tick_200_generates_automatic_s01_anomaly(monkeypatch):
+def test_automatic_interval_generates_s01_anomaly(monkeypatch):
+    simulator = _prepare_automatic_simulator(monkeypatch)
+
+    _advance_normal_frames(simulator)
+
+    assert _automatic_s01_value(simulator) == pytest.approx(500.0)
+
+
+def test_manual_injection_does_not_shift_automatic_anomaly_tick(monkeypatch):
+    simulator = _prepare_automatic_simulator(monkeypatch)
+
+    simulator.inject_anomaly(S01)
+    _advance_normal_frames(simulator)
+
+    assert _automatic_s01_value(simulator) == pytest.approx(500.0)
+
+
+def test_normal_s01_frames_do_not_receive_automatic_jitter(monkeypatch):
     simulator = DataSimulator()
-    _set_normal_values(monkeypatch)
-    monkeypatch.setattr("app.engine.simulator.random.random", lambda: 0.0)
 
-    for index in range(199):
-        simulator.next_readings(timestamp=float(index))
-    automatic_tick = simulator.next_readings(timestamp=199.0)
+    def normal_sample(loc, scale):
+        if loc == 0:
+            return 100.0
+        return float(loc)
 
-    assert _reading_for(automatic_tick, "S01")["value"] == pytest.approx(500.0)
+    monkeypatch.setattr(
+        "app.engine.simulator.np.random.normal",
+        normal_sample,
+    )
+
+    for index in range(simulator.anomaly_inject_interval - 1):
+        normal_frame = simulator.next_readings(timestamp=float(index))
+        assert _reading_for(normal_frame, "S01")["value"] == pytest.approx(
+            200.0
+        )
 
 
-def test_injection_requested_during_frame_applies_to_next_frame(monkeypatch):
+def test_automatic_anomaly_range_is_independent_of_manual_range(monkeypatch):
+    simulator = _prepare_automatic_simulator(monkeypatch)
+    monkeypatch.setattr("app.engine.simulator.MIN_INJECTION_MULTIPLIER", 10.0)
+    monkeypatch.setattr("app.engine.simulator.MAX_INJECTION_MULTIPLIER", 10.0)
+    monkeypatch.setattr(
+        "app.engine.simulator.AUTOMATIC_MIN_MULTIPLIER",
+        2.5,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "app.engine.simulator.AUTOMATIC_MAX_MULTIPLIER",
+        2.5,
+        raising=False,
+    )
+
+    _advance_normal_frames(simulator)
+
+    assert _automatic_s01_value(simulator) == pytest.approx(500.0)
+
+
+def test_manual_injection_at_automatic_tick_boundary_is_not_overwritten(
+    monkeypatch,
+):
+    simulator = _prepare_automatic_simulator(monkeypatch)
+
+    _advance_normal_frames(simulator)
+    manual = simulator.inject_anomaly(S01)
+
+    assert manual.reading.value == pytest.approx(550.0)
+    assert _automatic_s01_value(simulator) == pytest.approx(500.0)
+
+
+def test_injection_waits_for_in_progress_frame_lock(monkeypatch):
     simulator = DataSimulator()
     _set_uniform_sequence(monkeypatch, 2.5, 50.0)
     frame_started = threading.Event()
     injection_started = threading.Event()
     release_frame = threading.Event()
 
-    def paused_normal_value(sensor, sensor_tick):
-        if sensor.identifier == S01 and not frame_started.is_set():
+    def paused_normal_value(loc, scale):
+        if not frame_started.is_set():
             frame_started.set()
             assert release_frame.wait(timeout=2)
-        return float(sensor.normal_mean)
+        return float(loc)
 
     monkeypatch.setattr(
-        simulator,
-        "_generate_normal_value",
+        "app.engine.simulator.np.random.normal",
         paused_normal_value,
     )
 
