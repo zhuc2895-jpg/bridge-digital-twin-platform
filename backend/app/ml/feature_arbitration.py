@@ -95,10 +95,14 @@ class FeatureArbitrator:
         trend_slope_threshold: float = TREND_SLOPE_THRESHOLD,
         required_features: int = REQUIRED_EXCEEDED_FEATURES,
     ) -> None:
-        if recent_window_size <= 1:
-            raise ValueError("recent_window_size must be greater than one")
-        if historical_window_size <= 1:
-            raise ValueError("historical_window_size must be greater than one")
+        if (
+            recent_window_size != RECENT_WINDOW_SIZE
+            or historical_window_size != HISTORICAL_WINDOW_SIZE
+        ):
+            raise ValueError(
+                "arbitration windows must be exactly 20 recent and "
+                "60 historical readings"
+            )
         if min(
             mean_shift_threshold,
             variance_change_threshold,
@@ -341,10 +345,20 @@ class FeatureArbitrator:
         mean_shift = _bounded(recent_mean - historical_mean, historical_scale)
         variance_change = _variance_change(recent_std, historical_std, scale_floor)
         raw_trend_slope = _linear_slope(recent)
-        trend_slope = _bounded(
+        normalized_trend_slope = _bounded(
             raw_trend_slope * (self.recent_window_size - 1),
             historical_scale,
         )
+        raw_trend_threshold = (
+            self.trend_slope_threshold
+            * historical_scale
+            / (self.recent_window_size - 1)
+        )
+        thresholds = {
+            "mean_shift": self.mean_shift_threshold,
+            "variance_change": self.variance_change_threshold,
+            "trend_slope": raw_trend_threshold,
+        }
 
         feature_evidence = {
             "mean_shift": _feature_evidence(
@@ -364,11 +378,12 @@ class FeatureArbitrator:
                 ),
             ),
             "trend_slope": _feature_evidence(
-                value=trend_slope,
-                threshold=self.trend_slope_threshold,
-                exceeded=abs(trend_slope) > self.trend_slope_threshold,
-                direction=_direction(trend_slope),
+                value=raw_trend_slope,
+                threshold=raw_trend_threshold,
+                exceeded=abs(raw_trend_slope) > raw_trend_threshold,
+                direction=_direction(raw_trend_slope),
                 raw_value=raw_trend_slope,
+                normalized_value=normalized_trend_slope,
             ),
         }
         features = {
@@ -397,7 +412,7 @@ class FeatureArbitrator:
             features=features,
             feature_evidence=feature_evidence,
             exceeded_features=exceeded_features,
-            thresholds=self._thresholds,
+            thresholds=thresholds,
             required_features=self.required_features,
             conclusion=conclusion,
             level=level,
@@ -428,9 +443,11 @@ class FeatureArbitrationDetector(BaseDetector):
         detector: BaseDetector,
         *,
         arbitrator: FeatureArbitrator | None = None,
+        normal_predicate: ReadingPredicate | None = None,
     ) -> None:
         self.detector = detector
         self.arbitrator = arbitrator or FeatureArbitrator()
+        self.normal_predicate = normal_predicate
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -465,7 +482,9 @@ class FeatureArbitrationDetector(BaseDetector):
 
     def detect_one(self, reading: Mapping[str, Any]) -> DetectionResult:
         result = self.detector.detect_one(reading)
-        decision = self.arbitrator.observe(reading)
+        decision = None
+        if self.normal_predicate is None or self.normal_predicate(reading):
+            decision = self.arbitrator.observe(reading)
         return self._apply_arbitration(result, decision)
 
     def detect_batch(
@@ -475,22 +494,40 @@ class FeatureArbitrationDetector(BaseDetector):
         normal_predicate: ReadingPredicate | None = None,
     ) -> list[DetectionResult]:
         batch = list(readings)
-        results = self.detector.detect_batch(
-            batch,
+        effective_normal_predicate = normal_predicate or self.normal_predicate
+        ordered_readings = sorted(
+            enumerate(batch),
+            key=lambda item: (
+                str(item[1]["sensor_id"]),
+                float(item[1]["timestamp"]),
+                item[0],
+            ),
+        )
+        ordered_results = self.detector.detect_batch(
+            [reading for _, reading in ordered_readings],
             normal_predicate=normal_predicate,
         )
-        if len(results) != len(batch):
+        if len(ordered_results) != len(batch):
             raise ValueError(
-                f"inner detector returned {len(results)} results "
+                f"inner detector returned {len(ordered_results)} results "
                 f"for {len(batch)} readings"
             )
+        results_by_index: dict[int, DetectionResult] = {}
+        for (original_index, _), result in zip(
+            ordered_readings,
+            ordered_results,
+            strict=True,
+        ):
+            results_by_index[original_index] = result
+        results = [results_by_index[index] for index in range(len(batch))]
         # Physical-rule alerts already cover abnormal readings. Keeping those
         # values out of this window prevents a threshold event from contaminating
         # later arbitration decisions for otherwise normal readings.
         eligible_indices = [
             index
             for index, reading in enumerate(batch)
-            if normal_predicate is None or normal_predicate(reading)
+            if effective_normal_predicate is None
+            or effective_normal_predicate(reading)
         ]
         eligible_positions = {
             batch_index: position
@@ -659,6 +696,7 @@ def _feature_evidence(
     exceeded: bool,
     direction: str,
     raw_value: float | None = None,
+    normalized_value: float | None = None,
 ) -> dict[str, Any]:
     evidence = {
         "value": _rounded(value),
@@ -668,6 +706,8 @@ def _feature_evidence(
     }
     if raw_value is not None:
         evidence["raw_value"] = _rounded(raw_value)
+    if normalized_value is not None:
+        evidence["normalized_value"] = _rounded(normalized_value)
     return evidence
 
 

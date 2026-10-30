@@ -7,6 +7,7 @@ from starlette.requests import HTTPConnection
 
 from app.engine.data_engine import MonitoringEngine
 from app.engine.simulator import DataSimulator
+from app.ml.contracts import ReadingPredicate
 from app.ml.feature_arbitration import FeatureArbitrationDetector
 from app.ml.registry import DetectorManager, DetectorRegistry
 from app.ml.voting import VotingDetector
@@ -25,15 +26,26 @@ class AppServices:
     ws_manager: WebSocketManager
 
 
-def build_detector_registry() -> DetectorRegistry:
+def build_detector_registry(
+    normal_predicate: ReadingPredicate | None = None,
+) -> DetectorRegistry:
     """Assemble the detector plugins enabled at application startup."""
-    return DetectorRegistry([FeatureArbitrationDetector(VotingDetector())])
+    return DetectorRegistry(
+        [
+            FeatureArbitrationDetector(
+                VotingDetector(),
+                normal_predicate=normal_predicate,
+            )
+        ]
+    )
 
 
 def create_services() -> AppServices:
     """Create a fresh, isolated set of services for an application instance."""
     engine = MonitoringEngine()
-    detectors = DetectorManager(build_detector_registry())
+    detectors = DetectorManager(
+        build_detector_registry(normal_predicate=engine.is_normal_reading)
+    )
     return AppServices(
         engine=engine,
         simulator=DataSimulator(),

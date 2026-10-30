@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from app.ml.contracts import BaseDetector, BaselineStatus
+from app.ml.contracts import BaseDetector, BaselineStatus, DetectionResult
 from app.ml.feature_arbitration import FeatureArbitrationDetector, FeatureArbitrator
 from app.ml.voting import VotingDetector
 from tests.factories import reading
@@ -50,7 +50,68 @@ class StubModelDetector(BaseDetector):
         return {"total_detections": 0, "ml_alerts_triggered": 0}
 
 
-def single_model_arbitration_detector() -> FeatureArbitrationDetector:
+class OrderSensitiveDetector(BaseDetector):
+    detector_id = "order_sensitive"
+    display_name = "Order-sensitive detector"
+    source = "ai_stalwart"
+
+    def __init__(self) -> None:
+        self.last_timestamp: float | None = None
+
+    def learn_baseline(self, reading, *, is_normal=True):
+        return self.get_baseline_status(reading["sensor_id"])
+
+    def get_baseline_status(self, sensor_id=None):
+        status = BaselineStatus(
+            sensor_id=sensor_id or "S01",
+            readings=100,
+            required_readings=100,
+            state="ready",
+            mean=100.0,
+            std=1.0,
+            ema_fast=100.0,
+            ema_slow=100.0,
+        )
+        if sensor_id is None:
+            return {"S01": status}
+        return status
+
+    def reset_baseline(self, sensor_id=None):
+        self.last_timestamp = None
+
+    def detect_one(self, reading):
+        timestamp = float(reading["timestamp"])
+        out_of_order = (
+            self.last_timestamp is not None
+            and timestamp < self.last_timestamp
+        )
+        self.last_timestamp = timestamp
+        return DetectionResult(
+            sensor_id=str(reading["sensor_id"]),
+            name=str(reading["name"]),
+            value=float(reading["value"]),
+            timestamp=timestamp,
+            detector_id=self.detector_id,
+            anomalous=out_of_order,
+            score=1.0 if out_of_order else 0.0,
+            confidence=1.0 if out_of_order else 0.0,
+            reason="out of order" if out_of_order else "event-time ordered",
+            level="orange" if out_of_order else None,
+            source=self.source,
+            details={
+                "triggered_models": ["order_sensitive"] if out_of_order else [],
+                "vote": out_of_order,
+            },
+        )
+
+    def detect_batch(self, readings, *, normal_predicate=None):
+        return [self.detect_one(reading) for reading in readings]
+
+    def get_stats(self):
+        return {"total_detections": 0, "ml_alerts_triggered": 0}
+
+
+def single_model_arbitration_detector(*, normal_predicate=None) -> FeatureArbitrationDetector:
     voting = VotingDetector(
         [
             StubModelDetector("stalwart", "ai_stalwart", anomalous=True),
@@ -58,7 +119,7 @@ def single_model_arbitration_detector() -> FeatureArbitrationDetector:
             StubModelDetector("isolation_forest", "ai_isolation_forest"),
         ]
     )
-    return FeatureArbitrationDetector(voting)
+    return FeatureArbitrationDetector(voting, normal_predicate=normal_predicate)
 
 
 def observation(value: float, index: int = 0) -> dict:
@@ -99,7 +160,8 @@ def test_mean_drift_is_confirmed_with_multiple_features():
 
     assert decision.features["mean_shift"] > 2.0
     assert decision.features["variance_change"] > 2.0
-    assert decision.features["trend_slope"] > 2.0
+    assert decision.features["trend_slope"] == pytest.approx(1.0)
+    assert decision.feature_evidence["trend_slope"]["exceeded"] is True
     assert len(decision.exceeded_features) >= 2
     assert decision.conclusion == "confirmed"
     assert decision.level == "red"
@@ -125,6 +187,18 @@ def test_trend_change_is_identified_without_a_mean_shift():
     assert decision.feature_evidence["trend_slope"]["exceeded"] is True
     assert decision.feature_evidence["mean_shift"]["exceeded"] is False
     assert decision.feature_evidence["variance_change"]["exceeded"] is False
+
+
+def test_trend_slope_feature_is_the_raw_linear_slope():
+    history = [95.0 if index % 2 else 105.0 for index in range(60)]
+    recent = [90.0 + index for index in range(20)]
+
+    decision = FeatureArbitrator().evaluate_values(history, recent)
+
+    assert decision.features["trend_slope"] == pytest.approx(1.0)
+    assert decision.feature_evidence["trend_slope"]["raw_value"] == pytest.approx(
+        1.0
+    )
 
 
 def test_single_feature_is_suspected_and_maps_to_yellow():
@@ -229,6 +303,21 @@ def test_shuffled_batch_is_evaluated_after_event_time_insertion():
 def test_confirmation_requires_exactly_two_features(required_features):
     with pytest.raises(ValueError, match="exactly two"):
         FeatureArbitrator(required_features=required_features)
+
+
+@pytest.mark.parametrize(
+    ("recent_window_size", "historical_window_size"),
+    [(19, 60), (20, 59), (21, 61)],
+)
+def test_arbitration_windows_are_fixed_to_twenty_and_sixty(
+    recent_window_size,
+    historical_window_size,
+):
+    with pytest.raises(ValueError, match="20.*60"):
+        FeatureArbitrator(
+            recent_window_size=recent_window_size,
+            historical_window_size=historical_window_size,
+        )
 
 
 def test_detector_emits_explainable_confirmed_arbitration_alert():
@@ -340,3 +429,42 @@ def test_physically_abnormal_batch_readings_are_excluded_from_window():
 
     assert results[-1].anomalous is False
     assert sensor_stats["readings"] == 79
+
+
+def test_detect_one_and_detect_batch_share_physical_rule_filtering():
+    def normal_predicate(item):
+        return item["value"] < 300.0
+
+    batch_detector = single_model_arbitration_detector(
+        normal_predicate=normal_predicate
+    )
+    one_detector = single_model_arbitration_detector(
+        normal_predicate=normal_predicate
+    )
+    normal_records = [observation(100.0, index) for index in range(79)]
+
+    batch_detector.detect_batch(
+        [*normal_records, observation(600.0, 79)],
+        normal_predicate=normal_predicate,
+    )
+    one_detector.detect_batch(
+        normal_records,
+        normal_predicate=normal_predicate,
+    )
+    one_detector.detect_one(observation(600.0, 79))
+
+    assert batch_detector.arbitrator.get_stats()["sensors"]["S01"]["readings"] == 79
+    assert one_detector.arbitrator.get_stats()["sensors"]["S01"]["readings"] == 79
+
+
+def test_detector_orders_batch_by_event_time_before_model_inference():
+    detector = FeatureArbitrationDetector(OrderSensitiveDetector())
+    readings = [
+        observation(100.0, 2),
+        observation(100.0, 1),
+        observation(100.0, 3),
+    ]
+
+    results = detector.detect_batch(readings)
+
+    assert [result.score for result in results] == [0.0, 0.0, 0.0]
