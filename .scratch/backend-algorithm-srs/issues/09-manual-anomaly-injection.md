@@ -6,9 +6,13 @@
 
 **Status:** ready-for-agent
 
-- [ ] `POST /api/analysis/inject-anomaly` 接受有效传感器标识，并对未知传感器返回 400。
-- [ ] 注入只作用于指定传感器的下一条读数；该读数按指定倍率和偏移范围生成，之后自动恢复正常数据流。
-- [ ] 注入读数进入与真实读数相同的摄入和检测流程，而非绕过后端直接构造告警。
-- [ ] 注入后在可查询时间内产生对应级别告警，并能通过最近告警和时段告警接口读取。
-- [ ] 连续两次注入不会互相污染；并发注入按明确规则处理，不产生重复消费。
-- [ ] 覆盖有效注入、未知传感器、倍率与偏移边界、一次性消费和完整告警链路的测试。
+- [x] `POST /api/analysis/inject-anomaly` 接受有效传感器标识，并对未知传感器返回 400。
+- [x] 注入只作用于指定传感器的下一条读数；该读数按指定倍率和偏移范围生成，之后自动恢复正常数据流。
+- [x] 注入读数进入与真实读数相同的摄入和检测流程，而非绕过后端直接构造告警。
+- [x] 注入后在可查询时间内产生对应级别告警，并能通过最近告警和时段告警接口读取。
+- [x] 连续两次注入不会互相污染；并发注入按明确规则处理，不产生重复消费。
+- [x] 覆盖有效注入、未知传感器、倍率与偏移边界、一次性消费和完整告警链路的测试。
+
+## Comments
+
+- 2026-10-30: Implemented a thread-safe per-sensor FIFO of one-shot anomaly injections. Each queued reading is generated at 2.5–4× the normal sample plus a 50–150 offset, consumed exactly once by a complete simulator frame, and then the sensor returns to its normal stream. The API accepts a body or query sensor identifier, rejects unknown or conflicting identifiers with 400, and queues work through the same simulator data path used by WebSocket ingestion. End-to-end coverage now drives the production WebSocket loop through physical thresholds, a deterministic three-model single-vote case, real feature arbitration, and recent/range alert queries, alongside boundary, recovery, producer-concurrency, and frame-consumption tests.

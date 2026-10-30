@@ -6,9 +6,35 @@
 """
 
 import asyncio
-import numpy as np
-import time
+from collections import deque
+from dataclasses import dataclass
 import random
+import threading
+import time
+
+import numpy as np
+
+DEFAULT_INJECTION_SENSOR_ID = "S01"
+MIN_INJECTION_MULTIPLIER = 2.5
+MAX_INJECTION_MULTIPLIER = 4.0
+MIN_INJECTION_OFFSET = 50.0
+MAX_INJECTION_OFFSET = 150.0
+
+
+class UnknownSimulatorSensorError(LookupError):
+    """Raised when an injection names a sensor the simulator does not emit."""
+
+
+@dataclass(frozen=True)
+class AnomalyInjection:
+    """One queued, single-reading anomaly transformation."""
+
+    sensor_id: str
+    multiplier: float
+    offset: float
+
+    def apply(self, normal_value: float) -> float:
+        return normal_value * self.multiplier + self.offset
 
 
 class DataSimulator:
@@ -43,13 +69,15 @@ class DataSimulator:
         {"id": "S08", "name": "桥面温度", "type": "temperature",
          "normal_mean": 28, "normal_std": 3},
     ]
+    SENSOR_IDS = frozenset(sensor["id"] for sensor in SENSORS)
 
     def __init__(self):
         self.is_running = False
         self.tick = 0
         self.anomaly_inject_interval = 200  # 每200周期自动注入一次异常
-        self.manual_anomaly = False
-        self.anomaly_sensor = None
+        self._pending_injections: dict[str, deque[AnomalyInjection]] = {}
+        self._injection_lock = threading.Lock()
+        self._frame_lock = threading.Lock()
 
     async def generate(self):
         """
@@ -57,53 +85,99 @@ class DataSimulator:
         """
         self.is_running = True
         while self.is_running:
-            self.tick += 1
-            data = []
-
-            for sensor in self.SENSORS:
-                mean = sensor["normal_mean"]
-                std = sensor["normal_std"]
-                value = np.random.normal(mean, std)
-
-                # 自动异常注入：每200周期在S01注入应变突增
-                if self.tick % self.anomaly_inject_interval == 0 and sensor["id"] == "S01":
-                    value = mean * (2.5 + random.random() * 1.5)
-                    value += np.random.normal(0, std * 0.5)
-
-                # 手动异常注入
-                if self.manual_anomaly and self.anomaly_sensor and sensor["id"] == self.anomaly_sensor:
-                    if sensor["type"] == "strain":
-                        value = mean * (3.0 + random.random() * 2.0)
-                    elif sensor["type"] == "displacement":
-                        value = mean * (4.0 + random.random() * 3.0)
-                    elif sensor["type"] == "acceleration":
-                        value = mean * (5.0 + random.random() * 5.0)
-                    elif sensor["type"] == "temperature":
-                        value = mean + 30 + random.random() * 10
-
-                # 温度日变化
-                if sensor["type"] == "temperature":
-                    hour_of_day = (self.tick % 86400) / 3600
-                    value += 8 * np.sin(2 * np.pi * (hour_of_day - 14) / 24)
-
-                data.append({
-                    "sensor_id": sensor["id"],
-                    "name": sensor["name"],
-                    "type": sensor["type"],
-                    "value": round(float(value), 4),
-                    "timestamp": time.time()
-                })
-
-            self.manual_anomaly = False
-            self.anomaly_sensor = None
-
-            yield data
+            yield self.next_readings()
             await asyncio.sleep(1)
 
-    def inject_anomaly(self, sensor_id: str = "S01"):
-        """手动注入异常"""
-        self.manual_anomaly = True
-        self.anomaly_sensor = sensor_id
+    def next_readings(self, timestamp: float | None = None) -> list[dict]:
+        """Generate one complete frame; concurrent callers own complete frames."""
+        with self._frame_lock:
+            return self._build_readings(timestamp)
+
+    def _build_readings(self, timestamp: float | None) -> list[dict]:
+        self.tick += 1
+        reading_timestamp = time.time() if timestamp is None else float(timestamp)
+        readings = []
+
+        for sensor in self.SENSORS:
+            normal_value = self._sample_normal_value(sensor)
+            value = normal_value
+
+            # 自动异常注入：每200周期在S01注入应变突增
+            if self.tick % self.anomaly_inject_interval == 0 and sensor["id"] == "S01":
+                value = normal_value * (2.5 + random.random() * 1.5)
+                value += float(np.random.normal(0, sensor["normal_std"] * 0.5))
+
+            injection = self._consume_injection(sensor["id"])
+            if injection is not None:
+                value = injection.apply(normal_value)
+
+            readings.append({
+                "sensor_id": sensor["id"],
+                "name": sensor["name"],
+                "type": sensor["type"],
+                "value": round(float(value), 4),
+                "timestamp": reading_timestamp,
+            })
+
+        return readings
+
+    def _sample_normal_value(self, sensor: dict) -> float:
+        value = float(
+            np.random.normal(sensor["normal_mean"], sensor["normal_std"])
+        )
+        if sensor["type"] == "temperature":
+            hour_of_day = (self.tick % 86400) / 3600
+            value += 8 * np.sin(2 * np.pi * (hour_of_day - 14) / 24)
+        return value
+
+    def inject_anomaly(
+        self,
+        sensor_id: str = DEFAULT_INJECTION_SENSOR_ID,
+    ) -> AnomalyInjection:
+        """Queue exactly one injected reading for a known simulator sensor."""
+        normalized_id = sensor_id.strip()
+        if normalized_id not in self.SENSOR_IDS:
+            raise UnknownSimulatorSensorError(
+                f"Sensor {normalized_id or sensor_id!r} not found"
+            )
+
+        with self._injection_lock:
+            injection = AnomalyInjection(
+                sensor_id=normalized_id,
+                multiplier=random.uniform(
+                    MIN_INJECTION_MULTIPLIER,
+                    MAX_INJECTION_MULTIPLIER,
+                ),
+                offset=random.uniform(
+                    MIN_INJECTION_OFFSET,
+                    MAX_INJECTION_OFFSET,
+                ),
+            )
+            self._pending_injections.setdefault(
+                normalized_id,
+                deque(),
+            ).append(injection)
+            return injection
+
+    def _consume_injection(self, sensor_id: str) -> AnomalyInjection | None:
+        with self._injection_lock:
+            pending = self._pending_injections.get(sensor_id)
+            if not pending:
+                return None
+            injection = pending.popleft()
+            if not pending:
+                del self._pending_injections[sensor_id]
+            return injection
+
+    def pending_injection_count(self, sensor_id: str | None = None) -> int:
+        """Return queued injection count for one sensor or the whole simulator."""
+        with self._injection_lock:
+            if sensor_id is not None:
+                return len(self._pending_injections.get(sensor_id, ()))
+            return sum(
+                len(pending)
+                for pending in self._pending_injections.values()
+            )
 
     def stop(self):
         """停止仿真"""

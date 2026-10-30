@@ -3,12 +3,22 @@
 """
 
 import time
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
+
 from app.dependencies import AppServices, get_services
+from app.engine.simulator import (
+    DEFAULT_INJECTION_SENSOR_ID,
+    UnknownSimulatorSensorError,
+)
 from app.ml.registry import DetectorRegistryError
 
 router = APIRouter()
+
+
+class AnomalyInjectionRequest(BaseModel):
+    sensor_id: str
 
 
 @router.get("/overview")
@@ -49,16 +59,39 @@ async def relearn_detector_baselines(
 
 @router.post("/inject-anomaly")
 async def inject_anomaly(
-    sensor_id: str = "S01",
+    payload: AnomalyInjectionRequest | None = Body(default=None),
+    sensor_id: str | None = Query(default=None),
     services: AppServices = Depends(get_services),
 ):
-    """手动注入异常（用于演示）"""
+    """Queue one injected reading for the next simulator frame."""
+    if payload is not None and sensor_id is not None:
+        if payload.sensor_id.strip() != sensor_id.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="body and query sensor_id values must match",
+            )
+    resolved_sensor_id = (
+        payload.sensor_id
+        if payload is not None
+        else sensor_id or DEFAULT_INJECTION_SENSOR_ID
+    )
     simulator = services.simulator
-    simulator.inject_anomaly(sensor_id)
+    try:
+        injection = simulator.inject_anomaly(resolved_sensor_id)
+    except UnknownSimulatorSensorError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     return {
         "status": "injected",
-        "sensor_id": sensor_id,
-        "message": f"异常已注入到传感器 {sensor_id}"
+        "sensor_id": injection.sensor_id,
+        "pending_injections": simulator.pending_injection_count(
+            injection.sensor_id
+        ),
+        "injection": {
+            "multiplier": injection.multiplier,
+            "offset": injection.offset,
+        },
+        "message": f"异常已注入到传感器 {injection.sensor_id} 的下一条读数",
     }
 
 
