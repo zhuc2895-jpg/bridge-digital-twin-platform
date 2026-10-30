@@ -1,4 +1,5 @@
 import math
+from dataclasses import replace
 
 import pytest
 
@@ -50,31 +51,10 @@ class StubModelDetector(BaseDetector):
         return {"total_detections": 0, "ml_alerts_triggered": 0}
 
 
-class OrderSensitiveDetector(BaseDetector):
-    detector_id = "order_sensitive"
-    display_name = "Order-sensitive detector"
-    source = "ai_stalwart"
-
+class OrderSensitiveDetector(StubModelDetector):
     def __init__(self) -> None:
+        super().__init__("order_sensitive", "ai_stalwart")
         self.last_timestamp: float | None = None
-
-    def learn_baseline(self, reading, *, is_normal=True):
-        return self.get_baseline_status(reading["sensor_id"])
-
-    def get_baseline_status(self, sensor_id=None):
-        status = BaselineStatus(
-            sensor_id=sensor_id or "S01",
-            readings=100,
-            required_readings=100,
-            state="ready",
-            mean=100.0,
-            std=1.0,
-            ema_fast=100.0,
-            ema_slow=100.0,
-        )
-        if sensor_id is None:
-            return {"S01": status}
-        return status
 
     def reset_baseline(self, sensor_id=None):
         self.last_timestamp = None
@@ -105,11 +85,23 @@ class OrderSensitiveDetector(BaseDetector):
         )
 
     def detect_batch(self, readings, *, normal_predicate=None):
-        return [self.detect_one(reading) for reading in readings]
-
-    def get_stats(self):
-        return {"total_detections": 0, "ml_alerts_triggered": 0}
-
+        results = []
+        for item in readings:
+            result = self.detect_one(item)
+            results.append(
+                replace(
+                    result,
+                    details={
+                        **result.details,
+                        "inner_normal": (
+                            normal_predicate(item)
+                            if normal_predicate is not None
+                            else None
+                        ),
+                    },
+                )
+            )
+        return results
 
 def single_model_arbitration_detector(*, normal_predicate=None) -> FeatureArbitrationDetector:
     voting = VotingDetector(
@@ -305,19 +297,12 @@ def test_confirmation_requires_exactly_two_features(required_features):
         FeatureArbitrator(required_features=required_features)
 
 
-@pytest.mark.parametrize(
-    ("recent_window_size", "historical_window_size"),
-    [(19, 60), (20, 59), (21, 61)],
-)
-def test_arbitration_windows_are_fixed_to_twenty_and_sixty(
-    recent_window_size,
-    historical_window_size,
-):
-    with pytest.raises(ValueError, match="20.*60"):
-        FeatureArbitrator(
-            recent_window_size=recent_window_size,
-            historical_window_size=historical_window_size,
-        )
+def test_arbitration_windows_are_fixed_to_twenty_and_sixty():
+    parameters = FeatureArbitrator().parameters
+
+    assert parameters["recent_window_size"] == 20
+    assert parameters["historical_window_size"] == 60
+    assert parameters["window_required"] == 80
 
 
 def test_detector_emits_explainable_confirmed_arbitration_alert():
@@ -468,3 +453,26 @@ def test_detector_orders_batch_by_event_time_before_model_inference():
     results = detector.detect_batch(readings)
 
     assert [result.score for result in results] == [0.0, 0.0, 0.0]
+
+
+def test_detector_handles_cross_batch_backfill_by_event_time():
+    detector = FeatureArbitrationDetector(OrderSensitiveDetector())
+
+    first_results = detector.detect_batch(
+        [observation(100.0, 2), observation(100.0, 3)]
+    )
+    backfill_result = detector.detect_batch([observation(100.0, 1)])
+
+    assert [result.score for result in first_results] == [0.0, 0.0]
+    assert backfill_result[0].score == 0.0
+
+
+def test_constructor_normal_predicate_is_forwarded_to_inner_detector():
+    detector = FeatureArbitrationDetector(
+        OrderSensitiveDetector(),
+        normal_predicate=lambda item: item["value"] < 300.0,
+    )
+
+    result = detector.detect_batch([observation(600.0, 1)])[0]
+
+    assert result.details["inner_normal"] is False
