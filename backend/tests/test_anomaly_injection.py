@@ -194,6 +194,7 @@ def test_inject_anomaly_triggers_queryable_alert_without_websocket(
     ).json()["alerts"]
 
     assert response.status_code == 200
+    assert response.json()["message"] == "已生成并处理传感器 S01 的下一条注入读数"
     assert app.state.services.engine.get_stats()["total_readings"] == 1
     assert set(client.get("/api/sensors/").json()) == {"S01"}
     assert rule_alert["value"] == pytest.approx(550.0)
@@ -347,6 +348,18 @@ def test_consecutive_injections_are_consumed_in_order_without_contamination(
         for item in recovered_tick
         if item["sensor_id"] != "S08"
     )
+
+
+def test_tick_200_generates_automatic_s01_anomaly(monkeypatch):
+    simulator = DataSimulator()
+    _set_normal_values(monkeypatch)
+    monkeypatch.setattr("app.engine.simulator.random.random", lambda: 0.0)
+
+    for index in range(199):
+        simulator.next_readings(timestamp=float(index))
+    automatic_tick = simulator.next_readings(timestamp=199.0)
+
+    assert _reading_for(automatic_tick, "S01")["value"] == pytest.approx(500.0)
 
 
 def test_injection_requested_during_frame_applies_to_next_frame(monkeypatch):

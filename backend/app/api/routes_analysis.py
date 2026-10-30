@@ -110,7 +110,7 @@ async def inject_anomaly(
             "multiplier": injection.multiplier,
             "offset": injection.offset,
         },
-        "message": f"异常已注入到传感器 {injected_sensor_id} 的下一条读数",
+        "message": f"已生成并处理传感器 {injected_sensor_id} 的下一条注入读数",
     }
 
 

@@ -173,7 +173,7 @@ class DataSimulator:
 
         if (
             sensor_tick % self.anomaly_inject_interval == 0
-            and sensor.identifier == DEFAULT_INJECTION_TARGET
+            and sensor.identifier == AUTOMATIC_INJECTION_TARGET
         ):
             value = normal_value * (2.5 + random.random() * 1.5)
             value += float(np.random.normal(0, sensor.normal_std * 0.5))

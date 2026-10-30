@@ -8,6 +8,14 @@ Context for a bridge structural health monitoring platform that turns timestampe
 A timestamped measurement from one bridge sensor.
 _Avoid_: sample, data point
 
+**Injected Reading**:
+A Sensor Reading generated immediately for one specified sensor by applying a one-shot anomaly transform while advancing only that sensor's stream position.
+_Avoid_: synthetic reading, queued injection
+
+**Manual Anomaly Injection**:
+A command that requests exactly one Injected Reading for a specified sensor and sends it through the normal monitoring chain.
+_Avoid_: test anomaly, direct alert
+
 **Physical Threshold**:
 A positive limit assigned to one sensor type and one alert level.
 _Avoid_: alarm limit, cutoff
