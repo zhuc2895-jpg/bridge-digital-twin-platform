@@ -99,7 +99,7 @@ class DataSimulator:
         readings = []
 
         for sensor in self.SENSORS:
-            normal_value = self._sample_normal_value(sensor)
+            normal_value = self._generate_normal_value(sensor)
             value = normal_value
 
             # 自动异常注入：每200周期在S01注入应变突增
@@ -121,7 +121,7 @@ class DataSimulator:
 
         return readings
 
-    def _sample_normal_value(self, sensor: dict) -> float:
+    def _generate_normal_value(self, sensor: dict) -> float:
         value = float(
             np.random.normal(sensor["normal_mean"], sensor["normal_std"])
         )
@@ -141,7 +141,7 @@ class DataSimulator:
                 f"Sensor {normalized_id or sensor_id!r} not found"
             )
 
-        with self._injection_lock:
+        with self._frame_lock, self._injection_lock:
             injection = AnomalyInjection(
                 sensor_id=normalized_id,
                 multiplier=random.uniform(

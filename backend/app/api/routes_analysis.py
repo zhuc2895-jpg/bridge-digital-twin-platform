@@ -8,10 +8,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from app.dependencies import AppServices, get_services
-from app.engine.simulator import (
-    DEFAULT_INJECTION_SENSOR_ID,
-    UnknownSimulatorSensorError,
-)
+from app.engine.simulator import UnknownSimulatorSensorError
 from app.ml.registry import DetectorRegistryError
 
 router = APIRouter()
@@ -64,17 +61,20 @@ async def inject_anomaly(
     services: AppServices = Depends(get_services),
 ):
     """Queue one injected reading for the next simulator frame."""
+    if payload is None and sensor_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="sensor_id is required",
+        )
     if payload is not None and sensor_id is not None:
         if payload.sensor_id.strip() != sensor_id.strip():
             raise HTTPException(
                 status_code=400,
                 detail="body and query sensor_id values must match",
             )
-    resolved_sensor_id = (
-        payload.sensor_id
-        if payload is not None
-        else sensor_id or DEFAULT_INJECTION_SENSOR_ID
-    )
+    resolved_sensor_id = payload.sensor_id if payload is not None else sensor_id
+    if not resolved_sensor_id.strip():
+        raise HTTPException(status_code=400, detail="sensor_id is required")
     simulator = services.simulator
     try:
         injection = simulator.inject_anomaly(resolved_sensor_id)

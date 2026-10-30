@@ -86,7 +86,7 @@ class OneShotInjectionSimulator(DataSimulator):
             self.is_running = False
 
 
-def _set_normal_samples(monkeypatch):
+def _set_normal_values(monkeypatch):
     monkeypatch.setattr(
         "app.engine.simulator.np.random.normal",
         lambda loc, scale: loc,
@@ -113,7 +113,27 @@ def _reading_for(frame: list[dict], sensor_id: str) -> dict:
     return next(item for item in frame if item["sensor_id"] == sensor_id)
 
 
-def test_inject_anomaly_rejects_unknown_sensor_with_400(client):
+def _run_concurrently(*operations):
+    barrier = threading.Barrier(len(operations) + 1)
+
+    def run(operation):
+        barrier.wait()
+        return operation()
+
+    with ThreadPoolExecutor(max_workers=len(operations)) as pool:
+        futures = [pool.submit(run, operation) for operation in operations]
+        barrier.wait()
+        return [future.result(timeout=2) for future in futures]
+
+
+def test_inject_anomaly_rejects_missing_sensor_identifier(app, client):
+    response = client.post("/api/analysis/inject-anomaly")
+
+    assert response.status_code == 400
+    assert app.state.services.simulator.pending_injection_count() == 0
+
+
+def test_inject_anomaly_rejects_unknown_sensor_with_400(app, client):
     response = client.post(
         "/api/analysis/inject-anomaly",
         params={"sensor_id": "UNKNOWN"},
@@ -121,10 +141,10 @@ def test_inject_anomaly_rejects_unknown_sensor_with_400(client):
 
     assert response.status_code == 400
     assert "UNKNOWN" in response.json()["detail"]
-    assert client.app.state.services.simulator.pending_injection_count("S01") == 0
+    assert app.state.services.simulator.pending_injection_count("S01") == 0
 
 
-def test_inject_anomaly_rejects_conflicting_identifier_sources(client):
+def test_inject_anomaly_rejects_conflicting_identifier_sources(app, client):
     response = client.post(
         "/api/analysis/inject-anomaly",
         params={"sensor_id": "S01"},
@@ -132,7 +152,7 @@ def test_inject_anomaly_rejects_conflicting_identifier_sources(client):
     )
 
     assert response.status_code == 400
-    assert client.app.state.services.simulator.pending_injection_count() == 0
+    assert app.state.services.simulator.pending_injection_count() == 0
 
 
 def test_injected_reading_uses_configured_ranges_once_then_recovers(
@@ -141,7 +161,7 @@ def test_injected_reading_uses_configured_ranges_once_then_recovers(
     monkeypatch,
 ):
     simulator = app.state.services.simulator
-    _set_normal_samples(monkeypatch)
+    _set_normal_values(monkeypatch)
     _set_uniform_sequence(monkeypatch, 2.5, 50.0)
 
     response = client.post(
@@ -167,7 +187,7 @@ def test_consecutive_injections_are_consumed_in_order_without_contamination(
     monkeypatch,
 ):
     simulator = app.state.services.simulator
-    _set_normal_samples(monkeypatch)
+    _set_normal_values(monkeypatch)
     _set_uniform_sequence(monkeypatch, 2.5, 50.0, 4.0, 150.0)
 
     first = client.post("/api/analysis/inject-anomaly?sensor_id=S01")
@@ -195,22 +215,54 @@ def test_consecutive_injections_are_consumed_in_order_without_contamination(
     assert simulator.pending_injection_count("S01") == 0
 
 
-def test_concurrent_injections_are_queued_atomically(monkeypatch):
+def test_injection_requested_during_frame_applies_to_next_frame(monkeypatch):
     simulator = DataSimulator()
-    _set_normal_samples(monkeypatch)
-    _set_uniform_sequence(monkeypatch, 2.5, 50.0, 4.0, 150.0)
-    barrier = threading.Barrier(3)
+    _set_uniform_sequence(monkeypatch, 2.5, 50.0)
+    frame_started = threading.Event()
+    injection_started = threading.Event()
+    release_frame = threading.Event()
 
-    def inject():
-        barrier.wait()
+    def paused_normal_value(sensor):
+        if sensor["id"] == "S01" and not frame_started.is_set():
+            frame_started.set()
+            assert release_frame.wait(timeout=2)
+        return float(sensor["normal_mean"])
+
+    monkeypatch.setattr(
+        simulator,
+        "_generate_normal_value",
+        paused_normal_value,
+    )
+
+    def request_injection():
+        injection_started.set()
         return simulator.inject_anomaly("S01")
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        first = pool.submit(inject)
-        second = pool.submit(inject)
-        barrier.wait()
-        first.result()
-        second.result()
+        frame_future = pool.submit(simulator.next_readings, 1000.0)
+        assert frame_started.wait(timeout=1)
+        injection_future = pool.submit(request_injection)
+        assert injection_started.wait(timeout=1)
+        threading.Timer(0.05, release_frame.set).start()
+
+        first_frame = frame_future.result(timeout=2)
+        injection_future.result(timeout=2)
+        second_frame = simulator.next_readings(timestamp=1001.0)
+
+    assert _reading_for(first_frame, "S01")["value"] == pytest.approx(200.0)
+    assert _reading_for(second_frame, "S01")["value"] == pytest.approx(550.0)
+    assert simulator.pending_injection_count("S01") == 0
+
+
+def test_concurrent_injections_are_queued_atomically(monkeypatch):
+    simulator = DataSimulator()
+    _set_normal_values(monkeypatch)
+    _set_uniform_sequence(monkeypatch, 2.5, 50.0, 4.0, 150.0)
+
+    _run_concurrently(
+        lambda: simulator.inject_anomaly("S01"),
+        lambda: simulator.inject_anomaly("S01"),
+    )
 
     assert simulator.pending_injection_count("S01") == 2
     assert _reading_for(
@@ -226,21 +278,15 @@ def test_concurrent_injections_are_queued_atomically(monkeypatch):
 
 def test_concurrent_frames_consume_each_injection_exactly_once(monkeypatch):
     simulator = DataSimulator()
-    _set_normal_samples(monkeypatch)
+    _set_normal_values(monkeypatch)
     _set_uniform_sequence(monkeypatch, 2.5, 50.0, 4.0, 150.0)
     simulator.inject_anomaly("S01")
     simulator.inject_anomaly("S01")
-    barrier = threading.Barrier(3)
 
-    def generate_frame(timestamp):
-        barrier.wait()
-        return simulator.next_readings(timestamp=timestamp)
-
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        first = pool.submit(generate_frame, 1000.0)
-        second = pool.submit(generate_frame, 1001.0)
-        barrier.wait()
-        frames = [first.result(), second.result()]
+    frames = _run_concurrently(
+        lambda: simulator.next_readings(timestamp=1000.0),
+        lambda: simulator.next_readings(timestamp=1001.0),
+    )
 
     injected_values = sorted(
         _reading_for(frame, "S01")["value"]
@@ -251,7 +297,7 @@ def test_concurrent_frames_consume_each_injection_exactly_once(monkeypatch):
 
 
 def test_injected_reading_runs_websocket_processing_and_is_queryable(monkeypatch):
-    _set_normal_samples(monkeypatch)
+    _set_normal_values(monkeypatch)
     _set_uniform_sequence(monkeypatch, 2.5, 50.0)
     base = 1_700_000_000.0
     services = create_services()
