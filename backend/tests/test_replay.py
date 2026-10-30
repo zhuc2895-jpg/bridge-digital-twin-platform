@@ -71,7 +71,7 @@ def test_snapshot_interface_stays_under_100ms_with_eight_full_histories(client, 
     assert elapsed <= 0.1
 
 
-def test_24_hour_four_times_speed_replay_matches_snapshots_and_alerts(client):
+def test_24_hour_four_times_speed_replay_matches_snapshots_and_alerts(client, app):
     base = 1_700_000_000.0
     sample_interval = 10.0
     sample_count = 8_641
@@ -119,11 +119,19 @@ def test_24_hour_four_times_speed_replay_matches_snapshots_and_alerts(client):
             for sensor in range(8)
         }
 
-        expected_alert_count = offset // 3_600 + 1
+        expected_rule_alert_count = offset // 3_600 + 1
         alert_payload = alerts.json()
         assert alert_payload["start"] == base
         assert alert_payload["end"] == base + offset
-        assert alert_payload["count"] == expected_alert_count
+        rule_alerts = [
+            item for item in alert_payload["alerts"] if item["source"] == "rule"
+        ]
+        engine_alerts = app.state.services.engine.get_alerts_range(
+            base,
+            base + offset,
+        )
+        assert alert_payload["count"] == len(engine_alerts)
+        assert len(rule_alerts) == expected_rule_alert_count
         assert [
             (
                 item["timestamp"],
@@ -134,7 +142,7 @@ def test_24_hour_four_times_speed_replay_matches_snapshots_and_alerts(client):
                 item["threshold"],
                 item["source"],
             )
-            for item in alert_payload["alerts"]
+            for item in rule_alerts
         ] == [
             (
                 base + index * 3_600,
@@ -145,7 +153,7 @@ def test_24_hour_four_times_speed_replay_matches_snapshots_and_alerts(client):
                 600.0,
                 "rule",
             )
-            for index in range(expected_alert_count - 1, -1, -1)
+            for index in range(expected_rule_alert_count - 1, -1, -1)
         ]
 
 

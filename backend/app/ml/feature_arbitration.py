@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from bisect import bisect_right
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import math
 from typing import Any, Mapping, Sequence
 
@@ -88,6 +88,12 @@ class _HistoryReading:
     timestamp: float
     sequence: int
     reading: dict[str, Any]
+
+
+@dataclass
+class _SensorHistoryState:
+    entries: list[_HistoryReading] = field(default_factory=list)
+    latest_timestamp: float | None = None
 
 
 class FeatureArbitrator:
@@ -446,9 +452,10 @@ class FeatureArbitrationDetector(BaseDetector):
         self.detector = detector
         self.arbitrator = arbitrator or FeatureArbitrator()
         self.normal_predicate = normal_predicate
-        self._history: dict[str, list[_HistoryReading]] = {}
-        self._latest_timestamps: dict[str, float] = {}
+        self._history: dict[str, _SensorHistoryState] = {}
         self._history_sequence = 0
+        self._total_detections = 0
+        self._alerts_triggered = 0
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -469,6 +476,11 @@ class FeatureArbitrationDetector(BaseDetector):
         status = self.detector.learn_baseline(reading, is_normal=is_normal)
         if is_normal:
             self.arbitrator.observe(reading)
+        entry = self._history_entry(reading)
+        state = self._sensor_history(entry.sensor_id)
+        state.entries.append(entry)
+        self._update_latest_timestamp(state, entry.timestamp)
+        self._trim_history(state)
         return status
 
     def get_baseline_status(
@@ -482,12 +494,10 @@ class FeatureArbitrationDetector(BaseDetector):
         self.arbitrator.reset(sensor_id)
         if sensor_id is None:
             self._history.clear()
-            self._latest_timestamps.clear()
             self._history_sequence = 0
             return
         current_sensor_id = str(sensor_id)
         self._history.pop(current_sensor_id, None)
-        self._latest_timestamps.pop(current_sensor_id, None)
 
     def detect_one(self, reading: Mapping[str, Any]) -> DetectionResult:
         return self.detect_batch([reading])[0]
@@ -506,126 +516,61 @@ class FeatureArbitrationDetector(BaseDetector):
             self._history_entry(reading)
             for reading in batch
         ]
-        has_backfill = any(
-            self._latest_timestamps.get(entry.sensor_id) is not None
-            and entry.timestamp < self._latest_timestamps[entry.sensor_id]
-            for entry in batch_entries
-        )
+        has_backfill = any(self._is_backfill(entry) for entry in batch_entries)
 
         if has_backfill:
             for entry in batch_entries:
-                self._history.setdefault(entry.sensor_id, []).append(entry)
-            replay_entries = sorted(
-                self._all_history(),
-                key=lambda entry: (
-                    entry.sensor_id,
-                    entry.timestamp,
-                    entry.sequence,
-                ),
-            )
+                self._sensor_history(entry.sensor_id).entries.append(entry)
             self.detector.reset_baseline(None)
-            replay_results = self.detector.detect_batch(
-                [entry.reading for entry in replay_entries],
-                normal_predicate=effective_normal_predicate,
-            )
-            if len(replay_results) != len(replay_entries):
-                raise ValueError(
-                    f"inner detector returned {len(replay_results)} results "
-                    f"for {len(replay_entries)} replay readings"
-                )
             current_by_sequence = {
                 entry.sequence: index
                 for index, entry in enumerate(batch_entries)
             }
-            results_by_index: dict[int, DetectionResult] = {}
-            for entry, result in zip(
-                replay_entries,
-                replay_results,
-                strict=True,
-            ):
-                original_index = current_by_sequence.get(entry.sequence)
-                if original_index is not None:
-                    results_by_index[original_index] = result
+            _, results_by_index = self._run_ordered_entries(
+                self._all_history(),
+                current_by_sequence,
+                effective_normal_predicate,
+            )
         else:
-            ordered_entries = sorted(
-                batch_entries,
-                key=lambda entry: (
-                    entry.sensor_id,
-                    entry.timestamp,
-                    entry.sequence,
-                ),
-            )
-            ordered_results = self.detector.detect_batch(
-                [entry.reading for entry in ordered_entries],
-                normal_predicate=effective_normal_predicate,
-            )
-            if len(ordered_results) != len(batch):
-                raise ValueError(
-                    f"inner detector returned {len(ordered_results)} results "
-                    f"for {len(batch)} readings"
-                )
             current_by_sequence = {
                 entry.sequence: index
                 for index, entry in enumerate(batch_entries)
             }
-            results_by_index = {
-                current_by_sequence[entry.sequence]: result
-                for entry, result in zip(
-                    ordered_entries,
-                    ordered_results,
-                    strict=True,
-                )
-            }
+            ordered_entries, results_by_index = self._run_ordered_entries(
+                batch_entries,
+                current_by_sequence,
+                effective_normal_predicate,
+            )
             for entry in ordered_entries:
-                self._history.setdefault(entry.sensor_id, []).append(entry)
+                self._sensor_history(entry.sensor_id).entries.append(entry)
 
         for entry in batch_entries:
-            previous_timestamp = self._latest_timestamps.get(entry.sensor_id)
-            if (
-                previous_timestamp is None
-                or entry.timestamp > previous_timestamp
-            ):
-                self._latest_timestamps[entry.sensor_id] = entry.timestamp
+            state = self._sensor_history(entry.sensor_id)
+            self._update_latest_timestamp(state, entry.timestamp)
 
-        for sensor_id in self._history:
-            entries = self._history[sensor_id]
-            entries.sort(key=lambda entry: (entry.timestamp, entry.sequence))
-            if len(entries) > MAX_RETAINED_READINGS:
-                del entries[: len(entries) - MAX_RETAINED_READINGS]
+        for state in self._history.values():
+            self._trim_history(state)
 
         results = [results_by_index[index] for index in range(len(batch))]
-        # Physical-rule alerts already cover abnormal readings. Keeping those
-        # values out of this window prevents a threshold event from contaminating
-        # later arbitration decisions for otherwise normal readings.
-        eligible_indices = [
-            index
-            for index, reading in enumerate(batch)
-            if effective_normal_predicate is None
-            or effective_normal_predicate(reading)
-        ]
-        eligible_positions = {
-            batch_index: position
-            for position, batch_index in enumerate(eligible_indices)
-        }
         candidate_positions = [
-            eligible_positions[index]
+            index
             for index, result in enumerate(results)
-            if index in eligible_positions
-            and not result.anomalous
+            if not result.anomalous
             and bool(self._triggered_models(result))
         ]
-        decisions_by_position = self.arbitrator.observe_selected(
-            [batch[index] for index in eligible_indices],
+        decisions_by_index = self.arbitrator.observe_selected(
+            batch,
             candidate_positions,
         )
-        decisions_by_index = {
-            eligible_indices[position]: decision
-            for position, decision in decisions_by_position.items()
-        }
-        return [
+        combined_results = [
             self._apply_arbitration(result, decisions_by_index.get(index))
             for index, result in enumerate(results)
         ]
+        self._total_detections += len(combined_results)
+        self._alerts_triggered += sum(
+            result.anomalous for result in combined_results
+        )
+        return combined_results
 
     def _history_entry(
         self,
@@ -640,14 +585,72 @@ class FeatureArbitrationDetector(BaseDetector):
         )
 
     def _all_history(self) -> list[_HistoryReading]:
-        return [
-            entry
-            for entries in self._history.values()
-            for entry in entries
-        ]
+        return [entry for state in self._history.values() for entry in state.entries]
+
+    def _sensor_history(self, sensor_id: str) -> _SensorHistoryState:
+        return self._history.setdefault(sensor_id, _SensorHistoryState())
+
+    def _is_backfill(self, entry: _HistoryReading) -> bool:
+        state = self._history.get(entry.sensor_id)
+        return (
+            state is not None
+            and state.latest_timestamp is not None
+            and entry.timestamp < state.latest_timestamp
+        )
+
+    @staticmethod
+    def _update_latest_timestamp(
+        state: _SensorHistoryState,
+        timestamp: float,
+    ) -> None:
+        if state.latest_timestamp is None or timestamp > state.latest_timestamp:
+            state.latest_timestamp = timestamp
+
+    @staticmethod
+    def _trim_history(state: _SensorHistoryState) -> None:
+        state.entries.sort(key=lambda entry: (entry.timestamp, entry.sequence))
+        if len(state.entries) > MAX_RETAINED_READINGS:
+            del state.entries[: len(state.entries) - MAX_RETAINED_READINGS]
+
+    def _run_ordered_entries(
+        self,
+        entries: Sequence[_HistoryReading],
+        current_by_sequence: Mapping[int, int],
+        normal_predicate: ReadingPredicate | None,
+    ) -> tuple[list[_HistoryReading], dict[int, DetectionResult]]:
+        ordered_entries = sorted(
+            entries,
+            key=lambda entry: (
+                entry.sensor_id,
+                entry.timestamp,
+                entry.sequence,
+            ),
+        )
+        ordered_results = self.detector.detect_batch(
+            [entry.reading for entry in ordered_entries],
+            normal_predicate=normal_predicate,
+        )
+        if len(ordered_results) != len(ordered_entries):
+            raise ValueError(
+                f"inner detector returned {len(ordered_results)} results "
+                f"for {len(ordered_entries)} readings"
+            )
+        results_by_index: dict[int, DetectionResult] = {}
+        for entry, result in zip(ordered_entries, ordered_results, strict=True):
+            original_index = current_by_sequence.get(entry.sequence)
+            if original_index is not None:
+                results_by_index[original_index] = result
+        return ordered_entries, results_by_index
 
     def get_stats(self) -> dict[str, Any]:
         stats = dict(self.detector.get_stats())
+        stats["inner_reported_total_detections"] = stats.get("total_detections", 0)
+        stats["inner_reported_ml_alerts_triggered"] = stats.get(
+            "ml_alerts_triggered",
+            0,
+        )
+        stats["total_detections"] = self._total_detections
+        stats["ml_alerts_triggered"] = self._alerts_triggered
         stats["arbitration"] = self.arbitrator.get_stats()
         stats["layers"] = ["model_voting", "feature_arbitration"]
         return stats

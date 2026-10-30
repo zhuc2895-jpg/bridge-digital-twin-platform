@@ -103,6 +103,39 @@ class OrderSensitiveDetector(StubModelDetector):
             )
         return results
 
+
+class HistoryProbeDetector(OrderSensitiveDetector):
+    def __init__(self) -> None:
+        super().__init__()
+        self.processed_timestamps: list[float] = []
+
+    def detect_one(self, reading):
+        self.processed_timestamps.append(float(reading["timestamp"]))
+        return super().detect_one(reading)
+
+    def get_stats(self):
+        return {
+            **super().get_stats(),
+            "processed_timestamps": list(self.processed_timestamps),
+        }
+
+
+class CountingHistoryDetector(HistoryProbeDetector):
+    def __init__(self) -> None:
+        super().__init__()
+        self.detection_count = 0
+
+    def detect_one(self, reading):
+        self.detection_count += 1
+        return super().detect_one(reading)
+
+    def get_stats(self):
+        return {
+            **super().get_stats(),
+            "total_detections": self.detection_count,
+        }
+
+
 def single_model_arbitration_detector(*, normal_predicate=None) -> FeatureArbitrationDetector:
     voting = VotingDetector(
         [
@@ -399,11 +432,14 @@ def test_feature_arbitration_alert_is_persisted_through_ingestion(client, app):
     assert alerts[0]["details"]["exceeded_features"] == ["mean_shift"]
 
 
-def test_physically_abnormal_batch_readings_are_excluded_from_window():
+def test_physically_abnormal_reading_enters_arbitration_and_can_be_confirmed():
     detector = single_model_arbitration_detector()
     records = [
-        observation(100.0, index)
-        for index in range(79)
+        observation(99.0 if index % 2 else 101.0, index)
+        for index in range(60)
+    ] + [
+        observation(125.0, index)
+        for index in range(60, 79)
     ] + [observation(600.0, 79)]
 
     results = detector.detect_batch(
@@ -412,11 +448,12 @@ def test_physically_abnormal_batch_readings_are_excluded_from_window():
     )
     sensor_stats = detector.arbitrator.get_stats()["sensors"]["S01"]
 
-    assert results[-1].anomalous is False
-    assert sensor_stats["readings"] == 79
+    assert results[-1].anomalous is True
+    assert results[-1].source == "ai_feature_arbitration"
+    assert sensor_stats["readings"] == 80
 
 
-def test_detect_one_and_detect_batch_share_physical_rule_filtering():
+def test_detect_one_and_detect_batch_share_arbitration_history_semantics():
     def normal_predicate(item):
         return item["value"] < 300.0
 
@@ -438,8 +475,8 @@ def test_detect_one_and_detect_batch_share_physical_rule_filtering():
     )
     one_detector.detect_one(observation(600.0, 79))
 
-    assert batch_detector.arbitrator.get_stats()["sensors"]["S01"]["readings"] == 79
-    assert one_detector.arbitrator.get_stats()["sensors"]["S01"]["readings"] == 79
+    assert batch_detector.arbitrator.get_stats()["sensors"]["S01"]["readings"] == 80
+    assert one_detector.arbitrator.get_stats()["sensors"]["S01"]["readings"] == 80
 
 
 def test_detector_orders_batch_by_event_time_before_model_inference():
@@ -476,3 +513,24 @@ def test_constructor_normal_predicate_is_forwarded_to_inner_detector():
     result = detector.detect_batch([observation(600.0, 1)])[0]
 
     assert result.details["inner_normal"] is False
+
+
+def test_learned_baseline_samples_are_replayed_for_later_backfills():
+    base = 1_700_000_000.0
+    detector = FeatureArbitrationDetector(HistoryProbeDetector())
+    detector.learn_baseline(reading(value=100.0, timestamp=base + 1))
+    detector.learn_baseline(reading(value=100.0, timestamp=base + 2))
+
+    detector.detect_batch([reading(value=100.0, timestamp=base)])
+    processed = detector.get_stats()["processed_timestamps"]
+
+    assert processed == [base, base + 1, base + 2]
+
+
+def test_backfill_replay_does_not_inflate_public_detection_stats():
+    detector = FeatureArbitrationDetector(CountingHistoryDetector())
+    detector.detect_batch([observation(100.0, 2), observation(100.0, 3)])
+
+    detector.detect_batch([observation(100.0, 1)])
+
+    assert detector.get_stats()["total_detections"] == 3
