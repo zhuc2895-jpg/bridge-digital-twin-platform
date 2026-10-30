@@ -1,6 +1,7 @@
 """Application service assembly and FastAPI dependency providers."""
 
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
 
 from fastapi import Depends
 from starlette.requests import HTTPConnection
@@ -24,6 +25,17 @@ class AppServices:
     detectors: DetectorManager
     processor: SensorDataProcessor
     ws_manager: WebSocketManager
+    processing_lock: threading.RLock = field(default_factory=threading.RLock)
+
+    async def broadcast_sensor_update(self, readings: list[dict]) -> None:
+        await self.ws_manager.broadcast(
+            {
+                "type": "sensor_update",
+                "sensors": readings,
+                "alerts": self.engine.get_recent_alerts(),
+                "stats": self.engine.get_stats(),
+            }
+        )
 
 
 def build_detector_registry(

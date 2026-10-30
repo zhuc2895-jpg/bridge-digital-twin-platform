@@ -7,7 +7,10 @@ import io
 import math
 from typing import Any
 
-SENSOR_TYPES = frozenset({"strain", "displacement", "acceleration", "temperature"})
+from app.sensor_ids import SensorIdentifier
+from app.sensor_types import SensorType
+
+SENSOR_TYPES = frozenset(sensor_type.value for sensor_type in SensorType)
 REQUIRED_FIELDS = ("sensor_id", "name", "type", "value", "timestamp")
 MAX_BATCH_SIZE = 10_000
 
@@ -79,7 +82,7 @@ def _validate_json_record(item: Any, index: int) -> dict:
     _require_fields(item, index)
 
     return {
-        "sensor_id": _validated_text(item["sensor_id"], index, "sensor_id"),
+        "sensor_id": _validated_sensor_identifier(item["sensor_id"], index),
         "name": _validated_text(item["name"], index, "name"),
         "type": _validated_sensor_type(item["type"], index),
         "value": _validated_json_number(item["value"], index, "value"),
@@ -91,7 +94,7 @@ def _validate_csv_record(row: dict, index: int) -> dict:
     raw_value = row.get("value")
     raw_timestamp = row.get("timestamp")
     return {
-        "sensor_id": _validated_text(row.get("sensor_id"), index, "sensor_id"),
+        "sensor_id": _validated_sensor_identifier(row.get("sensor_id"), index),
         "name": _validated_text(row.get("name"), index, "name"),
         "type": _validated_sensor_type(row.get("type"), index),
         "value": _validated_csv_number(raw_value, index, "value"),
@@ -115,16 +118,33 @@ def _validated_text(value: Any, index: int, field: str) -> str:
     return value.strip()
 
 
-def _validated_sensor_type(value: Any, index: int) -> str:
+def _validated_sensor_identifier(
+    value: Any,
+    index: int,
+) -> SensorIdentifier:
+    if not isinstance(value, str):
+        raise IngestionValidationError(
+            f"record {index}: sensor_id must be a non-empty string"
+        )
+    try:
+        return SensorIdentifier(value)
+    except ValueError as exc:
+        raise IngestionValidationError(
+            f"record {index}: sensor_id must be a non-empty string"
+        ) from exc
+
+
+def _validated_sensor_type(value: Any, index: int) -> SensorType:
     if not isinstance(value, str):
         raise IngestionValidationError(f"record {index}: type must be a string")
     sensor_type = value.strip()
-    if sensor_type not in SENSOR_TYPES:
+    try:
+        return SensorType(sensor_type)
+    except ValueError as exc:
         allowed = ", ".join(sorted(SENSOR_TYPES))
         raise IngestionValidationError(
             f"record {index}: unknown sensor type '{sensor_type}'; expected one of {allowed}"
-        )
-    return sensor_type
+        ) from exc
 
 
 def _validated_json_number(value: Any, index: int, field: str) -> float:

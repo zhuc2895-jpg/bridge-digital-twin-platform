@@ -26,15 +26,7 @@ async def _broadcast_update(
 ) -> None:
     if not push_live:
         return
-    engine = services.engine
-    await services.ws_manager.broadcast(
-        {
-            "type": "sensor_update",
-            "sensors": records,
-            "alerts": engine.get_recent_alerts(),
-            "stats": engine.get_stats(),
-        }
-    )
+    await services.broadcast_sensor_update(records)
 
 
 @router.post("/upload/csv")
@@ -50,7 +42,8 @@ async def upload_csv(
     except IngestionValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    result = services.processor.process(records)
+    with services.processing_lock:
+        result = services.processor.process(records)
     await _broadcast_update(services, records, push_live)
 
     return {
@@ -73,7 +66,8 @@ async def upload_json(
     except IngestionValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    result = services.processor.process(records)
+    with services.processing_lock:
+        result = services.processor.process(records)
     await _broadcast_update(services, records, push_live)
 
     return {
@@ -108,7 +102,8 @@ async def push_single(
     except IngestionValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    services.processor.process(records)
+    with services.processing_lock:
+        services.processor.process(records)
     await _broadcast_update(services, records, push_live)
     return {"status": "ok", "sensor_id": sensor_id, "value": value}
 

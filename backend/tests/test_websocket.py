@@ -8,8 +8,9 @@ from tests.factories import reading
 class OneShotSimulator:
     is_running = False
 
-    async def generate(self):
-        yield [reading()]
+    def next_readings(self, timestamp=None):
+        self.is_running = False
+        return [reading(timestamp=timestamp or 1_700_000_000.0)]
 
 
 def test_websocket_stats_expose_retained_alert_count():

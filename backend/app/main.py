@@ -102,17 +102,13 @@ def create_app(services: Optional[AppServices] = None) -> FastAPI:
 
         await ws_manager.connect(websocket)
         try:
-            async for sensor_data in simulator.generate():
-                processor.process(sensor_data)
+            simulator.is_running = True
+            while simulator.is_running:
+                with services.processing_lock:
+                    sensor_data = simulator.next_readings()
+                    processor.process(sensor_data)
 
-                await ws_manager.broadcast(
-                    {
-                        "type": "sensor_update",
-                        "sensors": sensor_data,
-                        "alerts": engine.get_recent_alerts(),
-                        "stats": engine.get_stats(),
-                    }
-                )
+                await services.broadcast_sensor_update(sensor_data)
                 await asyncio.sleep(1)
         except WebSocketDisconnect:
             ws_manager.disconnect(websocket)

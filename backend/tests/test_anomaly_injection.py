@@ -5,12 +5,20 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.dependencies import create_services
-from app.engine.simulator import DataSimulator
+from app.engine.simulator import (
+    DataSimulator,
+    SimulatorReading,
+    UnknownSimulatorSensorError,
+)
 from app.main import create_app
 from app.ml.contracts import BaseDetector, BaselineStatus
 from app.ml.feature_arbitration import FeatureArbitrationDetector
 from app.ml.voting import VotingDetector
+from app.sensor_ids import SensorIdentifier
 from tests.factories import reading
+
+
+S01 = SensorIdentifier("S01")
 
 
 class ReadyVotingModel(BaseDetector):
@@ -73,19 +81,6 @@ def _single_vote_arbitration_detector(normal_predicate):
     )
 
 
-class OneShotInjectionSimulator(DataSimulator):
-    def __init__(self, frame_timestamp: float) -> None:
-        super().__init__()
-        self.frame_timestamp = frame_timestamp
-
-    async def generate(self):
-        self.is_running = True
-        try:
-            yield self.next_readings(timestamp=self.frame_timestamp)
-        finally:
-            self.is_running = False
-
-
 def _set_normal_values(monkeypatch):
     monkeypatch.setattr(
         "app.engine.simulator.np.random.normal",
@@ -130,18 +125,16 @@ def test_inject_anomaly_rejects_missing_sensor_identifier(app, client):
     response = client.post("/api/analysis/inject-anomaly")
 
     assert response.status_code == 400
-    assert app.state.services.simulator.pending_injection_count() == 0
 
 
-def test_inject_anomaly_rejects_unknown_sensor_with_400(app, client):
+def test_inject_anomaly_normalizes_valid_identifier_whitespace(app, client):
     response = client.post(
         "/api/analysis/inject-anomaly",
-        params={"sensor_id": "UNKNOWN"},
+        params={"sensor_id": " S01 "},
     )
 
-    assert response.status_code == 400
-    assert "UNKNOWN" in response.json()["detail"]
-    assert app.state.services.simulator.pending_injection_count("S01") == 0
+    assert response.status_code == 200
+    assert response.json()["sensor_id"] == "S01"
 
 
 def test_inject_anomaly_rejects_conflicting_identifier_sources(app, client):
@@ -152,67 +145,208 @@ def test_inject_anomaly_rejects_conflicting_identifier_sources(app, client):
     )
 
     assert response.status_code == 400
-    assert app.state.services.simulator.pending_injection_count() == 0
 
 
-def test_injected_reading_uses_configured_ranges_once_then_recovers(
-    app,
-    client,
-    monkeypatch,
-):
-    simulator = app.state.services.simulator
-    _set_normal_values(monkeypatch)
-    _set_uniform_sequence(monkeypatch, 2.5, 50.0)
+def test_inject_anomaly_rejects_unknown_sensor_with_400(app, client):
+    response = client.post(
+        "/api/analysis/inject-anomaly",
+        params={"sensor_id": "UNKNOWN"},
+    )
 
+    assert response.status_code == 400
+    assert "UNKNOWN" in response.json()["detail"]
+
+
+def test_inject_anomaly_accepts_json_body_identifier(app, client):
     response = client.post(
         "/api/analysis/inject-anomaly",
         json={"sensor_id": "S01"},
     )
 
-    injected_tick = simulator.next_readings(timestamp=1000.0)
-    recovered_tick = simulator.next_readings(timestamp=1001.0)
-    injected = _reading_for(injected_tick, "S01")
-    recovered = _reading_for(recovered_tick, "S01")
-
     assert response.status_code == 200
     assert response.json()["sensor_id"] == "S01"
-    assert injected["value"] == pytest.approx(550.0)
-    assert recovered["value"] == pytest.approx(200.0)
-    assert simulator.pending_injection_count("S01") == 0
 
 
-def test_consecutive_injections_are_consumed_in_order_without_contamination(
+def test_inject_anomaly_triggers_queryable_alert_without_websocket(
     app,
     client,
     monkeypatch,
 ):
-    simulator = app.state.services.simulator
+    _set_normal_values(monkeypatch)
+    _set_uniform_sequence(monkeypatch, 2.5, 50.0)
+
+    response = client.post(
+        "/api/analysis/inject-anomaly",
+        params={"sensor_id": "S01"},
+    )
+    recent = client.get("/api/alerts/").json()["alerts"]
+    rule_alert = next(
+        alert
+        for alert in recent
+        if alert["sensor_id"] == "S01" and alert["source"] == "rule"
+    )
+    ranged = client.get(
+        "/api/sensors/history/alerts",
+        params={
+            "start": rule_alert["timestamp"],
+            "end": rule_alert["timestamp"],
+        },
+    ).json()["alerts"]
+
+    assert response.status_code == 200
+    assert app.state.services.engine.get_stats()["total_readings"] == 1
+    assert set(client.get("/api/sensors/").json()) == {"S01"}
+    assert rule_alert["value"] == pytest.approx(550.0)
+    assert rule_alert in ranged
+
+
+def test_explicit_injection_metadata_matches_generated_reading(monkeypatch):
+    simulator = DataSimulator()
+    _set_normal_values(monkeypatch)
+    _set_uniform_sequence(monkeypatch, 2.5, 50.0)
+
+    generated = simulator.inject_anomaly(S01)
+
+    assert generated.reading.value == pytest.approx(550.0)
+    assert generated.injection.offset == pytest.approx(50.0)
+
+
+def test_concurrent_http_injections_process_one_reading_each(
+    app,
+    client,
+    monkeypatch,
+):
     _set_normal_values(monkeypatch)
     _set_uniform_sequence(monkeypatch, 2.5, 50.0, 4.0, 150.0)
 
-    first = client.post("/api/analysis/inject-anomaly?sensor_id=S01")
-    second = client.post("/api/analysis/inject-anomaly?sensor_id=S01")
-    first_tick = simulator.next_readings(timestamp=1000.0)
-    second_tick = simulator.next_readings(timestamp=1001.0)
-    third_tick = simulator.next_readings(timestamp=1002.0)
+    responses = _run_concurrently(
+        lambda: client.post(
+            "/api/analysis/inject-anomaly",
+            params={"sensor_id": "S01"},
+        ),
+        lambda: client.post(
+            "/api/analysis/inject-anomaly",
+            params={"sensor_id": "S01"},
+        ),
+    )
+
+    assert all(response.status_code == 200 for response in responses)
+    assert {
+        response.json()["injection"]["offset"] for response in responses
+    } == {50.0, 150.0}
+    assert app.state.services.engine.get_stats()["total_readings"] == 2
+    assert set(client.get("/api/sensors/").json()) == {"S01"}
+    rule_alerts = [
+        alert
+        for alert in client.get("/api/alerts/").json()["alerts"]
+        if alert["sensor_id"] == "S01" and alert["source"] == "rule"
+    ]
+    assert sorted(alert["value"] for alert in rule_alerts) == pytest.approx(
+        [550.0, 950.0]
+    )
+
+
+def test_consecutive_http_injections_are_consumed_once_each(
+    app,
+    client,
+    monkeypatch,
+):
+    _set_normal_values(monkeypatch)
+    _set_uniform_sequence(monkeypatch, 2.5, 50.0, 4.0, 150.0)
+
+    first = client.post(
+        "/api/analysis/inject-anomaly",
+        params={"sensor_id": "S01"},
+    )
+    second = client.post(
+        "/api/analysis/inject-anomaly",
+        params={"sensor_id": "S01"},
+    )
 
     assert first.status_code == 200
     assert second.status_code == 200
-    assert _reading_for(first_tick, "S01")["value"] == pytest.approx(550.0)
-    assert _reading_for(second_tick, "S01")["value"] == pytest.approx(950.0)
-    assert _reading_for(third_tick, "S01")["value"] == pytest.approx(200.0)
+    assert app.state.services.engine.get_stats()["total_readings"] == 2
+    assert set(client.get("/api/sensors/").json()) == {"S01"}
+    rule_alerts = [
+        alert
+        for alert in client.get("/api/alerts/").json()["alerts"]
+        if alert["sensor_id"] == "S01" and alert["source"] == "rule"
+    ]
+    assert sorted(alert["value"] for alert in rule_alerts) == pytest.approx(
+        [550.0, 950.0]
+    )
+
+
+def test_same_level_injections_respect_alert_cooldown(
+    app,
+    client,
+    monkeypatch,
+):
+    _set_normal_values(monkeypatch)
+    _set_uniform_sequence(monkeypatch, 2.5, 50.0, 2.5, 50.0)
+
+    first = client.post(
+        "/api/analysis/inject-anomaly",
+        params={"sensor_id": "S01"},
+    )
+    second = client.post(
+        "/api/analysis/inject-anomaly",
+        params={"sensor_id": "S01"},
+    )
+
+    rule_alerts = [
+        alert
+        for alert in client.get("/api/alerts/").json()["alerts"]
+        if alert["sensor_id"] == "S01" and alert["source"] == "rule"
+    ]
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert app.state.services.engine.get_stats()["total_readings"] == 2
+    assert len(rule_alerts) == 1
+    assert rule_alerts[0]["value"] == pytest.approx(550.0)
+
+
+def test_injected_reading_uses_configured_ranges_once_then_recovers(
+    monkeypatch,
+):
+    simulator = DataSimulator()
+    _set_normal_values(monkeypatch)
+    _set_uniform_sequence(monkeypatch, 2.5, 50.0)
+
+    generated = simulator.inject_anomaly(S01)
+    recovered_tick = simulator.next_readings(timestamp=1001.0)
+    recovered = _reading_for(recovered_tick, "S01")
+
+    assert generated.reading.value == pytest.approx(550.0)
+    assert recovered["value"] == pytest.approx(200.0)
+
+
+def test_consecutive_injections_are_consumed_in_order_without_contamination(
+    monkeypatch,
+):
+    simulator = DataSimulator()
+    _set_normal_values(monkeypatch)
+    _set_uniform_sequence(monkeypatch, 2.5, 50.0, 4.0, 150.0)
+
+    first = simulator.inject_anomaly(S01)
+    second = simulator.inject_anomaly(S01)
+    recovered_tick = simulator.next_readings(timestamp=1002.0)
+
+    assert first.reading.value == pytest.approx(550.0)
+    assert second.reading.value == pytest.approx(950.0)
+    assert _reading_for(recovered_tick, "S01")["value"] == pytest.approx(200.0)
     assert all(
         item["value"] == pytest.approx(
             next(
-                sensor["normal_mean"]
+                sensor.normal_mean
                 for sensor in DataSimulator.SENSORS
-                if sensor["id"] == item["sensor_id"]
+                if sensor.identifier == item["sensor_id"]
             )
         )
-        for item in third_tick
+        for item in recovered_tick
         if item["sensor_id"] != "S08"
     )
-    assert simulator.pending_injection_count("S01") == 0
 
 
 def test_injection_requested_during_frame_applies_to_next_frame(monkeypatch):
@@ -222,11 +356,11 @@ def test_injection_requested_during_frame_applies_to_next_frame(monkeypatch):
     injection_started = threading.Event()
     release_frame = threading.Event()
 
-    def paused_normal_value(sensor):
-        if sensor["id"] == "S01" and not frame_started.is_set():
+    def paused_normal_value(sensor, sensor_tick):
+        if sensor.identifier == S01 and not frame_started.is_set():
             frame_started.set()
             assert release_frame.wait(timeout=2)
-        return float(sensor["normal_mean"])
+        return float(sensor.normal_mean)
 
     monkeypatch.setattr(
         simulator,
@@ -236,7 +370,7 @@ def test_injection_requested_during_frame_applies_to_next_frame(monkeypatch):
 
     def request_injection():
         injection_started.set()
-        return simulator.inject_anomaly("S01")
+        return simulator.inject_anomaly(S01)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         frame_future = pool.submit(simulator.next_readings, 1000.0)
@@ -246,57 +380,107 @@ def test_injection_requested_during_frame_applies_to_next_frame(monkeypatch):
         threading.Timer(0.05, release_frame.set).start()
 
         first_frame = frame_future.result(timeout=2)
-        injection_future.result(timeout=2)
-        second_frame = simulator.next_readings(timestamp=1001.0)
+        generated = injection_future.result(timeout=2)
 
     assert _reading_for(first_frame, "S01")["value"] == pytest.approx(200.0)
-    assert _reading_for(second_frame, "S01")["value"] == pytest.approx(550.0)
-    assert simulator.pending_injection_count("S01") == 0
+    assert generated.reading.value == pytest.approx(550.0)
 
 
-def test_concurrent_injections_are_queued_atomically(monkeypatch):
+def test_simulator_inject_anomaly_accepts_plain_sensor_identifier(monkeypatch):
+    simulator = DataSimulator()
+    _set_uniform_sequence(monkeypatch, 2.5, 50.0)
+
+    generated = simulator.inject_anomaly("S01")
+
+    assert generated.injection.sensor_id == S01
+
+
+def test_injected_reading_payload_is_typed(monkeypatch):
+    simulator = DataSimulator()
+    _set_normal_values(monkeypatch)
+    _set_uniform_sequence(monkeypatch, 2.5, 50.0)
+
+    generated = simulator.inject_anomaly(S01)
+
+    assert isinstance(generated.reading, SimulatorReading)
+    assert generated.reading.sensor_id == S01
+    assert generated.reading.value == pytest.approx(550.0)
+
+
+def test_simulator_requires_explicit_injection_target():
+    simulator = DataSimulator()
+
+    with pytest.raises(TypeError):
+        simulator.inject_anomaly()
+
+
+def test_simulator_rejects_blank_identifier_as_unknown():
+    simulator = DataSimulator()
+
+    with pytest.raises(UnknownSimulatorSensorError):
+        simulator.inject_anomaly("   ")
+
+
+@pytest.mark.parametrize("invalid_identifier", [None, 123, object()])
+def test_simulator_rejects_non_string_identifier(invalid_identifier):
+    simulator = DataSimulator()
+
+    with pytest.raises(UnknownSimulatorSensorError):
+        simulator.inject_anomaly(invalid_identifier)
+
+
+def test_concurrent_injections_are_generated_atomically(monkeypatch):
     simulator = DataSimulator()
     _set_normal_values(monkeypatch)
     _set_uniform_sequence(monkeypatch, 2.5, 50.0, 4.0, 150.0)
 
-    _run_concurrently(
-        lambda: simulator.inject_anomaly("S01"),
-        lambda: simulator.inject_anomaly("S01"),
+    generated = _run_concurrently(
+        lambda: simulator.inject_anomaly(S01),
+        lambda: simulator.inject_anomaly(S01),
     )
 
-    assert simulator.pending_injection_count("S01") == 2
-    assert _reading_for(
-        simulator.next_readings(timestamp=1000.0),
-        "S01",
-    )["value"] == pytest.approx(550.0)
-    assert _reading_for(
-        simulator.next_readings(timestamp=1001.0),
-        "S01",
-    )["value"] == pytest.approx(950.0)
-    assert simulator.pending_injection_count("S01") == 0
+    assert sorted(item.reading.value for item in generated) == pytest.approx(
+        [550.0, 950.0]
+    )
+    assert sorted(item.injection.offset for item in generated) == pytest.approx(
+        [50.0, 150.0]
+    )
 
 
-def test_concurrent_frames_consume_each_injection_exactly_once(monkeypatch):
-    simulator = DataSimulator()
+def test_injection_update_reaches_connected_websocket(monkeypatch):
     _set_normal_values(monkeypatch)
-    _set_uniform_sequence(monkeypatch, 2.5, 50.0, 4.0, 150.0)
-    simulator.inject_anomaly("S01")
-    simulator.inject_anomaly("S01")
+    _set_uniform_sequence(monkeypatch, 2.5, 50.0)
+    services = create_services()
+    app = create_app(services)
 
-    frames = _run_concurrently(
-        lambda: simulator.next_readings(timestamp=1000.0),
-        lambda: simulator.next_readings(timestamp=1001.0),
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/live") as websocket:
+            live_frame = websocket.receive_json()
+            response = client.post(
+                "/api/analysis/inject-anomaly",
+                params={"sensor_id": "S01"},
+            )
+            injected_update = websocket.receive_json()
+            next_live_frame = websocket.receive_json()
+
+    assert live_frame["type"] == "sensor_update"
+    assert response.status_code == 200
+    assert injected_update["type"] == "sensor_update"
+    assert len(injected_update["sensors"]) == 1
+    assert injected_update["sensors"][0]["sensor_id"] == "S01"
+    assert any(
+        alert["sensor_id"] == "S01" and alert["source"] == "rule"
+        for alert in injected_update["alerts"]
     )
-
-    injected_values = sorted(
-        _reading_for(frame, "S01")["value"]
-        for frame in frames
+    restored = next(
+        item
+        for item in next_live_frame["sensors"]
+        if item["sensor_id"] == "S01"
     )
-    assert injected_values == pytest.approx([550.0, 950.0])
-    assert simulator.pending_injection_count("S01") == 0
+    assert restored["value"] == pytest.approx(200.0)
 
 
-def test_injected_reading_runs_websocket_processing_and_is_queryable(monkeypatch):
+def test_api_injection_runs_full_processing_and_is_queryable(monkeypatch):
     _set_normal_values(monkeypatch)
     _set_uniform_sequence(monkeypatch, 2.5, 50.0)
     base = 1_700_000_000.0
@@ -306,7 +490,6 @@ def test_injected_reading_runs_websocket_processing_and_is_queryable(monkeypatch
             services.engine.is_normal_reading
         )
     )
-    services.simulator = OneShotInjectionSimulator(base)
     app = create_app(services)
 
     with TestClient(app) as client:
@@ -325,23 +508,27 @@ def test_injected_reading_runs_websocket_processing_and_is_queryable(monkeypatch
             "/api/analysis/inject-anomaly",
             params={"sensor_id": "S01"},
         )
-        with client.websocket_connect("/ws/live") as websocket:
-            payload = websocket.receive_json()
-
         recent = client.get("/api/alerts/").json()["alerts"]
+        rule_alert = next(
+            alert
+            for alert in recent
+            if alert["sensor_id"] == "S01" and alert["source"] == "rule"
+        )
+        matching = [
+            alert
+            for alert in recent
+            if alert["sensor_id"] == "S01"
+            and alert["timestamp"] == rule_alert["timestamp"]
+        ]
         ranged = client.get(
             "/api/sensors/history/alerts",
-            params={"start": base, "end": base},
+            params={
+                "start": rule_alert["timestamp"],
+                "end": rule_alert["timestamp"],
+            },
         ).json()["alerts"]
         detector_stats = client.get("/api/analysis/detectors").json()
 
-    injected = _reading_for(payload["sensors"], "S01")
-    matching = [
-        alert
-        for alert in recent
-        if alert["sensor_id"] == "S01" and alert["timestamp"] == base
-    ]
-    rule_alert = next(alert for alert in matching if alert["source"] == "rule")
     ai_alert = next(
         alert
         for alert in matching
@@ -350,8 +537,6 @@ def test_injected_reading_runs_websocket_processing_and_is_queryable(monkeypatch
 
     assert upload.status_code == 200
     assert injection.status_code == 200
-    assert injected["value"] == pytest.approx(550.0)
-    assert matching
     assert rule_alert["level"] == "orange"
     assert rule_alert["value"] == pytest.approx(550.0)
     assert ai_alert["value"] == pytest.approx(550.0)

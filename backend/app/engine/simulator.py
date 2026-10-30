@@ -5,8 +5,6 @@
 传感器ID与前端3D位置一一对应
 """
 
-import asyncio
-from collections import deque
 from dataclasses import dataclass
 import random
 import threading
@@ -14,7 +12,10 @@ import time
 
 import numpy as np
 
-DEFAULT_INJECTION_SENSOR_ID = "S01"
+from app.sensor_ids import SensorIdentifier
+from app.sensor_types import SensorType
+
+AUTOMATIC_INJECTION_TARGET = SensorIdentifier("S01")
 MIN_INJECTION_MULTIPLIER = 2.5
 MAX_INJECTION_MULTIPLIER = 4.0
 MIN_INJECTION_OFFSET = 50.0
@@ -25,16 +26,68 @@ class UnknownSimulatorSensorError(LookupError):
     """Raised when an injection names a sensor the simulator does not emit."""
 
 
+def _normalize_sensor_identifier(
+    sensor_id: str | SensorIdentifier,
+) -> SensorIdentifier:
+    if isinstance(sensor_id, SensorIdentifier):
+        return sensor_id
+    try:
+        return SensorIdentifier(sensor_id)
+    except ValueError as exc:
+        raise UnknownSimulatorSensorError(
+            f"Sensor {sensor_id!r} not found"
+        ) from exc
+
+
+@dataclass(frozen=True, slots=True)
+class SimulatorSensor:
+    """Static identity and normal-behaviour configuration for one sensor."""
+
+    identifier: SensorIdentifier
+    name: str
+    sensor_type: SensorType
+    normal_mean: float
+    normal_std: float
+
+
 @dataclass(frozen=True)
 class AnomalyInjection:
     """One queued, single-reading anomaly transformation."""
 
-    sensor_id: str
+    sensor_id: SensorIdentifier
     multiplier: float
     offset: float
 
     def apply(self, normal_value: float) -> float:
         return normal_value * self.multiplier + self.offset
+
+
+@dataclass(frozen=True, slots=True)
+class SimulatorReading:
+    """One typed reading emitted by a simulator sensor stream."""
+
+    sensor_id: SensorIdentifier
+    name: str
+    type: SensorType
+    value: float
+    timestamp: float
+
+    def to_dict(self) -> dict:
+        return {
+            "sensor_id": self.sensor_id,
+            "name": self.name,
+            "type": self.type,
+            "value": self.value,
+            "timestamp": self.timestamp,
+        }
+
+
+@dataclass(frozen=True)
+class InjectedReading:
+    """A generated target-sensor reading and the transform that produced it."""
+
+    reading: SimulatorReading
+    injection: AnomalyInjection
 
 
 class DataSimulator:
@@ -52,132 +105,160 @@ class DataSimulator:
     """
 
     SENSORS = [
-        {"id": "S01", "name": "主跨跨中-应变", "type": "strain",
-         "normal_mean": 200, "normal_std": 30},
-        {"id": "S02", "name": "主跨1/4-应变", "type": "strain",
-         "normal_mean": 150, "normal_std": 25},
-        {"id": "S03", "name": "索塔顶部-位移", "type": "displacement",
-         "normal_mean": 15, "normal_std": 4},
-        {"id": "S04", "name": "拉索L01-加速度", "type": "acceleration",
-         "normal_mean": 0.5, "normal_std": 0.3},
-        {"id": "S05", "name": "主跨跨中-挠度", "type": "displacement",
-         "normal_mean": 20, "normal_std": 5},
-        {"id": "S06", "name": "索塔底部-应变", "type": "strain",
-         "normal_mean": 180, "normal_std": 28},
-        {"id": "S07", "name": "拉索L02-加速度", "type": "acceleration",
-         "normal_mean": 0.4, "normal_std": 0.25},
-        {"id": "S08", "name": "桥面温度", "type": "temperature",
-         "normal_mean": 28, "normal_std": 3},
+        SimulatorSensor(
+            SensorIdentifier("S01"), "主跨跨中-应变", SensorType.STRAIN, 200, 30
+        ),
+        SimulatorSensor(
+            SensorIdentifier("S02"), "主跨1/4-应变", SensorType.STRAIN, 150, 25
+        ),
+        SimulatorSensor(
+            SensorIdentifier("S03"), "索塔顶部-位移", SensorType.DISPLACEMENT, 15, 4
+        ),
+        SimulatorSensor(
+            SensorIdentifier("S04"), "拉索L01-加速度", SensorType.ACCELERATION, 0.5, 0.3
+        ),
+        SimulatorSensor(
+            SensorIdentifier("S05"), "主跨跨中-挠度", SensorType.DISPLACEMENT, 20, 5
+        ),
+        SimulatorSensor(
+            SensorIdentifier("S06"), "索塔底部-应变", SensorType.STRAIN, 180, 28
+        ),
+        SimulatorSensor(
+            SensorIdentifier("S07"), "拉索L02-加速度", SensorType.ACCELERATION, 0.4, 0.25
+        ),
+        SimulatorSensor(
+            SensorIdentifier("S08"), "桥面温度", SensorType.TEMPERATURE, 28, 3
+        ),
     ]
-    SENSOR_IDS = frozenset(sensor["id"] for sensor in SENSORS)
+    KNOWN_SENSOR_IDENTIFIERS = frozenset(
+        sensor.identifier for sensor in SENSORS
+    )
 
     def __init__(self):
         self.is_running = False
         self.tick = 0
+        self._sensor_ticks: dict[SensorIdentifier, int] = {
+            sensor.identifier: 0 for sensor in self.SENSORS
+        }
         self.anomaly_inject_interval = 200  # 每200周期自动注入一次异常
-        self._pending_injections: dict[str, deque[AnomalyInjection]] = {}
-        self._injection_lock = threading.Lock()
         self._frame_lock = threading.Lock()
-
-    async def generate(self):
-        """
-        异步生成器：每秒产生一组传感器数据
-        """
-        self.is_running = True
-        while self.is_running:
-            yield self.next_readings()
-            await asyncio.sleep(1)
 
     def next_readings(self, timestamp: float | None = None) -> list[dict]:
         """Generate one complete frame; concurrent callers own complete frames."""
         with self._frame_lock:
+            self.tick += 1
             return self._build_readings(timestamp)
 
     def _build_readings(self, timestamp: float | None) -> list[dict]:
-        self.tick += 1
         reading_timestamp = time.time() if timestamp is None else float(timestamp)
-        readings = []
+        return [
+            self._next_reading_unlocked(
+                sensor,
+                reading_timestamp,
+            ).to_dict()
+            for sensor in self.SENSORS
+        ]
 
-        for sensor in self.SENSORS:
-            normal_value = self._generate_normal_value(sensor)
-            value = normal_value
+    def _next_reading_unlocked(
+        self,
+        sensor: SimulatorSensor,
+        timestamp: float | None,
+        *,
+        injection: AnomalyInjection | None = None,
+    ) -> SimulatorReading:
+        sensor_tick = self._sensor_ticks[sensor.identifier] + 1
+        self._sensor_ticks[sensor.identifier] = sensor_tick
+        normal_value = self._generate_normal_value(sensor, sensor_tick)
+        value = normal_value
 
-            # 自动异常注入：每200周期在S01注入应变突增
-            if self.tick % self.anomaly_inject_interval == 0 and sensor["id"] == "S01":
-                value = normal_value * (2.5 + random.random() * 1.5)
-                value += float(np.random.normal(0, sensor["normal_std"] * 0.5))
+        if (
+            sensor_tick % self.anomaly_inject_interval == 0
+            and sensor.identifier == DEFAULT_INJECTION_TARGET
+        ):
+            value = normal_value * (2.5 + random.random() * 1.5)
+            value += float(np.random.normal(0, sensor.normal_std * 0.5))
 
-            injection = self._consume_injection(sensor["id"])
-            if injection is not None:
-                value = injection.apply(normal_value)
+        if injection is not None:
+            value = injection.apply(normal_value)
 
-            readings.append({
-                "sensor_id": sensor["id"],
-                "name": sensor["name"],
-                "type": sensor["type"],
-                "value": round(float(value), 4),
-                "timestamp": reading_timestamp,
-            })
-
-        return readings
-
-    def _generate_normal_value(self, sensor: dict) -> float:
-        value = float(
-            np.random.normal(sensor["normal_mean"], sensor["normal_std"])
+        reading_timestamp = time.time() if timestamp is None else float(timestamp)
+        return SimulatorReading(
+            sensor_id=sensor.identifier,
+            name=sensor.name,
+            type=sensor.sensor_type,
+            value=round(float(value), 4),
+            timestamp=reading_timestamp,
         )
-        if sensor["type"] == "temperature":
-            hour_of_day = (self.tick % 86400) / 3600
+
+    def _validated_sensor_target(
+        self,
+        sensor_id: str | SensorIdentifier,
+    ) -> SensorIdentifier:
+        target = _normalize_sensor_identifier(sensor_id)
+        if target not in self.KNOWN_SENSOR_IDENTIFIERS:
+            raise UnknownSimulatorSensorError(
+                f"Sensor {target!r} not found"
+            )
+        return target
+
+    def _sensor_by_identifier(
+        self,
+        sensor_id: SensorIdentifier,
+    ) -> SimulatorSensor:
+        return next(
+            sensor for sensor in self.SENSORS
+            if sensor.identifier == sensor_id
+        )
+
+    @staticmethod
+    def _generate_normal_value(
+        sensor: SimulatorSensor,
+        sensor_tick: int,
+    ) -> float:
+        value = float(
+            np.random.normal(sensor.normal_mean, sensor.normal_std)
+        )
+        if sensor.sensor_type == SensorType.TEMPERATURE:
+            hour_of_day = (sensor_tick % 86400) / 3600
             value += 8 * np.sin(2 * np.pi * (hour_of_day - 14) / 24)
         return value
 
     def inject_anomaly(
         self,
-        sensor_id: str = DEFAULT_INJECTION_SENSOR_ID,
+        sensor_id: str | SensorIdentifier,
+        timestamp: float | None = None,
+    ) -> InjectedReading:
+        """Generate one injected reading for the requested sensor."""
+        target = self._validated_sensor_target(sensor_id)
+
+        with self._frame_lock:
+            sensor = self._sensor_by_identifier(target)
+            injection = self._create_injection(target)
+            reading = self._next_reading_unlocked(
+                sensor,
+                timestamp,
+                injection=injection,
+            )
+            return InjectedReading(
+                reading=reading,
+                injection=injection,
+            )
+
+    def _create_injection(
+        self,
+        sensor_id: SensorIdentifier,
     ) -> AnomalyInjection:
-        """Queue exactly one injected reading for a known simulator sensor."""
-        normalized_id = sensor_id.strip()
-        if normalized_id not in self.SENSOR_IDS:
-            raise UnknownSimulatorSensorError(
-                f"Sensor {normalized_id or sensor_id!r} not found"
-            )
-
-        with self._frame_lock, self._injection_lock:
-            injection = AnomalyInjection(
-                sensor_id=normalized_id,
-                multiplier=random.uniform(
-                    MIN_INJECTION_MULTIPLIER,
-                    MAX_INJECTION_MULTIPLIER,
-                ),
-                offset=random.uniform(
-                    MIN_INJECTION_OFFSET,
-                    MAX_INJECTION_OFFSET,
-                ),
-            )
-            self._pending_injections.setdefault(
-                normalized_id,
-                deque(),
-            ).append(injection)
-            return injection
-
-    def _consume_injection(self, sensor_id: str) -> AnomalyInjection | None:
-        with self._injection_lock:
-            pending = self._pending_injections.get(sensor_id)
-            if not pending:
-                return None
-            injection = pending.popleft()
-            if not pending:
-                del self._pending_injections[sensor_id]
-            return injection
-
-    def pending_injection_count(self, sensor_id: str | None = None) -> int:
-        """Return queued injection count for one sensor or the whole simulator."""
-        with self._injection_lock:
-            if sensor_id is not None:
-                return len(self._pending_injections.get(sensor_id, ()))
-            return sum(
-                len(pending)
-                for pending in self._pending_injections.values()
-            )
+        return AnomalyInjection(
+            sensor_id=sensor_id,
+            multiplier=random.uniform(
+                MIN_INJECTION_MULTIPLIER,
+                MAX_INJECTION_MULTIPLIER,
+            ),
+            offset=random.uniform(
+                MIN_INJECTION_OFFSET,
+                MAX_INJECTION_OFFSET,
+            ),
+        )
 
     def stop(self):
         """停止仿真"""

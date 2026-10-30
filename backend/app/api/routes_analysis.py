@@ -10,12 +10,40 @@ from pydantic import BaseModel
 from app.dependencies import AppServices, get_services
 from app.engine.simulator import UnknownSimulatorSensorError
 from app.ml.registry import DetectorRegistryError
+from app.sensor_ids import SensorIdentifier
 
 router = APIRouter()
 
 
 class AnomalyInjectionRequest(BaseModel):
     sensor_id: str
+
+
+def _resolve_anomaly_target(
+    payload: AnomalyInjectionRequest | None,
+    sensor_id: str | None,
+) -> SensorIdentifier:
+    raw_sensor_ids = [
+        payload.sensor_id if payload is not None else None,
+        sensor_id,
+    ]
+    try:
+        targets = [
+            SensorIdentifier(raw_sensor_id)
+            for raw_sensor_id in raw_sensor_ids
+            if raw_sensor_id is not None
+        ]
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not targets:
+        raise HTTPException(status_code=400, detail="sensor_id is required")
+    if len(set(targets)) != 1:
+        raise HTTPException(
+            status_code=400,
+            detail="body and query sensor_id values must match",
+        )
+    return targets[0]
 
 
 @router.get("/overview")
@@ -60,38 +88,29 @@ async def inject_anomaly(
     sensor_id: str | None = Query(default=None),
     services: AppServices = Depends(get_services),
 ):
-    """Queue one injected reading for the next simulator frame."""
-    if payload is None and sensor_id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="sensor_id is required",
-        )
-    if payload is not None and sensor_id is not None:
-        if payload.sensor_id.strip() != sensor_id.strip():
-            raise HTTPException(
-                status_code=400,
-                detail="body and query sensor_id values must match",
-            )
-    resolved_sensor_id = payload.sensor_id if payload is not None else sensor_id
-    if not resolved_sensor_id.strip():
-        raise HTTPException(status_code=400, detail="sensor_id is required")
+    """Generate and process one injected reading for the requested sensor."""
+    target = _resolve_anomaly_target(payload, sensor_id)
     simulator = services.simulator
     try:
-        injection = simulator.inject_anomaly(resolved_sensor_id)
+        with services.processing_lock:
+            generated = simulator.inject_anomaly(target)
+            injected_readings = [generated.reading.to_dict()]
+            services.processor.process(injected_readings)
     except UnknownSimulatorSensorError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await services.broadcast_sensor_update(injected_readings)
 
+    injection = generated.injection
+    injected_sensor_id = str(injection.sensor_id)
     return {
         "status": "injected",
-        "sensor_id": injection.sensor_id,
-        "pending_injections": simulator.pending_injection_count(
-            injection.sensor_id
-        ),
+        "sensor_id": injected_sensor_id,
+        "pending_injections": 0,
         "injection": {
             "multiplier": injection.multiplier,
             "offset": injection.offset,
         },
-        "message": f"异常已注入到传感器 {injection.sensor_id} 的下一条读数",
+        "message": f"异常已注入到传感器 {injected_sensor_id} 的下一条读数",
     }
 
 

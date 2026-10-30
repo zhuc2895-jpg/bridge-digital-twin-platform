@@ -17,13 +17,16 @@ from app.alert_contracts import (
 )
 from typing import Any, Dict, List, Mapping, Optional
 
+from app.sensor_ids import SensorIdentifier
+from app.sensor_types import SensorType
+
 
 @dataclass
 class SensorReading:
     """单条传感器读数"""
-    sensor_id: str
+    sensor_id: SensorIdentifier
     name: str
-    type: str          # strain / displacement / acceleration / temperature
+    type: SensorType  # strain / displacement / acceleration / temperature
     value: float
     timestamp: float
 

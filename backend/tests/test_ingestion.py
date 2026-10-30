@@ -2,7 +2,10 @@ import time
 
 from fastapi.testclient import TestClient
 
+from app.ingestion import validate_json_batch
 from app.main import create_app
+from app.sensor_ids import SensorIdentifier
+from app.sensor_types import SensorType
 from tests.factories import reading
 
 
@@ -19,6 +22,13 @@ def assert_empty_sensor_state(client: TestClient) -> None:
     response = client.get("/api/sensors/")
     assert response.status_code == 200
     assert response.json() == {}
+
+
+def test_json_validation_retains_domain_types():
+    record = validate_json_batch([reading()])[0]
+
+    assert isinstance(record["sensor_id"], SensorIdentifier)
+    assert isinstance(record["type"], SensorType)
 
 
 def test_json_upload_updates_latest_state_and_health(client, app):
@@ -69,6 +79,16 @@ def test_json_upload_updates_latest_state_and_health(client, app):
     assert "recent_alerts" not in health.json()
     assert "active_alerts" not in health.json()
     assert health.json()["simulator_running"] is False
+
+
+def test_json_ingestion_normalizes_sensor_identifier_whitespace(client):
+    response = client.post(
+        "/api/data/upload/json?push_live=false",
+        json=[reading(sensor_id=" S02 ")],
+    )
+
+    assert response.status_code == 200
+    assert client.get("/api/sensors/S02").status_code == 200
 
 
 def test_csv_upload_and_push_live_false_are_accepted(client, app):
