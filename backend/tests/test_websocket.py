@@ -166,7 +166,8 @@ def test_ten_websocket_clients_receive_identical_complete_live_frames():
             assert all(payload == payloads[0] for payload in payloads)
             assert len(payloads[0]["sensors"]) == 8
             assert len(payloads[0]["alerts"]) == 20
-            assert all("details" in alert for alert in payloads[0]["alerts"])
+            assert all("details" not in alert for alert in payloads[0]["alerts"])
+            assert all("invalid" in alert for alert in payloads[0]["alerts"])
             assert all(
                 received_at - item["timestamp"] < 0.5
                 for item in payloads[0]["sensors"]
@@ -222,14 +223,14 @@ def test_live_payload_is_built_while_processing_lock_is_held():
     services, app = create_live_app(simulator=OneShotSimulator())
     lock = TrackingLock()
     services.processing_lock = lock
-    original = services.engine.get_recent_alerts
+    original = services.engine.get_live_snapshot
     observed: list[bool] = []
 
-    def tracked_recent_alerts():
+    def tracked_live_snapshot(*args, **kwargs):
         observed.append(lock.held)
-        return original()
+        return original(*args, **kwargs)
 
-    services.engine.get_recent_alerts = tracked_recent_alerts
+    services.engine.get_live_snapshot = tracked_live_snapshot
 
     with TestClient(app) as client:
         with client.websocket_connect("/ws/live") as websocket:
@@ -237,6 +238,44 @@ def test_live_payload_is_built_while_processing_lock_is_held():
 
     assert observed
     assert all(observed)
+
+
+def test_live_frame_includes_only_live_eligible_external_sensors():
+    services, app = create_live_app(
+        simulator=CountingSimulator(),
+        interval_seconds=0.05,
+    )
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/live") as websocket:
+            websocket.receive_json()
+            live_upload = client.post(
+                "/api/data/upload/json?push_live=true",
+                json=[
+                    reading(
+                        sensor_id="LIVE-EXT",
+                        value=123.0,
+                        timestamp=time.time(),
+                    )
+                ],
+            )
+            backfill_upload = client.post(
+                "/api/data/upload/json?push_live=false",
+                json=[
+                    reading(
+                        sensor_id="BACKFILL-EXT",
+                        value=456.0,
+                        timestamp=time.time(),
+                    )
+                ],
+            )
+            payload = websocket.receive_json()
+
+    assert live_upload.status_code == 200
+    assert backfill_upload.status_code == 200
+    sensor_ids = {item["sensor_id"] for item in payload["sensors"]}
+    assert "LIVE-EXT" in sensor_ids
+    assert "BACKFILL-EXT" not in sensor_ids
 
 
 def test_sensor_update_contract_contains_recent_twenty_alerts_within_10kb():
@@ -266,7 +305,7 @@ def test_sensor_update_contract_contains_recent_twenty_alerts_within_10kb():
             "threshold",
             "source",
             "timestamp",
-            "details",
+            "invalid",
         }
         for alert in payload["alerts"]
     )
@@ -296,8 +335,9 @@ def test_bounded_sensor_update_keeps_all_twenty_alerts_and_sensor_frame():
         )
         for index in range(8)
     ]
+    services.engine.ingest(readings, live_eligible=True)
 
-    payload = build_sensor_update(services.engine, readings)
+    payload = build_sensor_update(services.engine)
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
 
     assert len(payload["sensors"]) == 8
@@ -326,14 +366,15 @@ def test_oversized_alert_details_are_bounded_without_dropping_records():
         reading(sensor_id=f"S{index:02d}", value=100.0 + index)
         for index in range(8)
     ]
+    services.engine.ingest(readings, live_eligible=True)
 
-    payload = build_sensor_update(services.engine, readings)
+    payload = build_sensor_update(services.engine)
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
 
     assert len(payload["sensors"]) == 8
     assert len(payload["alerts"]) == 20
     assert len(encoded) <= MAX_SENSOR_UPDATE_BYTES
-    assert all(alert["details"]["_truncated"] is True for alert in payload["alerts"])
+    assert all("details" not in alert for alert in payload["alerts"])
 
 
 def test_non_serializable_ai_details_do_not_escape_publishing():
@@ -360,11 +401,11 @@ def test_non_serializable_ai_details_do_not_escape_publishing():
     manager = CapturingManager()
     publisher = SensorUpdatePublisher(services.engine, manager)
 
-    publisher.publish([reading()])
+    publisher.publish()
 
     assert manager.payload is not None
     assert len(manager.payload["alerts"]) == 1
-    assert manager.payload["alerts"][0]["details"]["_truncated"] is True
+    assert "details" not in manager.payload["alerts"][0]
 
 
 def test_live_websocket_pushes_bounded_frame_with_oversized_alert_details():
@@ -392,7 +433,7 @@ def test_live_websocket_pushes_bounded_frame_with_oversized_alert_details():
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
     assert len(payload["alerts"]) == 20
     assert len(encoded) <= MAX_SENSOR_UPDATE_BYTES
-    assert all(alert["details"]["_truncated"] is True for alert in payload["alerts"])
+    assert all("details" not in alert for alert in payload["alerts"])
 
 
 def test_live_readings_use_shared_strict_ingestion_rules():
@@ -421,7 +462,7 @@ def test_bad_live_reading_is_skipped_and_next_frame_is_delivered(caplog):
                 second = websocket.receive_json()
 
     assert [item["sensor_id"] for item in first["sensors"]] == ["S01"]
-    assert [item["sensor_id"] for item in second["sensors"]] == ["S02"]
+    assert [item["sensor_id"] for item in second["sensors"]] == ["S02", "S01"]
     assert any("Skipping invalid live reading" in record.message for record in caplog.records)
 
 

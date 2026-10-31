@@ -22,9 +22,14 @@ router = APIRouter()
 def _process_records(
     services: AppServices,
     records: list[dict],
+    *,
+    live_eligible: bool,
 ):
     with services.processing_lock:
-        return services.processor.process(records)
+        return services.processor.process(
+            records,
+            live_eligible=live_eligible,
+        )
 
 
 @router.post("/upload/csv")
@@ -40,7 +45,7 @@ async def upload_csv(
     except IngestionValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    result = _process_records(services, records)
+    result = _process_records(services, records, live_eligible=push_live)
 
     return {
         "status": "ok",
@@ -62,7 +67,7 @@ async def upload_json(
     except IngestionValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    result = _process_records(services, records)
+    result = _process_records(services, records, live_eligible=push_live)
 
     return {
         "status": "ok",
@@ -96,7 +101,7 @@ async def push_single(
     except IngestionValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    _process_records(services, records)
+    _process_records(services, records, live_eligible=push_live)
     return {"status": "ok", "sensor_id": sensor_id, "value": value}
 
 

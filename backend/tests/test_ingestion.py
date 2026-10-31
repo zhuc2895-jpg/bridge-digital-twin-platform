@@ -80,6 +80,26 @@ def test_json_upload_updates_latest_state_and_health(client, app):
     assert "recent_alerts" not in health.json()
     assert "active_alerts" not in health.json()
     assert health.json()["simulator_running"] is False
+    assert health.json()["state_scope"] == "process"
+
+
+def test_push_live_controls_live_eligibility(client):
+    backfill = client.post(
+        "/api/data/upload/json?push_live=false",
+        json=[reading(sensor_id="BACKFILL", value=900.0, timestamp=200.0)],
+    )
+    live = client.post(
+        "/api/data/upload/json?push_live=true",
+        json=[reading(sensor_id="LIVE", value=100.0, timestamp=100.0)],
+    )
+
+    assert backfill.status_code == 200
+    assert live.status_code == 200
+    assert client.get("/api/sensors/BACKFILL").json()["value"] == 900.0
+    assert [
+        item["sensor_id"]
+        for item in client.app.state.services.engine.get_live_snapshot()
+    ] == ["LIVE"]
 
 
 def test_json_ingestion_normalizes_sensor_identifier_whitespace(client):

@@ -12,6 +12,7 @@ export const useBridgeStore = defineStore('bridge', () => {
   const sensorData = ref<SensorData[]>([])
   const alerts = ref<Alert[]>([])
   const stats = ref<Stats | null>(null)
+  const pendingSensorIds = ref<Set<string>>(new Set())
 
   // 连接状态
   const connected = ref(false)
@@ -33,7 +34,21 @@ export const useBridgeStore = defineStore('bridge', () => {
   // 更新传感器数据
   function updateSensorData(data: SensorData[]) {
     sensorData.value = data
+    const receivedIds = new Set(data.map(sensor => sensor.sensor_id))
+    pendingSensorIds.value = new Set(
+      [...pendingSensorIds.value].filter(sensorId => !receivedIds.has(sensorId))
+    )
     lastUpdate.value = Date.now()
+  }
+
+  function markSensorPending(sensorId: string) {
+    pendingSensorIds.value = new Set([...pendingSensorIds.value, sensorId])
+  }
+
+  function clearSensorPending(sensorId: string) {
+    pendingSensorIds.value = new Set(
+      [...pendingSensorIds.value].filter(id => id !== sensorId)
+    )
   }
 
   // 更新告警
@@ -88,12 +103,15 @@ export const useBridgeStore = defineStore('bridge', () => {
     chartTimeRange,
     selectedChartSensor,
     simulatorRunning,
+    pendingSensorIds,
     alertCountByLevel,
     latestAlerts,
     strainSensors,
     updateSensorData,
     updateAlerts,
     updateStats,
+    markSensorPending,
+    clearSensorPending,
     setConnected,
     selectSensor
   }

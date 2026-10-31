@@ -31,7 +31,10 @@
           <div class="alert-message">{{ alert.message }}</div>
           <div class="alert-detail">
             <span>{{ alert.sensor_name }}</span>
-            <span class="alert-value">当前值: {{ alert.value.toFixed(2) }}</span>
+            <span class="alert-value">
+              当前值: {{ alert.value === null ? '--' : alert.value.toFixed(2) }}
+            </span>
+            <span v-if="alert.invalid" class="alert-invalid">数据无效</span>
             <span class="alert-threshold">阈值: {{ alert.threshold }}</span>
           </div>
         </div>
@@ -46,11 +49,19 @@
 
     <!-- 手动异常注入按钮 -->
     <div class="inject-section">
-      <button class="inject-btn" @click="injectAnomaly('S01')">
-        ⚡ 手动注入异常 (S01)
+      <button
+        class="inject-btn"
+        :disabled="store.pendingSensorIds.has('S01')"
+        @click="injectAnomaly('S01')"
+      >
+        {{ store.pendingSensorIds.has('S01') ? '⏳ 等待下一帧 (S01)' : '⚡ 手动注入异常 (S01)' }}
       </button>
-      <button class="inject-btn" @click="injectAnomaly('D01')">
-        ⚡ 手动注入异常 (D01)
+      <button
+        class="inject-btn"
+        :disabled="store.pendingSensorIds.has('D01')"
+        @click="injectAnomaly('D01')"
+      >
+        {{ store.pendingSensorIds.has('D01') ? '⏳ 等待下一帧 (D01)' : '⚡ 手动注入异常 (D01)' }}
       </button>
     </div>
   </div>
@@ -78,12 +89,16 @@ function formatTime(ts: number): string {
 }
 
 async function injectAnomaly(sensorId: string) {
+  store.markSensorPending(sensorId)
   try {
-    await fetch(`http://localhost:8000/api/analysis/inject-anomaly?sensor_id=${sensorId}`, {
-      method: 'POST'
-    })
+    const response = await fetch(
+      `http://localhost:8000/api/analysis/inject-anomaly?sensor_id=${sensorId}`,
+      { method: 'POST' }
+    )
+    if (!response.ok) throw new Error(`Injection failed: ${response.status}`)
     console.log(`[AlertPanel] Anomaly injected to ${sensorId}`)
   } catch (e) {
+    store.clearSensorPending(sensorId)
     console.error('Inject anomaly error:', e)
   }
 }
@@ -157,6 +172,7 @@ async function injectAnomaly(sensorId: string) {
 .alert-value { color: #ffa198; }
 .alert-threshold { color: #8b949e; }
 
+.alert-invalid { color: #ff7b72; font-weight: 600; }
 .no-alerts {
   flex: 1;
   display: flex;

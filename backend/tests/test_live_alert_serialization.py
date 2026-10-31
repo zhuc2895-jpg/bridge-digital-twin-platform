@@ -1,6 +1,7 @@
 import json
 
 from app.dependencies import create_services
+from app.engine.data_engine import MonitoringEngine
 from app.live_contract import build_sensor_update
 from app.live_stream import SensorUpdatePublisher
 from app.ws.message_contract import encode_message
@@ -15,6 +16,47 @@ class CapturingManager:
         self.payloads.append(payload)
 
 
+def test_live_frame_uses_only_live_eligible_state():
+    engine = MonitoringEngine()
+    engine.ingest(
+        [reading(sensor_id="LIVE", value=100.0, timestamp=100.0)],
+        live_eligible=True,
+    )
+    engine.ingest(
+        [reading(sensor_id="BACKFILL", value=900.0, timestamp=200.0)],
+        live_eligible=False,
+    )
+    engine.submit_alert(
+        sensor_id="LIVE",
+        sensor_name="Live sensor",
+        level="yellow",
+        message="Live alert",
+        value=400.0,
+        threshold=300.0,
+        source="rule",
+        timestamp=100.0,
+        live_eligible=True,
+    )
+    engine.submit_alert(
+        sensor_id="BACKFILL",
+        sensor_name="Backfill sensor",
+        level="red",
+        message="Backfill alert",
+        value=800.0,
+        threshold=600.0,
+        source="rule",
+        timestamp=200.0,
+        live_eligible=False,
+    )
+
+    payload = build_sensor_update(engine)
+
+    assert [item["sensor_id"] for item in payload["sensors"]] == ["LIVE"]
+    assert [item["sensor_id"] for item in payload["alerts"]] == ["LIVE"]
+    assert payload["alerts"][0]["invalid"] is False
+    assert "details" not in payload["alerts"][0]
+
+
 def test_malformed_alert_value_does_not_suppress_live_update(caplog):
     services = create_services()
     services.engine.submit_alert(
@@ -26,15 +68,16 @@ def test_malformed_alert_value_does_not_suppress_live_update(caplog):
         threshold=300.0,
         source="ai_feature_arbitration",
         timestamp=1_700_000_000.0,
-        details={},
     )
     manager = CapturingManager()
     publisher = SensorUpdatePublisher(services.engine, manager)
 
-    publisher.publish([reading()])
+    publisher.publish()
 
     assert len(manager.payloads) == 1
-    assert manager.payloads[0]["alerts"]
+    alert = manager.payloads[0]["alerts"][0]
+    assert alert["value"] is None
+    assert alert["invalid"] is True
     assert any("sensor_update" in record.message for record in caplog.records)
 
 
@@ -49,15 +92,35 @@ def test_non_finite_alert_value_produces_standard_json():
         threshold=300.0,
         source="ai_feature_arbitration",
         timestamp=1_700_000_000.0,
-        details={},
     )
 
-    message = encode_message(build_sensor_update(services.engine, [reading()]))
-
-    assert "NaN" not in message
-    json.loads(
+    message = encode_message(build_sensor_update(services.engine))
+    payload = json.loads(
         message,
         parse_constant=lambda value: (_ for _ in ()).throw(
             ValueError(f"non-standard JSON constant: {value}")
         ),
     )
+
+    assert payload["alerts"][0]["value"] is None
+    assert payload["alerts"][0]["invalid"] is True
+
+
+def test_live_frame_contains_at_most_thirty_two_live_sensors():
+    engine = MonitoringEngine()
+    engine.ingest(
+        [
+            reading(
+                sensor_id=f"S{index:03d}",
+                value=float(index),
+                timestamp=float(index),
+            )
+            for index in range(40)
+        ],
+        live_eligible=True,
+    )
+
+    payload = build_sensor_update(engine)
+
+    assert len(payload["sensors"]) == 32
+    assert {item["timestamp"] for item in payload["sensors"]} == set(range(8, 40))

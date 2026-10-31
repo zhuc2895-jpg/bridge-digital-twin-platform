@@ -76,6 +76,34 @@ _Avoid_: alert timestamp, alert ID order
 A sensor condition below its yellow physical threshold; green represents this state visually but is not an alert level.
 _Avoid_: green alert
 
+**Live Tick**:
+The application-wide instant at which the current monitoring state is sampled and broadcast to subscribers, independent of WebSocket client connections.
+_Avoid_: per-client tick, connection timer
+
+**Live Frame**:
+One `sensor_update` snapshot emitted by a Live Tick, with exactly one scheduled emission per second and a UTF-8 encoded size no greater than 10KB.
+_Avoid_: per-upload frame, immediate update
+
+**Live Eligible Sensor Reading**:
+A Sensor Reading marked to participate in future Live Frames; backfill and non-live uploads are not Live Eligible.
+_Avoid_: immediate reading, pushed reading
+
+**Live Sensor Snapshot**:
+The latest Live Eligible Sensor Reading for each sensor at one Live Tick, ordered by event time with stable tie-breaking and limited to the 32 most recent sensors.
+_Avoid_: simulator-only batch, upload event batch
+
+**Realtime Alert Projection**:
+The bounded core representation of a Recent Alert produced by Live Eligible data; invalid numeric values are represented as null and marked invalid, while full alert evidence remains available through alert queries.
+_Avoid_: full alert payload, detail-bearing alert, backfill alert
+
+**Slow Client**:
+A WebSocket subscriber that cannot accept a Live Frame within the latency budget or whose bounded queue is full.
+_Avoid_: lagging client, backlogged subscriber
+
+**Live Stream Loop**:
+The single process-scoped cycle that advances simulation or ingestion and emits Live Frames.
+_Avoid_: per-connection loop, per-client generator, cross-worker loop
+
 ### Vibration Benchmark
 
 **Structural Condition**:

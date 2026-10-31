@@ -21,10 +21,11 @@ export interface Alert {
   sensor_name: string
   level: string
   message: string
-  value: number
+  value: number | null
   threshold: number
   source: string
   timestamp: number
+  invalid: boolean
 }
 
 export interface Stats {

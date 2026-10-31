@@ -6,7 +6,6 @@ from collections.abc import Callable
 import logging
 import threading
 import time
-from typing import Any
 
 from app.engine.data_engine import MonitoringEngine
 from app.engine.simulator import DataSimulator
@@ -28,14 +27,9 @@ class SensorUpdatePublisher:
         self.engine = engine
         self.ws_manager = ws_manager
 
-    def publish(
-        self,
-        readings: list[dict[str, Any]],
-        *,
-        queued_at: float | None = None,
-    ) -> None:
+    def publish(self, *, queued_at: float | None = None) -> None:
         try:
-            payload = build_sensor_update(self.engine, readings)
+            payload = build_sensor_update(self.engine)
             self.ws_manager.enqueue_broadcast(payload, queued_at=queued_at)
         except Exception:
             logger.exception("Failed to publish sensor_update; continuing live stream")
@@ -46,7 +40,7 @@ def process_live_tick(
     simulator: DataSimulator,
     processor: SensorDataProcessor,
     publisher: SensorUpdatePublisher,
-    processing_lock: Any,
+    processing_lock: threading.RLock,
     generated_at: float,
 ) -> None:
     """Generate, ingest, and publish one serialized live frame."""
@@ -62,7 +56,7 @@ def process_live_tick(
             processor.process(readings)
         except Exception:
             logger.exception("Live ingestion/detector pipeline failed")
-        publisher.publish(readings, queued_at=generated_at)
+        publisher.publish(queued_at=generated_at)
 
 
 class LiveStreamRunner:

@@ -30,9 +30,19 @@ class SensorDataProcessor:
         self.engine = engine
         self.detectors = detectors
 
-    def process(self, records: list[dict]) -> ProcessingResult:
-        self.engine.ingest(records)
-        result = ProcessingResult(rule_alerts=self.engine.check_thresholds(records))
+    def process(
+        self,
+        records: list[dict],
+        *,
+        live_eligible: bool = True,
+    ) -> ProcessingResult:
+        self.engine.ingest(records, live_eligible=live_eligible)
+        result = ProcessingResult(
+            rule_alerts=self.engine.check_thresholds(
+                records,
+                live_eligible=live_eligible,
+            )
+        )
 
         try:
             detections = self.detectors.detect(
@@ -56,6 +66,7 @@ class SensorDataProcessor:
                     source=detection.source or "ai_dual_confirm",
                     timestamp=detection.timestamp,
                     details=dict(detection.details),
+                    live_eligible=live_eligible,
                 )
             except Exception:
                 logger.exception(

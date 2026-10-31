@@ -99,6 +99,7 @@ def create_app(services: Optional[AppServices] = None) -> FastAPI:
             "sensor_count": engine.get_sensor_count(),
             "retained_alerts": engine.get_alert_count(),
             "simulator_running": services.simulator.is_running,
+            "state_scope": "process",
         }
 
     @application.websocket("/ws/live")

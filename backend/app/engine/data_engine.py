@@ -29,6 +29,7 @@ class SensorReading:
     type: SensorType  # strain / displacement / acceleration / temperature
     value: float
     timestamp: float
+    live_eligible: bool = True
 
 
 @dataclass
@@ -45,6 +46,7 @@ class Alert:
     timestamp: float
     detection_sequence: int = 0
     details: Dict[str, Any] = field(default_factory=dict)
+    live_eligible: bool = True
 
 
 class MonitoringEngine:
@@ -66,6 +68,7 @@ class MonitoringEngine:
 
         # 传感器最新状态: dict[sensor_id] -> SensorReading
         self._latest: Dict[str, SensorReading] = {}
+        self._live_latest: Dict[str, SensorReading] = {}
 
         # 滚动窗口历史: dict[sensor_id] -> deque(maxlen=window_size)
         self._history: Dict[str, deque] = {}
@@ -98,8 +101,13 @@ class MonitoringEngine:
             "temperature": {"yellow": 45, "orange": 55, "red": 65},
         }
 
-    def ingest(self, sensor_data: List[dict[str, Any]]):
-        """摄入一批传感器数据"""
+    def ingest(
+        self,
+        sensor_data: List[dict[str, Any]],
+        *,
+        live_eligible: bool = True,
+    ):
+        """摄入一批传感器数据，并标记其是否进入实时快照。"""
         ingested_sensor_ids = set()
         sensors_needing_sort = set()
         for item in sensor_data:
@@ -108,11 +116,19 @@ class MonitoringEngine:
                 name=item.get("name", ""),
                 type=item.get("type", "unknown"),
                 value=item["value"],
-                timestamp=item.get("timestamp", time.time())
+                timestamp=item.get("timestamp", time.time()),
+                live_eligible=live_eligible,
             )
             current = self._latest.get(reading.sensor_id)
             if current is None or reading.timestamp >= current.timestamp:
                 self._latest[reading.sensor_id] = reading
+            if live_eligible:
+                current_live = self._live_latest.get(reading.sensor_id)
+                if (
+                    current_live is None
+                    or reading.timestamp >= current_live.timestamp
+                ):
+                    self._live_latest[reading.sensor_id] = reading
 
             # 维护最近 500 条滚动窗口；超过容量后按到达顺序淘汰。
             history = self._history.setdefault(
@@ -154,7 +170,12 @@ class MonitoringEngine:
             self._min_ts = min(history[0].timestamp for history in histories)
             self._max_ts = max(history[-1].timestamp for history in histories)
 
-    def check_thresholds(self, sensor_data: List[dict[str, Any]]) -> List[Alert]:
+    def check_thresholds(
+        self,
+        sensor_data: List[dict[str, Any]],
+        *,
+        live_eligible: bool = True,
+    ) -> List[Alert]:
         """Evaluate physical thresholds and submit every matched alert."""
         alerts = []
         for item in sensor_data:
@@ -186,6 +207,7 @@ class MonitoringEngine:
                 threshold=threshold,
                 source="rule",
                 timestamp=item.get("timestamp", time.time()),
+                live_eligible=live_eligible,
             )
             if alert is not None:
                 alerts.append(alert)
@@ -210,6 +232,7 @@ class MonitoringEngine:
         source: str,
         timestamp: float,
         details: Optional[Mapping[str, Any]] = None,
+        live_eligible: bool = True,
     ) -> Optional[Alert]:
         """Create one alert through the shared lifecycle policy."""
         if level not in self.ALERT_LEVELS:
@@ -230,6 +253,7 @@ class MonitoringEngine:
             source=source,
             timestamp=timestamp,
             details=dict(details or {}),
+            live_eligible=live_eligible,
         )
         self._remember_alert_time((sensor_id, level), timestamp)
         self._retain_alert(alert)
@@ -369,6 +393,26 @@ class MonitoringEngine:
                 reverse=True,
             )[:20]
         ]
+
+    def get_recent_live_alerts(self) -> List[dict]:
+        """Return the newest retained alerts created by Live Eligible data."""
+        return [
+            self._alert_to_dict(alert)
+            for alert in sorted(
+                (alert for alert in self._alerts if alert.live_eligible),
+                key=lambda alert: (alert.timestamp, alert.detection_sequence),
+                reverse=True,
+            )[:20]
+        ]
+
+    def get_live_snapshot(self, limit: int = 32) -> List[dict]:
+        """Return the newest Live Eligible reading for each sensor."""
+        readings = sorted(
+            self._live_latest.values(),
+            key=lambda reading: (reading.timestamp, str(reading.sensor_id)),
+            reverse=True,
+        )
+        return [self._reading_to_dict(reading) for reading in readings[:limit]]
 
     def get_alert_stats(self) -> dict:
         """Summarize every retained alert, not only the recent page."""

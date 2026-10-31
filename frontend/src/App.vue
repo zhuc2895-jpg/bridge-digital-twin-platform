@@ -115,6 +115,9 @@
               </div>
               <div class="sname">{{ s.name }}</div>
               <div class="sval">{{ s.value.toFixed(2) }}</div>
+              <div v-if="pendingSensors.has(s.sensor_id)" class="pending-value">
+                等待下一帧...
+              </div>
               <div class="sunit">{{ unitName(s.type) }}</div>
             </div>
           </div>
@@ -148,7 +151,12 @@
               <span class="ai-icon">{{ levelIcon(a.level) }}</span>
               <div class="ai-body">
                 <div class="ai-msg">{{ a.message }}</div>
-                <div class="ai-detail">{{ a.sensor_name }} · 当前 {{ a.value.toFixed(2) }} / 阈值 {{ a.threshold }}</div>
+                <div class="ai-detail">
+                  {{ a.sensor_name }} · 当前
+                  {{ a.value === null ? '--' : a.value.toFixed(2) }}
+                  / 阈值 {{ a.threshold }}
+                  <span v-if="a.invalid" class="invalid-value">数据无效</span>
+                </div>
               </div>
             </div>
           </div>
@@ -187,15 +195,17 @@ interface Alert {
   sensor_name: string
   level: string
   message: string
-  value: number
+  value: number | null
   threshold: number
   source: string
   timestamp: number
+  invalid: boolean
 }
 
 const connected = ref(false)
 const sensors = ref<Sensor[]>([])
 const alerts = ref<Alert[]>([])
+const pendingSensors = ref<Set<string>>(new Set())
 const totalReadings = ref(0)
 const now = ref('')
 const lastUpdate = ref('')
@@ -274,6 +284,10 @@ function connect() {
         if (replayMode.value) return
         sensors.value = d.sensors || []
         alerts.value = d.alerts || []
+        const receivedIds = new Set(sensors.value.map(sensor => sensor.sensor_id))
+        pendingSensors.value = new Set(
+          [...pendingSensors.value].filter(sensorId => !receivedIds.has(sensorId))
+        )
         if (d.stats) totalReadings.value = d.stats.total_readings || 0
         lastUpdate.value = new Date().toLocaleTimeString()
         updateSensorColors()
@@ -291,9 +305,18 @@ function connect() {
 function tick() { now.value = new Date().toLocaleString('zh-CN') }
 
 async function injectAnomaly(id: string) {
+  pendingSensors.value = new Set([...pendingSensors.value, id])
   try {
-    await fetch(`http://127.0.0.1:8000/api/analysis/inject-anomaly?sensor_id=${id}`, { method: 'POST' })
-  } catch {}
+    const response = await fetch(
+      `http://127.0.0.1:8000/api/analysis/inject-anomaly?sensor_id=${id}`,
+      { method: 'POST' }
+    )
+    if (!response.ok) throw new Error(`Injection failed: ${response.status}`)
+  } catch {
+    pendingSensors.value = new Set(
+      [...pendingSensors.value].filter(sensorId => sensorId !== id)
+    )
+  }
 }
 
 function resetView() {
@@ -1309,6 +1332,8 @@ body { font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif; ba
 .sname { font-size: 11px; color: #c9d1d9; margin-bottom: 6px; }
 .sval { font-size: 20px; font-weight: 700; color: #f0f6fc; }
 .sunit { font-size: 10px; color: #8b949e; }
+.pending-value { margin-top: 4px; font-size: 10px; color: #d29922; }
+.invalid-value { color: #ff7b72; font-weight: 600; }
 
 @keyframes pulse {
   0%,100% { box-shadow: 0 0 0 0 rgba(255,77,79,0.4); }
