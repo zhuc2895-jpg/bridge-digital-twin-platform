@@ -151,7 +151,7 @@
                 <div class="ai-detail">
                   {{ a.sensor_name }} · 当前
                   {{ a.value === null ? '--' : a.value.toFixed(2) }}
-                  / 阈值 {{ a.threshold }}
+                  / 阈值 {{ a.threshold ?? '--' }}
                 </div>
               </div>
             </div>
@@ -278,9 +278,7 @@ function tick() { now.value = new Date().toLocaleString('zh-CN') }
 
 async function injectAnomaly(id: string) {
   try {
-    await fetch(`http://127.0.0.1:8000/api/analysis/inject-anomaly?sensor_id=${id}`, {
-      method: 'POST'
-    })
+    await fetch(`http://127.0.0.1:8000/api/analysis/inject-anomaly?sensor_id=${id}`, { method: 'POST' })
   } catch {}
 }
 
