@@ -7,14 +7,7 @@ from app.live_contract import LiveFrameSource, build_sensor_update
 from app.live_stream import SensorUpdatePublisher
 from app.ws.message_contract import encode_message
 from tests.factories import reading
-
-
-class CapturingManager:
-    def __init__(self):
-        self.payloads = []
-
-    def enqueue_broadcast(self, payload, *, queued_at=None):
-        self.payloads.append(payload)
+from tests.helpers import CapturingManager
 
 
 def test_live_frame_uses_only_live_eligible_state():
@@ -211,5 +204,49 @@ def test_late_server_processing_drops_frame_without_enqueueing():
         source,
         generated_at=time.monotonic() - 1.0,
     )
+
+    assert manager.payloads == []
+
+def test_boolean_alert_value_is_invalid():
+    engine = MonitoringEngine()
+    engine.submit_alert(
+        sensor_id="S01",
+        sensor_name="AI detector",
+        level="yellow",
+        message="Boolean value",
+        value=True,
+        threshold=300.0,
+        source="ai_feature_arbitration",
+        timestamp=1_700_000_000.0,
+    )
+
+    alert = build_sensor_update(engine)["alerts"][0]
+
+    assert alert["value"] is None
+    assert alert["invalid"] is True
+
+
+def test_slow_encoding_consumes_total_latency_budget(monkeypatch):
+    services = create_services()
+    manager = CapturingManager()
+    publisher = SensorUpdatePublisher(
+        services.engine,
+        manager,
+        max_frame_age_seconds=0.05,
+    )
+    source = LiveFrameSource(sensors=[], alerts=[], stats={})
+    original_build = __import__(
+        "app.live_stream", fromlist=["build_sensor_update_from_snapshot"]
+    ).build_sensor_update_from_snapshot
+
+    def slow_build(*args):
+        time.sleep(0.06)
+        return original_build(*args)
+
+    import app.live_stream as live_stream
+
+    monkeypatch.setattr(live_stream, "build_sensor_update_from_snapshot", slow_build)
+
+    publisher.publish(source, generated_at=time.monotonic())
 
     assert manager.payloads == []

@@ -34,7 +34,6 @@
             <span class="alert-value">
               当前值: {{ alert.value === null ? '--' : alert.value.toFixed(2) }}
             </span>
-            <span v-if="alert.invalid" class="alert-invalid">数据无效</span>
             <span class="alert-threshold">阈值: {{ alert.threshold }}</span>
           </div>
         </div>
@@ -44,7 +43,7 @@
     <!-- 无告警 -->
     <div class="no-alerts" v-else>
       <div class="no-alerts-icon">✅</div>
-      <div class="no-alerts-text">系统运行正常，无活跃告警</div>
+      <div class="no-alerts-text">系统运行正常，无近期告警</div>
     </div>
 
     <!-- 手动异常注入按钮 -->
@@ -61,7 +60,6 @@
 
 <script setup lang="ts">
 import { useBridgeStore } from '../stores/bridgeStore'
-import { injectAnomaly as submitAnomalyInjection } from '../composables/useAnomalyInjection'
 import type { AlertSource } from '../types/live'
 
 const store = useBridgeStore()
@@ -83,8 +81,14 @@ function formatTime(ts: number | null): string {
 }
 
 async function injectAnomaly(sensorId: string) {
-  const injected = await submitAnomalyInjection(sensorId)
-  if (!injected) console.error(`Injection failed for ${sensorId}`)
+  try {
+    await fetch(
+      `http://127.0.0.1:8000/api/analysis/inject-anomaly?sensor_id=${encodeURIComponent(sensorId)}`,
+      { method: 'POST' }
+    )
+  } catch (error) {
+    console.error('Inject anomaly error:', error)
+  }
 }
 </script>
 
@@ -156,7 +160,6 @@ async function injectAnomaly(sensorId: string) {
 .alert-value { color: #ffa198; }
 .alert-threshold { color: #8b949e; }
 
-.alert-invalid { color: #ff7b72; font-weight: 600; }
 .no-alerts {
   flex: 1;
   display: flex;

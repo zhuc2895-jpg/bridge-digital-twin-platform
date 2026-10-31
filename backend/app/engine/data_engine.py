@@ -70,7 +70,6 @@ class MonitoringEngine:
         # 传感器最新状态: dict[sensor_id] -> SensorReading
         self._latest: Dict[str, SensorReading] = {}
         self._live_latest: Dict[str, SensorReading] = {}
-        self._live_overrides: Dict[str, SensorReading] = {}
 
         # 滚动窗口历史: dict[sensor_id] -> deque(maxlen=window_size)
         self._history: Dict[str, deque] = {}
@@ -108,13 +107,11 @@ class MonitoringEngine:
         batch: SensorBatch | List[dict[str, Any]],
         *,
         live_eligible: bool = True,
-        live_override: bool = False,
     ):
         """摄入一批传感器数据，并应用该批次的实时可见性策略。"""
         sensor_batch = SensorBatch.coerce(
             batch,
             live_eligible=live_eligible,
-            live_override=live_override,
         )
         ingested_sensor_ids = set()
         sensors_needing_sort = set()
@@ -137,13 +134,6 @@ class MonitoringEngine:
                     or reading.timestamp >= current_live.timestamp
                 ):
                     self._live_latest[reading.sensor_id] = reading
-                if sensor_batch.live_override:
-                    current_override = self._live_overrides.get(reading.sensor_id)
-                    if (
-                        current_override is None
-                        or reading.timestamp >= current_override.timestamp
-                    ):
-                        self._live_overrides[reading.sensor_id] = reading
 
             # 维护最近 500 条滚动窗口；超过容量后按到达顺序淘汰。
             history = self._history.setdefault(
@@ -428,18 +418,12 @@ class MonitoringEngine:
 
     def get_live_snapshot(self, limit: int = 32) -> List[dict]:
         """Return the newest Live Eligible reading for each sensor."""
-        merged = dict(self._live_latest)
-        merged.update(self._live_overrides)
         readings = sorted(
-            merged.values(),
+            self._live_latest.values(),
             key=lambda reading: (reading.timestamp, str(reading.sensor_id)),
             reverse=True,
         )
         return [self._reading_to_dict(reading) for reading in readings[:limit]]
-
-    def consume_live_overrides(self) -> None:
-        """Consume one-shot external overrides after a Live Frame is captured."""
-        self._live_overrides.clear()
 
     def get_alert_stats(self) -> dict:
         """Summarize every retained alert, not only the recent page."""

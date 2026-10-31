@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from app.dependencies import AppServices, get_services
 from app.engine.simulator import UnknownSimulatorSensorError
 from app.ml.registry import DetectorRegistryError
+from app.sensor_batch import SensorBatch
 from app.sensor_ids import SensorIdentifier
 
 router = APIRouter()
@@ -96,7 +97,12 @@ async def inject_anomaly(
         with services.processing_lock:
             generated = simulator.inject_anomaly(target)
             injected_readings = [generated.reading.to_dict()]
-            services.processor.process(injected_readings)
+            services.processor.process(
+                SensorBatch(
+                    records=injected_readings,
+                    live_eligible=True,
+                )
+            )
     except UnknownSimulatorSensorError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

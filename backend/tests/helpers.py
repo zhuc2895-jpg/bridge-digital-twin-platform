@@ -69,3 +69,10 @@ async def async_wait_until(
             return True
         await asyncio.sleep(0.01)
     return predicate()
+
+class CapturingManager:
+    def __init__(self) -> None:
+        self.payloads: list[dict[str, Any]] = []
+
+    def enqueue_broadcast(self, payload, *, queued_at=None):
+        self.payloads.append(payload)

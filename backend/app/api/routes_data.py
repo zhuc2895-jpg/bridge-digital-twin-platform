@@ -29,7 +29,6 @@ def _process_records(
     batch = SensorBatch(
         records=records,
         live_eligible=live_eligible,
-        live_override=live_eligible,
     )
     with services.processing_lock:
         return services.processor.process(batch)

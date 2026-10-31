@@ -37,9 +37,7 @@ class SensorUpdatePublisher:
         self.max_frame_age_seconds = max_frame_age_seconds
 
     def capture_snapshot(self) -> LiveFrameSource:
-        source = capture_live_frame_source(self.engine)
-        self.engine.consume_live_overrides()
-        return source
+        return capture_live_frame_source(self.engine)
 
     def publish(
         self,
@@ -56,12 +54,18 @@ class SensorUpdatePublisher:
                 logger.warning("Skipping stale server-generated live frame")
                 return
             snapshot = source or self.capture_snapshot()
-            payload = build_sensor_update_from_snapshot(
-                snapshot.sensors,
-                snapshot.alerts,
-                snapshot.stats,
+            payload = build_sensor_update_from_snapshot(snapshot)
+            if (
+                generated_at is not None
+                and time.monotonic() - generated_at > self.max_frame_age_seconds
+            ):
+                logger.warning("Skipping stale server-generated live frame")
+                return
+            queue_timestamp = generated_at if generated_at is not None else queued_at
+            self.ws_manager.enqueue_broadcast(
+                payload,
+                queued_at=queue_timestamp,
             )
-            self.ws_manager.enqueue_broadcast(payload, queued_at=queued_at)
         except Exception:
             logger.exception("Failed to publish sensor_update; continuing live stream")
 

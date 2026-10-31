@@ -36,12 +36,10 @@ class SensorDataProcessor:
         batch: SensorBatch | list[dict],
         *,
         live_eligible: bool = True,
-        live_override: bool = False,
     ) -> ProcessingResult:
         sensor_batch = SensorBatch.coerce(
             batch,
             live_eligible=live_eligible,
-            live_override=live_override,
         )
         self.engine.ingest(sensor_batch)
         result = ProcessingResult(

@@ -116,6 +116,8 @@ def _compact_reading(
 
 
 def _finite_number(value: Any) -> tuple[float | None, bool]:
+    if isinstance(value, bool):
+        return None, False
     try:
         number = float(value)
     except (OverflowError, TypeError, ValueError):
@@ -172,26 +174,22 @@ def _live_sensors(
     return [_compact_reading(reading, limits) for reading in readings]
 
 
-def build_sensor_update_from_snapshot(
-    sensor_readings: list[dict[str, Any]],
-    alert_records: list[dict[str, Any]],
-    stats: dict[str, Any],
-) -> SensorUpdateWire:
+def build_sensor_update_from_snapshot(source: LiveFrameSource) -> SensorUpdateWire:
     """Build a bounded Live Frame from an already copied live snapshot."""
-    sensors = _live_sensors(sensor_readings)
-    alerts = [_alert_payload(alert) for alert in alert_records]
+    sensors = _live_sensors(source.sensors)
+    alerts = [_alert_payload(alert) for alert in source.alerts]
     payload: SensorUpdateWire = {
         "type": "sensor_update",
         "sensors": sensors,
         "alerts": alerts,
-        "stats": stats,
+        "stats": source.stats,
     }
     if _message_size(payload) <= MAX_SENSOR_UPDATE_BYTES:
         return payload
 
     for text_limits in (_SHORT_TEXT_LIMITS, _MINIMAL_TEXT_LIMITS):
-        sensors = _live_sensors(sensor_readings, text_limits)
-        alerts = [_alert_payload(alert, text_limits) for alert in alert_records]
+        sensors = _live_sensors(source.sensors, text_limits)
+        alerts = [_alert_payload(alert, text_limits) for alert in source.alerts]
         payload["sensors"] = sensors
         payload["alerts"] = alerts
         if _message_size(payload) <= MAX_SENSOR_UPDATE_BYTES:
@@ -216,11 +214,7 @@ def capture_live_frame_source(engine: MonitoringEngine) -> LiveFrameSource:
 def build_sensor_update(engine: MonitoringEngine) -> SensorUpdateWire:
     """Build one bounded Live Frame from current live-eligible state."""
     source = capture_live_frame_source(engine)
-    return build_sensor_update_from_snapshot(
-        source.sensors,
-        source.alerts,
-        source.stats,
-    )
+    return build_sensor_update_from_snapshot(source)
 
 
 def normalize_live_readings(records: Any) -> list[dict[str, Any]]:

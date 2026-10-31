@@ -14,7 +14,7 @@ from app.live_contract import (
 )
 from app.live_stream import SensorUpdatePublisher
 from tests.factories import reading
-from tests.helpers import TrackingLock, create_live_app, wait_until
+from tests.helpers import CapturingManager, TrackingLock, create_live_app, wait_until
 
 
 class OneShotSimulator:
@@ -265,7 +265,7 @@ class CurrentTimeCountingSimulator:
 
 def test_live_upload_for_existing_sensor_appears_in_next_frame():
     services, app = create_live_app(
-        simulator=CurrentTimeCountingSimulator(),
+        simulator=CountingSimulator(),
         interval_seconds=0.05,
     )
 
@@ -439,22 +439,14 @@ def test_non_serializable_ai_details_do_not_escape_publishing():
         timestamp=1_700_000_000.0,
         details={"model_votes": {"stale", "confirm"}},
     )
-
-    class CapturingManager:
-        def __init__(self):
-            self.payload = None
-
-        def enqueue_broadcast(self, payload, *, queued_at=None):
-            self.payload = payload
-
     manager = CapturingManager()
     publisher = SensorUpdatePublisher(services.engine, manager)
 
     publisher.publish()
 
-    assert manager.payload is not None
-    assert len(manager.payload["alerts"]) == 1
-    assert "details" not in manager.payload["alerts"][0]
+    assert len(manager.payloads) == 1
+    assert len(manager.payloads[0]["alerts"]) == 1
+    assert "details" not in manager.payloads[0]["alerts"][0]
 
 
 def test_live_websocket_pushes_bounded_frame_with_oversized_alert_details():

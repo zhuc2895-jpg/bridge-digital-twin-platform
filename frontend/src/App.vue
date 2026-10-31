@@ -152,7 +152,6 @@
                   {{ a.sensor_name }} · 当前
                   {{ a.value === null ? '--' : a.value.toFixed(2) }}
                   / 阈值 {{ a.threshold }}
-                  <span v-if="a.invalid" class="invalid-value">数据无效</span>
                 </div>
               </div>
             </div>
@@ -179,7 +178,6 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import * as echarts from 'echarts'
 
 import type { Alert, SensorData as Sensor } from './types/live'
-import { injectAnomaly as submitAnomalyInjection } from './composables/useAnomalyInjection'
 
 const connected = ref(false)
 const sensors = ref<Sensor[]>([])
@@ -279,7 +277,11 @@ function connect() {
 function tick() { now.value = new Date().toLocaleString('zh-CN') }
 
 async function injectAnomaly(id: string) {
-  await submitAnomalyInjection(id)
+  try {
+    await fetch(`http://127.0.0.1:8000/api/analysis/inject-anomaly?sensor_id=${id}`, {
+      method: 'POST'
+    })
+  } catch {}
 }
 
 function resetView() {
@@ -1295,7 +1297,6 @@ body { font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif; ba
 .sname { font-size: 11px; color: #c9d1d9; margin-bottom: 6px; }
 .sval { font-size: 20px; font-weight: 700; color: #f0f6fc; }
 .sunit { font-size: 10px; color: #8b949e; }
-.invalid-value { color: #ff7b72; font-weight: 600; }
 
 @keyframes pulse {
   0%,100% { box-shadow: 0 0 0 0 rgba(255,77,79,0.4); }

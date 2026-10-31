@@ -78,3 +78,19 @@ def test_live_alerts_exclude_non_live_backfill_alerts():
         "LIVE",
         "BACKFILL",
     }
+
+def test_older_live_reading_cannot_replace_newer_live_reading():
+    engine = MonitoringEngine()
+    engine.ingest(
+        [reading(sensor_id="S01", value=200.0, timestamp=200.0)],
+        live_eligible=True,
+    )
+    engine.ingest(
+        [reading(sensor_id="S01", value=100.0, timestamp=100.0)],
+        live_eligible=True,
+    )
+
+    snapshot = engine.get_live_snapshot()
+
+    assert snapshot[0]["value"] == 200.0
+    assert snapshot[0]["timestamp"] == 200.0
