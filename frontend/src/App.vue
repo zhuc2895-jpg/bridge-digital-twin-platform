@@ -181,31 +181,13 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import * as echarts from 'echarts'
 
-interface Sensor {
-  sensor_id: string
-  name: string
-  type: string
-  value: number
-  timestamp: number
-}
-
-interface Alert {
-  id: string
-  sensor_id: string
-  sensor_name: string
-  level: string
-  message: string
-  value: number | null
-  threshold: number
-  source: string
-  timestamp: number
-  invalid: boolean
-}
+import type { Alert, SensorData as Sensor } from './types/live'
+import { usePendingSensors } from './composables/usePendingSensors'
 
 const connected = ref(false)
 const sensors = ref<Sensor[]>([])
 const alerts = ref<Alert[]>([])
-const pendingSensors = ref<Set<string>>(new Set())
+const { pendingSensorIds: pendingSensors, markSensorPending, clearSensorPending, clearReceivedSensors } = usePendingSensors()
 const totalReadings = ref(0)
 const now = ref('')
 const lastUpdate = ref('')
@@ -284,10 +266,7 @@ function connect() {
         if (replayMode.value) return
         sensors.value = d.sensors || []
         alerts.value = d.alerts || []
-        const receivedIds = new Set(sensors.value.map(sensor => sensor.sensor_id))
-        pendingSensors.value = new Set(
-          [...pendingSensors.value].filter(sensorId => !receivedIds.has(sensorId))
-        )
+        clearReceivedSensors(sensors.value)
         if (d.stats) totalReadings.value = d.stats.total_readings || 0
         lastUpdate.value = new Date().toLocaleTimeString()
         updateSensorColors()
@@ -305,7 +284,7 @@ function connect() {
 function tick() { now.value = new Date().toLocaleString('zh-CN') }
 
 async function injectAnomaly(id: string) {
-  pendingSensors.value = new Set([...pendingSensors.value, id])
+  markSensorPending(id)
   try {
     const response = await fetch(
       `http://127.0.0.1:8000/api/analysis/inject-anomaly?sensor_id=${id}`,
@@ -313,9 +292,7 @@ async function injectAnomaly(id: string) {
     )
     if (!response.ok) throw new Error(`Injection failed: ${response.status}`)
   } catch {
-    pendingSensors.value = new Set(
-      [...pendingSensors.value].filter(sensorId => sensorId !== id)
-    )
+    clearSensorPending(id)
   }
 }
 

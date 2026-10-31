@@ -486,6 +486,30 @@ def test_processor_failure_is_logged_and_later_frames_continue(caplog):
     assert any("pipeline failed" in record.message for record in caplog.records)
 
 
+def test_live_frame_encoding_runs_outside_processing_lock(monkeypatch):
+    services, app = create_live_app(simulator=OneShotSimulator())
+    lock = TrackingLock()
+    services.processing_lock = lock
+    observed: list[bool] = []
+
+    import app.live_contract as live_contract
+
+    original_encode = live_contract.encode_message
+
+    def tracked_encode(payload):
+        observed.append(lock.held)
+        return original_encode(payload)
+
+    monkeypatch.setattr(live_contract, "encode_message", tracked_encode)
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/live") as websocket:
+            websocket.receive_json()
+
+    assert observed
+    assert all(held is False for held in observed)
+
+
 def test_first_frame_latency_and_one_hz_cadence():
     services, app = create_live_app()
 

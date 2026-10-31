@@ -30,9 +30,9 @@ class AlertWire(TypedDict):
     level: str
     message: str
     value: float | None
-    threshold: float
+    threshold: float | None
     source: str
-    timestamp: float
+    timestamp: float | None
     invalid: bool
 
 
@@ -80,7 +80,13 @@ _MINIMAL_TEXT_LIMITS = _WireTextLimits(
 
 
 def _truncate_text(value: Any, limit: int) -> str:
-    return str(value)[:limit]
+    text = str(value)
+    if any(0xD800 <= ord(character) <= 0xDFFF for character in text):
+        text = "".join(
+            "\ufffd" if 0xD800 <= ord(character) <= 0xDFFF else character
+            for character in text
+        )
+    return text[:limit]
 
 
 def _compact_reading(
@@ -141,9 +147,9 @@ def _alert_payload(
             limits.alert_message,
         ),
         "value": value,
-        "threshold": threshold if threshold is not None else 0.0,
+        "threshold": threshold,
         "source": _truncate_text(alert.get("source", ""), 32),
-        "timestamp": timestamp if timestamp is not None else 0.0,
+        "timestamp": timestamp,
         "invalid": invalid,
     }
 
@@ -159,17 +165,19 @@ def _live_sensors(
     return [_compact_reading(reading, limits) for reading in readings]
 
 
-def build_sensor_update(engine: MonitoringEngine) -> SensorUpdateWire:
-    """Build one bounded Live Frame from current live-eligible state."""
-    sensor_readings = engine.get_live_snapshot(limit=32)
-    alert_records = engine.get_recent_live_alerts()
+def build_sensor_update_from_snapshot(
+    sensor_readings: list[dict[str, Any]],
+    alert_records: list[dict[str, Any]],
+    stats: dict[str, Any],
+) -> SensorUpdateWire:
+    """Build a bounded Live Frame from an already copied live snapshot."""
     sensors = _live_sensors(sensor_readings)
     alerts = [_alert_payload(alert) for alert in alert_records]
     payload: SensorUpdateWire = {
         "type": "sensor_update",
         "sensors": sensors,
         "alerts": alerts,
-        "stats": engine.get_stats(),
+        "stats": stats,
     }
     if _message_size(payload) <= MAX_SENSOR_UPDATE_BYTES:
         return payload
@@ -187,6 +195,15 @@ def build_sensor_update(engine: MonitoringEngine) -> SensorUpdateWire:
 
     payload["sensors"] = sensors
     return payload
+
+
+def build_sensor_update(engine: MonitoringEngine) -> SensorUpdateWire:
+    """Build one bounded Live Frame from current live-eligible state."""
+    return build_sensor_update_from_snapshot(
+        engine.get_live_snapshot(limit=32),
+        engine.get_recent_live_alerts(),
+        engine.get_stats(),
+    )
 
 
 def normalize_live_readings(records: Any) -> list[dict[str, Any]]:

@@ -35,7 +35,7 @@ def _process_records(
 @router.post("/upload/csv")
 async def upload_csv(
     file: UploadFile = File(...),
-    push_live: bool = Query(default=True, description="是否实时推送到前端"),
+    push_live: bool = Query(default=True, description="Live Eligibility: 是否允许该批数据进入后续 1Hz Live Frame"),
     services: AppServices = Depends(get_services),
 ):
     """Upload a UTF-8 CSV file with the five required sensor fields."""
@@ -58,7 +58,10 @@ async def upload_csv(
 @router.post("/upload/json")
 async def upload_json(
     data: list[Any] = Body(..., description="传感器数据数组"),
-    push_live: bool = Query(default=True),
+    push_live: bool = Query(
+        default=True,
+        description="Live Eligibility: 是否允许该数据进入后续 1Hz Live Frame",
+    ),
     services: AppServices = Depends(get_services),
 ):
     """Upload a JSON array containing at most 10,000 sensor readings."""
@@ -83,7 +86,10 @@ async def push_single(
     name: str = Body(...),
     type: str = Body(default="strain"),
     value: float = Body(...),
-    push_live: bool = Query(default=True),
+    push_live: bool = Query(
+        default=True,
+        description="Live Eligibility: 是否允许该数据进入后续 1Hz Live Frame",
+    ),
     services: AppServices = Depends(get_services),
 ):
     """Push one sensor reading for scripts, PLCs, or IoT devices."""

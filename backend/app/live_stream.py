@@ -3,17 +3,29 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 import logging
 import threading
 import time
+from typing import Any
 
 from app.engine.data_engine import MonitoringEngine
 from app.engine.simulator import DataSimulator
-from app.live_contract import build_sensor_update, normalize_live_readings
+from app.live_contract import (
+    build_sensor_update_from_snapshot,
+    normalize_live_readings,
+)
 from app.processing import SensorDataProcessor
 from app.ws.websocket_manager import WebSocketManager
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class LiveFrameSource:
+    sensors: list[dict[str, Any]]
+    alerts: list[dict[str, Any]]
+    stats: dict[str, Any]
 
 
 class SensorUpdatePublisher:
@@ -27,9 +39,26 @@ class SensorUpdatePublisher:
         self.engine = engine
         self.ws_manager = ws_manager
 
-    def publish(self, *, queued_at: float | None = None) -> None:
+    def capture_snapshot(self) -> LiveFrameSource:
+        return LiveFrameSource(
+            sensors=self.engine.get_live_snapshot(limit=32),
+            alerts=self.engine.get_recent_live_alerts(),
+            stats=self.engine.get_stats(),
+        )
+
+    def publish(
+        self,
+        source: LiveFrameSource | None = None,
+        *,
+        queued_at: float | None = None,
+    ) -> None:
         try:
-            payload = build_sensor_update(self.engine)
+            snapshot = source or self.capture_snapshot()
+            payload = build_sensor_update_from_snapshot(
+                snapshot.sensors,
+                snapshot.alerts,
+                snapshot.stats,
+            )
             self.ws_manager.enqueue_broadcast(payload, queued_at=queued_at)
         except Exception:
             logger.exception("Failed to publish sensor_update; continuing live stream")
@@ -56,7 +85,9 @@ def process_live_tick(
             processor.process(readings)
         except Exception:
             logger.exception("Live ingestion/detector pipeline failed")
-        publisher.publish(queued_at=generated_at)
+        snapshot = publisher.capture_snapshot()
+
+    publisher.publish(snapshot, queued_at=generated_at)
 
 
 class LiveStreamRunner:

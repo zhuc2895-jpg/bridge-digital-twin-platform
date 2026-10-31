@@ -124,3 +124,37 @@ def test_live_frame_contains_at_most_thirty_two_live_sensors():
 
     assert len(payload["sensors"]) == 32
     assert {item["timestamp"] for item in payload["sensors"]} == set(range(8, 40))
+
+def test_unpaired_surrogate_is_isolated_from_live_frame_encoding(tmp_path):
+    engine = MonitoringEngine()
+    engine.ingest(
+        [reading(sensor_id="S01", name="bad\ud800name", value=100.0)],
+        live_eligible=True,
+    )
+
+    payload = build_sensor_update(engine)
+    message = encode_message(payload)
+
+    assert "\ufffd" in message
+    assert payload["sensors"][0]["name"].endswith("name")
+
+
+def test_invalid_alert_threshold_and_timestamp_are_null():
+    engine = MonitoringEngine()
+    engine.submit_alert(
+        sensor_id="S01",
+        sensor_name="AI detector",
+        level="yellow",
+        message="Invalid numbers",
+        value=400.0,
+        threshold=float("nan"),
+        source="ai_feature_arbitration",
+        timestamp=float("inf"),
+    )
+
+    alert = build_sensor_update(engine)["alerts"][0]
+
+    assert alert["value"] == 400.0
+    assert alert["threshold"] is None
+    assert alert["timestamp"] is None
+    assert alert["invalid"] is True

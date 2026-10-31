@@ -83,6 +83,25 @@ def test_json_upload_updates_latest_state_and_health(client, app):
     assert health.json()["state_scope"] == "process"
 
 
+def test_push_live_openapi_documents_live_eligibility(client):
+    paths = client.get("/openapi.json").json()["paths"]
+    operations = [
+        paths["/api/data/upload/csv"]["post"],
+        paths["/api/data/upload/json"]["post"],
+        paths["/api/data/upload/single"]["post"],
+    ]
+
+    descriptions = [
+        parameter["description"]
+        for operation in operations
+        for parameter in operation.get("parameters", [])
+        if parameter["name"] == "push_live"
+    ]
+
+    assert len(descriptions) == 3
+    assert all("Live Eligibility" in description for description in descriptions)
+
+
 def test_push_live_controls_live_eligibility(client):
     backfill = client.post(
         "/api/data/upload/json?push_live=false",

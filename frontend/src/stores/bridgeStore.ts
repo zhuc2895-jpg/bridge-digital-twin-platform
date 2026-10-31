@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { SensorData, Alert, Stats } from '../composables/useWebSocket'
+import type { SensorData, Alert, Stats } from '../types/live'
+import { usePendingSensors } from '../composables/usePendingSensors'
 
 /**
  * 桥梁状态管理 (Pinia)
@@ -12,7 +13,7 @@ export const useBridgeStore = defineStore('bridge', () => {
   const sensorData = ref<SensorData[]>([])
   const alerts = ref<Alert[]>([])
   const stats = ref<Stats | null>(null)
-  const pendingSensorIds = ref<Set<string>>(new Set())
+  const { pendingSensorIds, markSensorPending, clearSensorPending, clearReceivedSensors } = usePendingSensors()
 
   // 连接状态
   const connected = ref(false)
@@ -34,21 +35,8 @@ export const useBridgeStore = defineStore('bridge', () => {
   // 更新传感器数据
   function updateSensorData(data: SensorData[]) {
     sensorData.value = data
-    const receivedIds = new Set(data.map(sensor => sensor.sensor_id))
-    pendingSensorIds.value = new Set(
-      [...pendingSensorIds.value].filter(sensorId => !receivedIds.has(sensorId))
-    )
+    clearReceivedSensors(data)
     lastUpdate.value = Date.now()
-  }
-
-  function markSensorPending(sensorId: string) {
-    pendingSensorIds.value = new Set([...pendingSensorIds.value, sensorId])
-  }
-
-  function clearSensorPending(sensorId: string) {
-    pendingSensorIds.value = new Set(
-      [...pendingSensorIds.value].filter(id => id !== sensorId)
-    )
   }
 
   // 更新告警

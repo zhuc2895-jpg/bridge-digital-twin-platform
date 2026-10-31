@@ -6,35 +6,10 @@ import { ref, onMounted, onUnmounted } from 'vue'
  * 接收传感器数据、告警信息、统计信息
  */
 
-export interface SensorData {
-  sensor_id: string
-  name: string
-  type: string
-  position: string
-  value: number
-  timestamp: number
-}
+import type { Alert, SensorData, Stats } from '../types/live'
+import { usePendingSensors } from './usePendingSensors'
 
-export interface Alert {
-  id: string
-  sensor_id: string
-  sensor_name: string
-  level: string
-  message: string
-  value: number | null
-  threshold: number
-  source: string
-  timestamp: number
-  invalid: boolean
-}
-
-export interface Stats {
-  total_readings: number
-  sensor_count: number
-  retained_alerts: number
-  throughput: number
-  uptime_seconds: number
-}
+export type { Alert, SensorData, Stats } from '../types/live'
 
 export function useWebSocket() {
   const wsUrl = 'ws://localhost:8000/ws/live'
@@ -46,6 +21,7 @@ export function useWebSocket() {
   const alerts = ref<Alert[]>([])
   const stats = ref<Stats | null>(null)
   const lastUpdate = ref<number>(0)
+  const { clearReceivedSensors } = usePendingSensors()
 
   function connect() {
     if (socket && socket.readyState === WebSocket.OPEN) return
@@ -63,6 +39,7 @@ export function useWebSocket() {
         if (payload.type === 'sensor_update') {
           sensorData.value = payload.sensors || []
           alerts.value = payload.alerts || []
+          clearReceivedSensors(sensorData.value)
           stats.value = payload.stats || null
           lastUpdate.value = Date.now()
         }

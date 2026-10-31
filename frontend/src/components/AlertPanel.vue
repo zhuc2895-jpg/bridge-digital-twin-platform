@@ -84,8 +84,8 @@ function sourceLabel(source: string): string {
   return map[source] || source
 }
 
-function formatTime(ts: number): string {
-  return new Date(ts * 1000).toLocaleTimeString()
+function formatTime(ts: number | null): string {
+  return ts === null ? "--" : new Date(ts * 1000).toLocaleTimeString()
 }
 
 async function injectAnomaly(sensorId: string) {
