@@ -29,7 +29,7 @@ def validate_json_batch(data: Any) -> list[dict]:
             f"batch size {len(data)} exceeds the maximum of {MAX_BATCH_SIZE}"
         )
 
-    return [_validate_json_record(item, index) for index, item in enumerate(data)]
+    return [validate_json_record(item, index) for index, item in enumerate(data)]
 
 
 def validate_csv_batch(content: bytes) -> list[dict]:
@@ -75,7 +75,7 @@ def validate_csv_batch(content: bytes) -> list[dict]:
         raise IngestionValidationError(f"invalid CSV file: {exc}") from exc
 
 
-def _validate_json_record(item: Any, index: int) -> dict:
+def validate_json_record(item: Any, index: int) -> dict:
     if not isinstance(item, dict):
         raise IngestionValidationError(f"record {index}: must be a JSON object")
 
@@ -150,7 +150,12 @@ def _validated_sensor_type(value: Any, index: int) -> SensorType:
 def _validated_json_number(value: Any, index: int, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise IngestionValidationError(f"record {index}: {field} must be a number")
-    result = float(value)
+    try:
+        result = float(value)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise IngestionValidationError(
+            f"record {index}: {field} must be a finite number"
+        ) from exc
     if not math.isfinite(result):
         raise IngestionValidationError(f"record {index}: {field} must be finite")
     return result

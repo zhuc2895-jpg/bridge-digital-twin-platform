@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import logging
-import math
 from typing import Any
 
 from app.engine.data_engine import MonitoringEngine
-from app.sensor_ids import SensorIdentifier
-from app.sensor_types import SensorType
+from app.ingestion import IngestionValidationError, validate_json_record
 from app.ws.websocket_manager import MAX_SENSOR_UPDATE_BYTES, WebSocketManager
 
 logger = logging.getLogger(__name__)
@@ -64,11 +62,12 @@ def _latest_sensor_readings(
     readings: list[dict[str, Any]],
     *,
     limit: int = 256,
+    name_limit: int = 128,
 ) -> list[dict[str, Any]]:
     """Keep the latest reading per sensor with bounded wire payload size."""
     latest: dict[Any, dict[str, Any]] = {}
     for reading in readings:
-        compact = _compact_reading(reading)
+        compact = _compact_reading(reading, name_limit=name_limit)
         latest[compact["sensor_id"]] = compact
     return list(latest.values())[-limit:]
 
@@ -89,25 +88,45 @@ def build_sensor_update(
     if _message_size(payload) <= MAX_SENSOR_UPDATE_BYTES:
         return payload
 
-    # Preserve the complete sensor frame and all 20 alerts where possible, but
-    # reduce dynamic text before dropping older alert records.
-    alerts = [
-        _compact_alert(
-            alert,
-            sensor_id_limit=24,
-            name_limit=24,
-            message_limit=32,
+    # Keep the recent-20 alert contract intact. Compress dynamic text and trim
+    # sensor records as needed, because an incomplete alert list is not a valid
+    # sensor_update message.
+    for sensor_name_limit, alert_name_limit, alert_message_limit in (
+        (32, 16, 24),
+        (8, 8, 8),
+    ):
+        sensors = _latest_sensor_readings(
+            readings,
+            name_limit=sensor_name_limit,
         )
-        for alert in alerts
-    ]
-    payload["alerts"] = alerts
-    while alerts and _message_size(payload) > MAX_SENSOR_UPDATE_BYTES:
-        alerts.pop()
+        alerts = [
+            _compact_alert(
+                alert,
+                sensor_id_limit=16,
+                name_limit=alert_name_limit,
+                message_limit=alert_message_limit,
+            )
+            for alert in alerts
+        ]
+        payload["sensors"] = sensors
+        payload["alerts"] = alerts
+        if _message_size(payload) <= MAX_SENSOR_UPDATE_BYTES:
+            return payload
+
     while sensors and _message_size(payload) > MAX_SENSOR_UPDATE_BYTES:
         sensors.pop(0)
+
     if _message_size(payload) > MAX_SENSOR_UPDATE_BYTES:
-        payload["sensors"] = []
-        payload["alerts"] = []
+        alerts = [
+            _compact_alert(
+                alert,
+                sensor_id_limit=8,
+                name_limit=0,
+                message_limit=0,
+            )
+            for alert in alerts
+        ]
+        payload["alerts"] = alerts
     return payload
 
 
@@ -124,26 +143,8 @@ def normalize_live_readings(records: Any) -> list[dict[str, Any]]:
     for index, record in enumerate(records):
         sensor_id = record.get("sensor_id") if isinstance(record, dict) else None
         try:
-            if not isinstance(record, dict):
-                raise ValueError("reading must be an object")
-            reading_sensor_id = SensorIdentifier(record["sensor_id"])
-            reading_name = str(record.get("name", ""))
-            reading_type = SensorType(record["type"])
-            reading_value = float(record["value"])
-            reading_timestamp = float(record["timestamp"])
-            if not all(
-                math.isfinite(value)
-                for value in (reading_value, reading_timestamp)
-            ):
-                raise ValueError("value and timestamp must be finite")
-            reading = {
-                "sensor_id": reading_sensor_id,
-                "name": reading_name,
-                "type": reading_type,
-                "value": reading_value,
-                "timestamp": reading_timestamp,
-            }
-        except Exception as exc:
+            reading = validate_json_record(record, index)
+        except (IngestionValidationError, OverflowError) as exc:
             logger.warning(
                 "Skipping invalid live reading index=%d sensor_id=%r error=%s",
                 index,

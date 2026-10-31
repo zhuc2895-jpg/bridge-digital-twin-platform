@@ -7,7 +7,11 @@ import time
 from fastapi.testclient import TestClient
 
 from app.dependencies import create_services
-from app.live_stream import MAX_SENSOR_UPDATE_BYTES
+from app.live_stream import (
+    MAX_SENSOR_UPDATE_BYTES,
+    build_sensor_update,
+    normalize_live_readings,
+)
 from app.main import create_app
 from tests.factories import reading
 
@@ -122,11 +126,11 @@ def test_live_stream_runs_without_websocket_clients():
     assert services.simulator.is_running is False
 
 
-def test_ten_websocket_clients_share_one_simulator_frame():
+def test_ten_websocket_clients_share_one_simulator_loop():
     services = create_services()
     services.live_stream_autostart = False
     services.simulator = CountingSimulator()
-    services.live_stream_interval_seconds = 60.0
+    services.live_stream_interval_seconds = 0.1
     app = create_app(services)
 
     with TestClient(app) as client, ExitStack() as stack:
@@ -134,16 +138,19 @@ def test_ten_websocket_clients_share_one_simulator_frame():
             stack.enter_context(client.websocket_connect("/ws/live"))
             for _ in range(10)
         ]
+        assert _wait_until(lambda: services.simulator.calls >= 3)
+
+        with services.processing_lock:
+            calls = services.simulator.calls
+            total_readings = services.engine.get_stats()["total_readings"]
+            alert_count = services.engine.get_alert_count()
+
         payloads = [websocket.receive_json() for websocket in websockets]
 
-        assert services.simulator.calls == 1
-        assert services.engine.get_stats()["total_readings"] == 2
-        assert services.engine.get_alert_count() == 1
-        assert len(payloads[0]["alerts"]) == 1
+        assert total_readings == calls * 2
+        assert alert_count == 1
         assert services.ws_manager.connection_count == 10
-        assert all(payload == payloads[0] for payload in payloads)
-        assert payloads[0]["type"] == "sensor_update"
-        assert [item["sensor_id"] for item in payloads[0]["sensors"]] == ["S01", "S02"]
+        assert all(payload["type"] == "sensor_update" for payload in payloads)
 
     assert services.ws_manager.active_connections == []
     assert services.simulator.is_running is False
@@ -183,6 +190,50 @@ def test_sensor_update_contract_contains_recent_twenty_alerts_within_10kb():
     )
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
     assert len(encoded) <= MAX_SENSOR_UPDATE_BYTES
+
+
+def test_bounded_sensor_update_keeps_all_twenty_alerts_and_sensor_frame():
+    services = create_services()
+    for index in range(20):
+        services.engine.submit_alert(
+            sensor_id=f"ALERT-{index:02d}",
+            sensor_name="告警" * 100,
+            level="yellow",
+            message="超限告警" * 500,
+            value=400.0 + index,
+            threshold=300.0,
+            source="rule",
+            timestamp=1_700_000_000.0 + index * 20,
+        )
+    readings = [
+        reading(
+            sensor_id=f"S{index:02d}",
+            name="传感器名称" * 500,
+            value=100.0 + index,
+            timestamp=1_700_000_000.0,
+        )
+        for index in range(8)
+    ]
+
+    payload = build_sensor_update(services.engine, readings)
+    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+
+    assert len(payload["sensors"]) == 8
+    assert len(payload["alerts"]) == 20
+    assert len(encoded) <= MAX_SENSOR_UPDATE_BYTES
+
+
+def test_live_readings_use_shared_strict_ingestion_rules():
+    records = [
+        reading(sensor_id="S01", value=100.0),
+        reading(sensor_id="S02", value="101.0"),
+        reading(sensor_id="S03", value=True),
+        reading(sensor_id="S04", name="", value=102.0),
+    ]
+
+    normalized = normalize_live_readings(records)
+
+    assert [item["sensor_id"] for item in normalized] == ["S01"]
 
 
 def test_bad_live_reading_is_skipped_and_next_frame_is_delivered(caplog):
@@ -261,7 +312,7 @@ def test_repeated_connect_disconnect_cleans_up_registry():
     services = create_services()
     services.live_stream_autostart = False
     services.simulator = OneShotSimulator()
-    services.live_stream_interval_seconds = 60.0
+    services.live_stream_interval_seconds = 0.05
     app = create_app(services)
 
     with TestClient(app) as client:

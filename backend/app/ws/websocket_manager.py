@@ -22,12 +22,18 @@ class MessageTooLargeError(ValueError):
     """Raised when a WebSocket payload exceeds the configured byte limit."""
 
 
+@dataclass(frozen=True, slots=True)
+class _QueuedMessage:
+    text: str
+    queued_at: float
+
+
 @dataclass
 class _ClientChannel:
     websocket: WebSocket
     loop: asyncio.AbstractEventLoop
     wakeup: asyncio.Event
-    messages: queue.Queue[tuple[str, float]] = field(
+    messages: queue.Queue[_QueuedMessage] = field(
         default_factory=lambda: queue.Queue(maxsize=4)
     )
     sender_task: asyncio.Task[None] | None = None
@@ -49,16 +55,12 @@ class WebSocketManager:
         self.max_message_age_seconds = max_message_age_seconds
         self.active_connections: list[WebSocket] = []
         self._channels: dict[WebSocket, _ClientChannel] = {}
-        self._latest_message: tuple[str, float] | None = None
         self._lock = threading.RLock()
 
     @property
     def connection_count(self) -> int:
         with self._lock:
             return len(self.active_connections)
-
-    def has_connections(self) -> bool:
-        return self.connection_count > 0
 
     async def connect(self, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -70,16 +72,11 @@ class WebSocketManager:
         with self._lock:
             self.active_connections.append(websocket)
             self._channels[websocket] = channel
-            latest_message = self._latest_message
 
         channel.sender_task = asyncio.create_task(
             self._send_from_queue(channel),
             name=f"ws-sender-{id(websocket)}",
         )
-        if latest_message is not None:
-            message, queued_at = latest_message
-            if time.monotonic() - queued_at <= self.max_message_age_seconds:
-                self._enqueue(channel, message, queued_at)
         logger.info("WebSocket client connected; active=%d", self.connection_count)
 
     def disconnect(self, websocket: WebSocket) -> None:
@@ -89,12 +86,28 @@ class WebSocketManager:
                 self.active_connections.remove(websocket)
             active_count = len(self.active_connections)
 
-        if channel is not None and channel.sender_task is not None:
+        if channel is not None:
             try:
-                channel.loop.call_soon_threadsafe(channel.sender_task.cancel)
+                channel.loop.call_soon_threadsafe(
+                    self._cancel_sender_and_close,
+                    channel,
+                )
             except RuntimeError:
-                logger.debug("Sender loop already closed for WebSocket client")
+                logger.debug("Event loop already closed for WebSocket client")
         logger.info("WebSocket client disconnected; active=%d", active_count)
+
+    @staticmethod
+    def _cancel_sender_and_close(channel: _ClientChannel) -> None:
+        if channel.sender_task is not None:
+            channel.sender_task.cancel()
+        asyncio.create_task(WebSocketManager._close_websocket(channel.websocket))
+
+    @staticmethod
+    async def _close_websocket(websocket: WebSocket) -> None:
+        try:
+            await websocket.close()
+        except Exception:
+            logger.debug("WebSocket was already closed", exc_info=True)
 
     @staticmethod
     def encode(data: dict[str, Any]) -> str:
@@ -117,13 +130,15 @@ class WebSocketManager:
         queued_at: float | None = None,
     ) -> None:
         self._validate_message_size(message)
-        queued_at = time.monotonic() if queued_at is None else queued_at
+        queued = _QueuedMessage(
+            text=message,
+            queued_at=time.monotonic() if queued_at is None else queued_at,
+        )
         with self._lock:
-            self._latest_message = (message, queued_at)
             channels = list(self._channels.values())
 
         for channel in channels:
-            self._enqueue(channel, message, queued_at)
+            self._enqueue(channel, queued)
 
     async def broadcast(self, data: dict[str, Any]) -> None:
         """Broadcast a payload from an async request handler."""
@@ -135,7 +150,10 @@ class WebSocketManager:
         with self._lock:
             channel = self._channels.get(websocket)
         if channel is not None:
-            self._enqueue(channel, message, time.monotonic())
+            self._enqueue(
+                channel,
+                _QueuedMessage(text=message, queued_at=time.monotonic()),
+            )
 
     def _validate_message_size(self, message: str) -> None:
         size = len(message.encode("utf-8"))
@@ -145,14 +163,9 @@ class WebSocketManager:
                 f"{self.max_message_bytes} bytes"
             )
 
-    def _enqueue(
-        self,
-        channel: _ClientChannel,
-        message: str,
-        queued_at: float,
-    ) -> None:
+    def _enqueue(self, channel: _ClientChannel, message: _QueuedMessage) -> None:
         try:
-            channel.messages.put_nowait((message, queued_at))
+            channel.messages.put_nowait(message)
         except queue.Full:
             logger.warning(
                 "Disconnecting WebSocket client that cannot keep up with broadcasts"
@@ -172,12 +185,19 @@ class WebSocketManager:
                 channel.wakeup.clear()
                 while True:
                     try:
-                        message, queued_at = channel.messages.get_nowait()
+                        message = channel.messages.get_nowait()
                     except queue.Empty:
                         break
-                    if time.monotonic() - queued_at > self.max_message_age_seconds:
-                        continue
-                    await channel.websocket.send_text(message)
+                    if (
+                        time.monotonic() - message.queued_at
+                        > self.max_message_age_seconds
+                    ):
+                        logger.warning(
+                            "Disconnecting WebSocket client with stale queued frames"
+                        )
+                        self.disconnect(channel.websocket)
+                        return
+                    await channel.websocket.send_text(message.text)
         except asyncio.CancelledError:
             raise
         except Exception:
