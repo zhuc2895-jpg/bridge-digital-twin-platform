@@ -17,11 +17,7 @@ from app.ml.contracts import ReadingPredicate
 from app.ml.feature_arbitration import FeatureArbitrationDetector
 from app.ml.registry import DetectorManager, DetectorRegistry
 from app.ml.voting import VotingDetector
-from app.live_stream import (
-    MAX_SENSOR_UPDATE_BYTES,
-    build_sensor_update,
-    normalize_live_readings,
-)
+from app.live_stream import build_sensor_update, normalize_live_readings
 from app.processing import SensorDataProcessor
 from app.ws.websocket_manager import MessageTooLargeError, WebSocketManager
 

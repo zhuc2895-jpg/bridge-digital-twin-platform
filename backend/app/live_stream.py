@@ -126,18 +126,23 @@ def normalize_live_readings(records: Any) -> list[dict[str, Any]]:
         try:
             if not isinstance(record, dict):
                 raise ValueError("reading must be an object")
-            reading = {
-                "sensor_id": SensorIdentifier(record["sensor_id"]),
-                "name": str(record.get("name", "")),
-                "type": SensorType(record["type"]),
-                "value": float(record["value"]),
-                "timestamp": float(record["timestamp"]),
-            }
+            reading_sensor_id = SensorIdentifier(record["sensor_id"])
+            reading_name = str(record.get("name", ""))
+            reading_type = SensorType(record["type"])
+            reading_value = float(record["value"])
+            reading_timestamp = float(record["timestamp"])
             if not all(
-                math.isfinite(float(reading[field]))
-                for field in ("value", "timestamp")
+                math.isfinite(value)
+                for value in (reading_value, reading_timestamp)
             ):
                 raise ValueError("value and timestamp must be finite")
+            reading = {
+                "sensor_id": reading_sensor_id,
+                "name": reading_name,
+                "type": reading_type,
+                "value": reading_value,
+                "timestamp": reading_timestamp,
+            }
         except Exception as exc:
             logger.warning(
                 "Skipping invalid live reading index=%d sensor_id=%r error=%s",

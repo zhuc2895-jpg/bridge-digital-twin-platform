@@ -6,7 +6,8 @@ import time
 
 from fastapi.testclient import TestClient
 
-from app.dependencies import MAX_SENSOR_UPDATE_BYTES, create_services
+from app.dependencies import create_services
+from app.live_stream import MAX_SENSOR_UPDATE_BYTES
 from app.main import create_app
 from tests.factories import reading
 
