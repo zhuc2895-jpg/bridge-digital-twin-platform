@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-import json
 import logging
 import queue
 import threading
@@ -13,9 +13,9 @@ from typing import Any
 
 from fastapi import WebSocket
 
-logger = logging.getLogger(__name__)
+from app.ws.message_contract import MAX_SENSOR_UPDATE_BYTES, encode_message
 
-MAX_SENSOR_UPDATE_BYTES = 10 * 1024
+logger = logging.getLogger(__name__)
 
 
 class MessageTooLargeError(ValueError):
@@ -53,14 +53,18 @@ class WebSocketManager:
     ):
         self.max_message_bytes = max_message_bytes
         self.max_message_age_seconds = max_message_age_seconds
-        self.active_connections: list[WebSocket] = []
         self._channels: dict[WebSocket, _ClientChannel] = {}
         self._lock = threading.RLock()
 
     @property
+    def active_connections(self) -> list[WebSocket]:
+        with self._lock:
+            return list(self._channels)
+
+    @property
     def connection_count(self) -> int:
         with self._lock:
-            return len(self.active_connections)
+            return len(self._channels)
 
     async def connect(self, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -70,7 +74,6 @@ class WebSocketManager:
             wakeup=asyncio.Event(),
         )
         with self._lock:
-            self.active_connections.append(websocket)
             self._channels[websocket] = channel
 
         channel.sender_task = asyncio.create_task(
@@ -82,9 +85,7 @@ class WebSocketManager:
     def disconnect(self, websocket: WebSocket) -> None:
         with self._lock:
             channel = self._channels.pop(websocket, None)
-            if websocket in self.active_connections:
-                self.active_connections.remove(websocket)
-            active_count = len(self.active_connections)
+            active_count = len(self._channels)
 
         if channel is not None:
             try:
@@ -109,18 +110,14 @@ class WebSocketManager:
         except Exception:
             logger.debug("WebSocket was already closed", exc_info=True)
 
-    @staticmethod
-    def encode(data: dict[str, Any]) -> str:
-        return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
-
     def enqueue_broadcast(
         self,
-        data: dict[str, Any],
+        data: Mapping[str, Any],
         *,
         queued_at: float | None = None,
     ) -> None:
         """Queue one shared payload for every currently connected client."""
-        message = self.encode(data)
+        message = encode_message(data)
         self._validate_message_size(message)
         queued = _QueuedMessage(
             text=message,

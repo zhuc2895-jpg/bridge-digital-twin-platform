@@ -19,6 +19,18 @@ from app.ingestion import (
 router = APIRouter()
 
 
+def _process_and_publish(
+    services: AppServices,
+    records: list[dict],
+    push_live: bool,
+):
+    with services.processing_lock:
+        result = services.processor.process(records)
+        if push_live:
+            services.sensor_updates.publish(records)
+    return result
+
+
 @router.post("/upload/csv")
 async def upload_csv(
     file: UploadFile = File(...),
@@ -32,10 +44,7 @@ async def upload_csv(
     except IngestionValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    with services.processing_lock:
-        result = services.processor.process(records)
-        if push_live:
-            services.sensor_updates.publish(records)
+    result = _process_and_publish(services, records, push_live)
 
     return {
         "status": "ok",
@@ -57,10 +66,7 @@ async def upload_json(
     except IngestionValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    with services.processing_lock:
-        result = services.processor.process(records)
-        if push_live:
-            services.sensor_updates.publish(records)
+    result = _process_and_publish(services, records, push_live)
 
     return {
         "status": "ok",
@@ -94,10 +100,7 @@ async def push_single(
     except IngestionValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    with services.processing_lock:
-        services.processor.process(records)
-        if push_live:
-            services.sensor_updates.publish(records)
+    _process_and_publish(services, records, push_live)
     return {"status": "ok", "sensor_id": sensor_id, "value": value}
 
 

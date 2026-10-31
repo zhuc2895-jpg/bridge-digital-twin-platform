@@ -2,33 +2,51 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 import json
 import logging
-from typing import Any
+from typing import Any, TypedDict
 
 from app.engine.data_engine import MonitoringEngine
 from app.ingestion import IngestionValidationError, validate_json_record
-from app.ws.websocket_manager import MAX_SENSOR_UPDATE_BYTES, WebSocketManager
+from app.ws.message_contract import MAX_SENSOR_UPDATE_BYTES, encode_message
 
 logger = logging.getLogger(__name__)
 
-_ALERT_FIELDS = (
-    "id",
-    "sensor_id",
-    "sensor_name",
-    "level",
-    "message",
-    "value",
-    "threshold",
-    "source",
-    "timestamp",
-)
+class SensorReadingWire(TypedDict):
+    sensor_id: str
+    name: str
+    type: str
+    value: float
+    timestamp: float
+
+
+class AlertWire(TypedDict):
+    id: str
+    sensor_id: str
+    sensor_name: str
+    level: str
+    message: str
+    value: float
+    threshold: float
+    source: str
+    timestamp: float
+    details: dict[str, Any]
+
+
+class SensorUpdateWire(TypedDict):
+    type: str
+    sensors: list[SensorReadingWire]
+    alerts: list[AlertWire]
+    stats: dict[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
 class _WireTextLimits:
+    sensor_id: int
     sensor_name: int
+    sensor_type: int
     alert_sensor_id: int
     alert_name: int
     alert_message: int
@@ -38,35 +56,45 @@ class _WireTextLimits:
 # Policies are ordered from richest evidence to the smallest message that can
 # still carry the complete recent-20 alert list.
 _DEFAULT_TEXT_LIMITS = _WireTextLimits(
+    sensor_id=64,
     sensor_name=128,
+    sensor_type=32,
     alert_sensor_id=64,
     alert_name=128,
     alert_message=512,
     alert_details=8192,
 )
 _SHORT_TEXT_LIMITS = _WireTextLimits(
+    sensor_id=16,
     sensor_name=32,
+    sensor_type=16,
     alert_sensor_id=16,
     alert_name=16,
     alert_message=24,
     alert_details=1024,
 )
 _MINIMAL_TEXT_LIMITS = _WireTextLimits(
+    sensor_id=8,
     sensor_name=8,
+    sensor_type=8,
     alert_sensor_id=8,
     alert_name=8,
     alert_message=8,
     alert_details=256,
 )
 _LAST_RESORT_TEXT_LIMITS = _WireTextLimits(
+    sensor_id=8,
     sensor_name=8,
+    sensor_type=8,
     alert_sensor_id=8,
     alert_name=0,
     alert_message=0,
     alert_details=64,
 )
 _EMPTY_DETAILS_LIMITS = _WireTextLimits(
+    sensor_id=8,
     sensor_name=8,
+    sensor_type=8,
     alert_sensor_id=8,
     alert_name=0,
     alert_message=0,
@@ -79,25 +107,52 @@ def _truncate_text(value: Any, limit: int) -> str:
 
 
 def _compact_reading(
-    reading: dict[str, Any],
+    reading: Mapping[str, Any],
     limits: _WireTextLimits = _DEFAULT_TEXT_LIMITS,
-) -> dict[str, Any]:
+) -> SensorReadingWire:
     return {
-        "sensor_id": _truncate_text(reading.get("sensor_id", ""), 64),
+        "sensor_id": _truncate_text(
+            reading.get("sensor_id", ""),
+            limits.sensor_id,
+        ),
         "name": _truncate_text(reading.get("name", ""), limits.sensor_name),
-        "type": _truncate_text(reading.get("type", "unknown"), 32),
-        "value": reading.get("value"),
-        "timestamp": reading.get("timestamp"),
+        "type": _truncate_text(
+            reading.get("type", "unknown"),
+            limits.sensor_type,
+        ),
+        "value": float(reading.get("value", 0.0)),
+        "timestamp": float(reading.get("timestamp", 0.0)),
     }
 
 
+def _json_default(value: Any) -> Any:
+    if isinstance(value, (set, frozenset)):
+        return sorted(value, key=str)
+    return str(value)
+
+
 def _bounded_details(details: Any, limit: int) -> dict[str, Any]:
-    normalized = dict(details or {})
     if limit <= 0:
         return {"_truncated": True}
-    serialized = json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
+    try:
+        normalized = dict(details or {})
+        serialized = json.dumps(
+            normalized,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            default=_json_default,
+        )
+    except Exception:
+        try:
+            preview = str(details)[:limit]
+        except Exception:
+            preview = "<unserializable>"
+        return {"_truncated": True, "preview": preview}
     if len(serialized) <= limit:
-        return normalized
+        decoded = json.loads(serialized)
+        if decoded != normalized:
+            decoded["_truncated"] = True
+        return decoded
     return {
         "_truncated": True,
         "preview": serialized[:limit],
@@ -105,21 +160,30 @@ def _bounded_details(details: Any, limit: int) -> dict[str, Any]:
 
 
 def _alert_payload(
-    alert: dict[str, Any],
+    alert: Mapping[str, Any],
     limits: _WireTextLimits = _DEFAULT_TEXT_LIMITS,
-) -> dict[str, Any]:
-    payload = {field: alert.get(field) for field in _ALERT_FIELDS}
-    payload["details"] = _bounded_details(
-        alert.get("details"),
-        limits.alert_details,
-    )
-    return payload
+) -> AlertWire:
+    return {
+        "id": str(alert.get("id", "")),
+        "sensor_id": str(alert.get("sensor_id", "")),
+        "sensor_name": str(alert.get("sensor_name", "")),
+        "level": str(alert.get("level", "")),
+        "message": str(alert.get("message", "")),
+        "value": float(alert.get("value", 0.0)),
+        "threshold": float(alert.get("threshold", 0.0)),
+        "source": str(alert.get("source", "")),
+        "timestamp": float(alert.get("timestamp", 0.0)),
+        "details": _bounded_details(
+            alert.get("details"),
+            limits.alert_details,
+        ),
+    }
 
 
 def _compact_alert(
-    alert: dict[str, Any],
+    alert: Mapping[str, Any],
     limits: _WireTextLimits,
-) -> dict[str, Any]:
+) -> AlertWire:
     payload = _alert_payload(alert, limits)
     payload["sensor_id"] = _truncate_text(
         payload["sensor_id"] or "",
@@ -138,8 +202,8 @@ def _compact_alert(
     return payload
 
 
-def _message_size(payload: dict[str, Any]) -> int:
-    return len(WebSocketManager.encode(payload).encode("utf-8"))
+def _message_size(payload: Mapping[str, Any]) -> int:
+    return len(encode_message(payload).encode("utf-8"))
 
 
 def _latest_sensor_readings(
@@ -147,9 +211,9 @@ def _latest_sensor_readings(
     *,
     limit: int = 256,
     text_limits: _WireTextLimits = _DEFAULT_TEXT_LIMITS,
-) -> list[dict[str, Any]]:
+) -> list[SensorReadingWire]:
     """Keep the latest reading per sensor with bounded wire payload size."""
-    latest: dict[Any, dict[str, Any]] = {}
+    latest: dict[Any, SensorReadingWire] = {}
     for reading in readings:
         compact = _compact_reading(reading, limits=text_limits)
         latest[compact["sensor_id"]] = compact
@@ -159,11 +223,11 @@ def _latest_sensor_readings(
 def build_sensor_update(
     engine: MonitoringEngine,
     readings: list[dict[str, Any]],
-) -> dict[str, Any]:
+) -> SensorUpdateWire:
     """Build one bounded sensor_update payload shared by every recipient."""
     sensors = _latest_sensor_readings(readings)
     alerts = [_alert_payload(alert) for alert in engine.get_recent_alerts()[:20]]
-    payload = {
+    payload: SensorUpdateWire = {
         "type": "sensor_update",
         "sensors": sensors,
         "alerts": alerts,

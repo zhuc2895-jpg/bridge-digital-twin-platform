@@ -12,7 +12,7 @@ from app.engine.data_engine import MonitoringEngine
 from app.engine.simulator import DataSimulator
 from app.live_contract import build_sensor_update, normalize_live_readings
 from app.processing import SensorDataProcessor
-from app.ws.websocket_manager import MessageTooLargeError, WebSocketManager
+from app.ws.websocket_manager import WebSocketManager
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +37,8 @@ class SensorUpdatePublisher:
         try:
             payload = build_sensor_update(self.engine, readings)
             self.ws_manager.enqueue_broadcast(payload, queued_at=queued_at)
-        except MessageTooLargeError:
-            logger.exception("Refusing to broadcast oversized sensor_update")
+        except Exception:
+            logger.exception("Failed to publish sensor_update; continuing live stream")
 
 
 def process_live_tick(
@@ -124,7 +124,10 @@ class LiveStreamRunner:
         try:
             while not self._stop_event.is_set():
                 generated_at = time.monotonic()
-                self._process_tick(generated_at)
+                try:
+                    self._process_tick(generated_at)
+                except Exception:
+                    logger.exception("Live tick failed; continuing with next frame")
 
                 interval = max(float(self._interval_seconds()), 0.001)
                 next_tick += interval

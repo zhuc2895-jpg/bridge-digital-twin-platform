@@ -12,6 +12,7 @@ from app.live_contract import (
     build_sensor_update,
     normalize_live_readings,
 )
+from app.live_stream import SensorUpdatePublisher
 from tests.factories import reading
 from tests.helpers import TrackingLock, create_live_app, wait_until
 
@@ -333,6 +334,37 @@ def test_oversized_alert_details_are_bounded_without_dropping_records():
     assert len(payload["alerts"]) == 20
     assert len(encoded) <= MAX_SENSOR_UPDATE_BYTES
     assert all(alert["details"]["_truncated"] is True for alert in payload["alerts"])
+
+
+def test_non_serializable_ai_details_do_not_escape_publishing():
+    services = create_services()
+    services.engine.submit_alert(
+        sensor_id="S01",
+        sensor_name="AI detector",
+        level="yellow",
+        message="AI evidence",
+        value=400.0,
+        threshold=300.0,
+        source="ai_feature_arbitration",
+        timestamp=1_700_000_000.0,
+        details={"model_votes": {"stale", "confirm"}},
+    )
+
+    class CapturingManager:
+        def __init__(self):
+            self.payload = None
+
+        def enqueue_broadcast(self, payload, *, queued_at=None):
+            self.payload = payload
+
+    manager = CapturingManager()
+    publisher = SensorUpdatePublisher(services.engine, manager)
+
+    publisher.publish([reading()])
+
+    assert manager.payload is not None
+    assert len(manager.payload["alerts"]) == 1
+    assert manager.payload["alerts"][0]["details"]["_truncated"] is True
 
 
 def test_live_websocket_pushes_bounded_frame_with_oversized_alert_details():
