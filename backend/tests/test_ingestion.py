@@ -55,7 +55,7 @@ def test_json_upload_updates_latest_state_and_health(client, app):
     )
 
     assert response.status_code == 200
-    assert len(broadcasts) == 1
+    assert broadcasts == []
     assert response.json() == {
         "status": "ok",
         "records_ingested": 2,

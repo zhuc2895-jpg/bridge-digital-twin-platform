@@ -542,6 +542,7 @@ def test_injection_update_reaches_connected_websocket(monkeypatch):
     _set_uniform_sequence(monkeypatch, 2.5, 50.0)
     services = create_services()
     services.live_stream_autostart = False
+    services.live_stream_interval_seconds = 0.05
     app = create_app(services)
 
     with TestClient(app) as client:
@@ -551,17 +552,15 @@ def test_injection_update_reaches_connected_websocket(monkeypatch):
                 "/api/analysis/inject-anomaly",
                 params={"sensor_id": "S01"},
             )
-            injected_update = websocket.receive_json()
             next_live_frame = websocket.receive_json()
 
     assert live_frame["type"] == "sensor_update"
     assert response.status_code == 200
-    assert injected_update["type"] == "sensor_update"
-    assert len(injected_update["sensors"]) == 1
-    assert injected_update["sensors"][0]["sensor_id"] == "S01"
+    assert next_live_frame["type"] == "sensor_update"
+    assert len(next_live_frame["sensors"]) == 8
     assert any(
         alert["sensor_id"] == "S01" and alert["source"] == "rule"
-        for alert in injected_update["alerts"]
+        for alert in next_live_frame["alerts"]
     )
     restored = next(
         item
