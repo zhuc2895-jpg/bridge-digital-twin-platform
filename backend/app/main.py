@@ -63,11 +63,12 @@ def create_app(services: Optional[AppServices] = None) -> FastAPI:
     ):
         path = request.url.path
         is_ingestion = path.startswith("/api/data/upload/")
-        uses_history_query_validation = path in {
+        returns_400_for_query_validation = path in {
+            "/api/analysis/report",
             "/api/sensors/history/range",
             "/api/sensors/history/alerts",
         } or (path.startswith("/api/sensors/") and path.endswith("/history"))
-        if not (is_ingestion or uses_history_query_validation):
+        if not (is_ingestion or returns_400_for_query_validation):
             return await request_validation_exception_handler(request, exc)
 
         errors = [
