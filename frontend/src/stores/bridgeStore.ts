@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { SensorData, Alert, Stats } from '../types/live'
-import { usePendingSensors } from '../composables/usePendingSensors'
 
 /**
  * 桥梁状态管理 (Pinia)
@@ -13,7 +12,6 @@ export const useBridgeStore = defineStore('bridge', () => {
   const sensorData = ref<SensorData[]>([])
   const alerts = ref<Alert[]>([])
   const stats = ref<Stats | null>(null)
-  const { pendingSensorIds, markSensorPending, clearSensorPending, clearReceivedSensors } = usePendingSensors()
 
   // 连接状态
   const connected = ref(false)
@@ -35,7 +33,6 @@ export const useBridgeStore = defineStore('bridge', () => {
   // 更新传感器数据
   function updateSensorData(data: SensorData[]) {
     sensorData.value = data
-    clearReceivedSensors(data)
     lastUpdate.value = Date.now()
   }
 
@@ -91,15 +88,12 @@ export const useBridgeStore = defineStore('bridge', () => {
     chartTimeRange,
     selectedChartSensor,
     simulatorRunning,
-    pendingSensorIds,
     alertCountByLevel,
     latestAlerts,
     strainSensors,
     updateSensorData,
     updateAlerts,
     updateStats,
-    markSensorPending,
-    clearSensorPending,
     setConnected,
     selectSensor
   }

@@ -69,6 +69,10 @@ class WebSocketManager:
         with self._lock:
             return len(self._channels)
 
+    @property
+    def pending_close_task_count(self) -> int:
+        return len(self._close_tasks)
+
     async def connect(self, websocket: WebSocket) -> None:
         await websocket.accept()
         channel = _ClientChannel(

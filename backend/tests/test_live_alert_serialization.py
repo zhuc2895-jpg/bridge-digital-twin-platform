@@ -1,8 +1,9 @@
 import json
+import time
 
 from app.dependencies import create_services
 from app.engine.data_engine import MonitoringEngine
-from app.live_contract import build_sensor_update
+from app.live_contract import LiveFrameSource, build_sensor_update
 from app.live_stream import SensorUpdatePublisher
 from app.ws.message_contract import encode_message
 from tests.factories import reading
@@ -158,3 +159,57 @@ def test_invalid_alert_threshold_and_timestamp_are_null():
     assert alert["threshold"] is None
     assert alert["timestamp"] is None
     assert alert["invalid"] is True
+
+def test_overflow_keeps_newest_sensor_records(monkeypatch):
+    engine = MonitoringEngine()
+    engine.ingest(
+        [
+            reading(
+                sensor_id=f"S{index:03d}",
+                name="sensor-name-" * 20,
+                value=float(index),
+                timestamp=float(index),
+            )
+            for index in range(32)
+        ],
+        live_eligible=True,
+    )
+    for index in range(20):
+        engine.submit_alert(
+            sensor_id=f"A{index:03d}",
+            sensor_name="alert-name-" * 20,
+            level="yellow",
+            message="alert-message-" * 100,
+            value=400.0,
+            threshold=300.0,
+            source="rule",
+            timestamp=1_700_000_000.0 + index,
+            live_eligible=True,
+        )
+
+    import app.live_contract as live_contract
+
+    monkeypatch.setattr(live_contract, "MAX_SENSOR_UPDATE_BYTES", 6000)
+    payload = build_sensor_update(engine)
+
+    timestamps = [item["timestamp"] for item in payload["sensors"]]
+    assert timestamps == sorted(timestamps, reverse=True)
+    assert 31.0 in timestamps
+
+
+def test_late_server_processing_drops_frame_without_enqueueing():
+    services = create_services()
+    manager = CapturingManager()
+    publisher = SensorUpdatePublisher(
+        services.engine,
+        manager,
+        max_frame_age_seconds=0.5,
+    )
+    source = LiveFrameSource(sensors=[], alerts=[], stats={})
+
+    publisher.publish(
+        source,
+        generated_at=time.monotonic() - 1.0,
+    )
+
+    assert manager.payloads == []

@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from app.engine.data_engine import Alert, MonitoringEngine
 from app.ml.contracts import DetectionResult
 from app.ml.registry import DetectorManager
+from app.sensor_batch import SensorBatch
 
 logger = logging.getLogger(__name__)
 
@@ -32,21 +33,24 @@ class SensorDataProcessor:
 
     def process(
         self,
-        records: list[dict],
+        batch: SensorBatch | list[dict],
         *,
         live_eligible: bool = True,
+        live_override: bool = False,
     ) -> ProcessingResult:
-        self.engine.ingest(records, live_eligible=live_eligible)
+        sensor_batch = SensorBatch.coerce(
+            batch,
+            live_eligible=live_eligible,
+            live_override=live_override,
+        )
+        self.engine.ingest(sensor_batch)
         result = ProcessingResult(
-            rule_alerts=self.engine.check_thresholds(
-                records,
-                live_eligible=live_eligible,
-            )
+            rule_alerts=self.engine.check_thresholds(sensor_batch)
         )
 
         try:
             detections = self.detectors.detect(
-                records,
+                sensor_batch.records,
                 normal_predicate=self.engine.is_normal_reading,
             )
         except Exception:
@@ -66,7 +70,7 @@ class SensorDataProcessor:
                     source=detection.source or "ai_dual_confirm",
                     timestamp=detection.timestamp,
                     details=dict(detection.details),
-                    live_eligible=live_eligible,
+                    live_eligible=sensor_batch.live_eligible,
                 )
             except Exception:
                 logger.exception(

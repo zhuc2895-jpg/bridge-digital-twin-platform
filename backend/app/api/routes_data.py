@@ -10,6 +10,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 
 from app.dependencies import AppServices, get_services
+from app.sensor_batch import SensorBatch
 from app.ingestion import (
     IngestionValidationError,
     validate_csv_batch,
@@ -25,11 +26,13 @@ def _process_records(
     *,
     live_eligible: bool,
 ):
+    batch = SensorBatch(
+        records=records,
+        live_eligible=live_eligible,
+        live_override=live_eligible,
+    )
     with services.processing_lock:
-        return services.processor.process(
-            records,
-            live_eligible=live_eligible,
-        )
+        return services.processor.process(batch)
 
 
 @router.post("/upload/csv")

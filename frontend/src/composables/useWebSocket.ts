@@ -7,7 +7,6 @@ import { ref, onMounted, onUnmounted } from 'vue'
  */
 
 import type { Alert, SensorData, Stats } from '../types/live'
-import { usePendingSensors } from './usePendingSensors'
 
 export type { Alert, SensorData, Stats } from '../types/live'
 
@@ -21,7 +20,6 @@ export function useWebSocket() {
   const alerts = ref<Alert[]>([])
   const stats = ref<Stats | null>(null)
   const lastUpdate = ref<number>(0)
-  const { clearReceivedSensors } = usePendingSensors()
 
   function connect() {
     if (socket && socket.readyState === WebSocket.OPEN) return
@@ -39,7 +37,6 @@ export function useWebSocket() {
         if (payload.type === 'sensor_update') {
           sensorData.value = payload.sensors || []
           alerts.value = payload.alerts || []
-          clearReceivedSensors(sensorData.value)
           stats.value = payload.stats || null
           lastUpdate.value = Date.now()
         }

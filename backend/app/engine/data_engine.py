@@ -17,6 +17,7 @@ from app.alert_contracts import (
 )
 from typing import Any, Dict, List, Mapping, Optional
 
+from app.sensor_batch import SensorBatch
 from app.sensor_ids import SensorIdentifier
 from app.sensor_types import SensorType
 
@@ -69,6 +70,7 @@ class MonitoringEngine:
         # 传感器最新状态: dict[sensor_id] -> SensorReading
         self._latest: Dict[str, SensorReading] = {}
         self._live_latest: Dict[str, SensorReading] = {}
+        self._live_overrides: Dict[str, SensorReading] = {}
 
         # 滚动窗口历史: dict[sensor_id] -> deque(maxlen=window_size)
         self._history: Dict[str, deque] = {}
@@ -103,32 +105,45 @@ class MonitoringEngine:
 
     def ingest(
         self,
-        sensor_data: List[dict[str, Any]],
+        batch: SensorBatch | List[dict[str, Any]],
         *,
         live_eligible: bool = True,
+        live_override: bool = False,
     ):
-        """摄入一批传感器数据，并标记其是否进入实时快照。"""
+        """摄入一批传感器数据，并应用该批次的实时可见性策略。"""
+        sensor_batch = SensorBatch.coerce(
+            batch,
+            live_eligible=live_eligible,
+            live_override=live_override,
+        )
         ingested_sensor_ids = set()
         sensors_needing_sort = set()
-        for item in sensor_data:
+        for item in sensor_batch.records:
             reading = SensorReading(
                 sensor_id=item["sensor_id"],
                 name=item.get("name", ""),
                 type=item.get("type", "unknown"),
                 value=item["value"],
                 timestamp=item.get("timestamp", time.time()),
-                live_eligible=live_eligible,
+                live_eligible=sensor_batch.live_eligible,
             )
             current = self._latest.get(reading.sensor_id)
             if current is None or reading.timestamp >= current.timestamp:
                 self._latest[reading.sensor_id] = reading
-            if live_eligible:
+            if sensor_batch.live_eligible:
                 current_live = self._live_latest.get(reading.sensor_id)
                 if (
                     current_live is None
                     or reading.timestamp >= current_live.timestamp
                 ):
                     self._live_latest[reading.sensor_id] = reading
+                if sensor_batch.live_override:
+                    current_override = self._live_overrides.get(reading.sensor_id)
+                    if (
+                        current_override is None
+                        or reading.timestamp >= current_override.timestamp
+                    ):
+                        self._live_overrides[reading.sensor_id] = reading
 
             # 维护最近 500 条滚动窗口；超过容量后按到达顺序淘汰。
             history = self._history.setdefault(
@@ -172,13 +187,14 @@ class MonitoringEngine:
 
     def check_thresholds(
         self,
-        sensor_data: List[dict[str, Any]],
+        batch: SensorBatch | List[dict[str, Any]],
         *,
         live_eligible: bool = True,
     ) -> List[Alert]:
         """Evaluate physical thresholds and submit every matched alert."""
+        sensor_batch = SensorBatch.coerce(batch, live_eligible=live_eligible)
         alerts = []
-        for item in sensor_data:
+        for item in sensor_batch.records:
             sensor_type = item.get("type", "unknown")
             value = item["value"]
             thresholds = self.thresholds.get(sensor_type, {})
@@ -207,7 +223,7 @@ class MonitoringEngine:
                 threshold=threshold,
                 source="rule",
                 timestamp=item.get("timestamp", time.time()),
-                live_eligible=live_eligible,
+                live_eligible=sensor_batch.live_eligible,
             )
             if alert is not None:
                 alerts.append(alert)
@@ -383,36 +399,47 @@ class MonitoringEngine:
             )
             del self._alerts[:-self.MAX_ALERTS]
 
-    def get_recent_alerts(self) -> List[dict]:
-        """获取最近20条告警"""
+    def _recent_alert_dicts(
+        self,
+        *,
+        live_only: bool = False,
+    ) -> List[dict]:
+        alerts = (
+            (alert for alert in self._alerts if alert.live_eligible)
+            if live_only
+            else self._alerts
+        )
         return [
             self._alert_to_dict(alert)
             for alert in sorted(
-                self._alerts,
+                alerts,
                 key=lambda alert: (alert.timestamp, alert.detection_sequence),
                 reverse=True,
             )[:20]
         ]
+
+    def get_recent_alerts(self) -> List[dict]:
+        """获取最近20条告警"""
+        return self._recent_alert_dicts()
 
     def get_recent_live_alerts(self) -> List[dict]:
         """Return the newest retained alerts created by Live Eligible data."""
-        return [
-            self._alert_to_dict(alert)
-            for alert in sorted(
-                (alert for alert in self._alerts if alert.live_eligible),
-                key=lambda alert: (alert.timestamp, alert.detection_sequence),
-                reverse=True,
-            )[:20]
-        ]
+        return self._recent_alert_dicts(live_only=True)
 
     def get_live_snapshot(self, limit: int = 32) -> List[dict]:
         """Return the newest Live Eligible reading for each sensor."""
+        merged = dict(self._live_latest)
+        merged.update(self._live_overrides)
         readings = sorted(
-            self._live_latest.values(),
+            merged.values(),
             key=lambda reading: (reading.timestamp, str(reading.sensor_id)),
             reverse=True,
         )
         return [self._reading_to_dict(reading) for reading in readings[:limit]]
+
+    def consume_live_overrides(self) -> None:
+        """Consume one-shot external overrides after a Live Frame is captured."""
+        self._live_overrides.clear()
 
     def get_alert_stats(self) -> dict:
         """Summarize every retained alert, not only the recent page."""

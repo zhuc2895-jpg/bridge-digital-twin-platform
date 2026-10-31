@@ -44,6 +44,13 @@ class SensorUpdateWire(TypedDict):
 
 
 @dataclass(frozen=True, slots=True)
+class LiveFrameSource:
+    sensors: list[dict[str, Any]]
+    alerts: list[dict[str, Any]]
+    stats: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
 class _WireTextLimits:
     sensor_id: int
     sensor_name: int
@@ -191,18 +198,28 @@ def build_sensor_update_from_snapshot(
             return payload
 
     while sensors and _message_size(payload) > MAX_SENSOR_UPDATE_BYTES:
-        sensors.pop(0)
+        sensors.pop()
 
     payload["sensors"] = sensors
     return payload
 
 
+def capture_live_frame_source(engine: MonitoringEngine) -> LiveFrameSource:
+    """Copy the live-eligible state needed to build one Live Frame."""
+    return LiveFrameSource(
+        sensors=engine.get_live_snapshot(limit=32),
+        alerts=engine.get_recent_live_alerts(),
+        stats=engine.get_stats(),
+    )
+
+
 def build_sensor_update(engine: MonitoringEngine) -> SensorUpdateWire:
     """Build one bounded Live Frame from current live-eligible state."""
+    source = capture_live_frame_source(engine)
     return build_sensor_update_from_snapshot(
-        engine.get_live_snapshot(limit=32),
-        engine.get_recent_live_alerts(),
-        engine.get_stats(),
+        source.sensors,
+        source.alerts,
+        source.stats,
     )
 
 

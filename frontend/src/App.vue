@@ -115,9 +115,6 @@
               </div>
               <div class="sname">{{ s.name }}</div>
               <div class="sval">{{ s.value.toFixed(2) }}</div>
-              <div v-if="pendingSensors.has(s.sensor_id)" class="pending-value">
-                等待下一帧...
-              </div>
               <div class="sunit">{{ unitName(s.type) }}</div>
             </div>
           </div>
@@ -182,12 +179,11 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import * as echarts from 'echarts'
 
 import type { Alert, SensorData as Sensor } from './types/live'
-import { usePendingSensors } from './composables/usePendingSensors'
+import { injectAnomaly as submitAnomalyInjection } from './composables/useAnomalyInjection'
 
 const connected = ref(false)
 const sensors = ref<Sensor[]>([])
 const alerts = ref<Alert[]>([])
-const { pendingSensorIds: pendingSensors, markSensorPending, clearSensorPending, clearReceivedSensors } = usePendingSensors()
 const totalReadings = ref(0)
 const now = ref('')
 const lastUpdate = ref('')
@@ -266,7 +262,6 @@ function connect() {
         if (replayMode.value) return
         sensors.value = d.sensors || []
         alerts.value = d.alerts || []
-        clearReceivedSensors(sensors.value)
         if (d.stats) totalReadings.value = d.stats.total_readings || 0
         lastUpdate.value = new Date().toLocaleTimeString()
         updateSensorColors()
@@ -284,16 +279,7 @@ function connect() {
 function tick() { now.value = new Date().toLocaleString('zh-CN') }
 
 async function injectAnomaly(id: string) {
-  markSensorPending(id)
-  try {
-    const response = await fetch(
-      `http://127.0.0.1:8000/api/analysis/inject-anomaly?sensor_id=${id}`,
-      { method: 'POST' }
-    )
-    if (!response.ok) throw new Error(`Injection failed: ${response.status}`)
-  } catch {
-    clearSensorPending(id)
-  }
+  await submitAnomalyInjection(id)
 }
 
 function resetView() {
@@ -1309,7 +1295,6 @@ body { font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif; ba
 .sname { font-size: 11px; color: #c9d1d9; margin-bottom: 6px; }
 .sval { font-size: 20px; font-weight: 700; color: #f0f6fc; }
 .sunit { font-size: 10px; color: #8b949e; }
-.pending-value { margin-top: 4px; font-size: 10px; color: #d29922; }
 .invalid-value { color: #ff7b72; font-weight: 600; }
 
 @keyframes pulse {

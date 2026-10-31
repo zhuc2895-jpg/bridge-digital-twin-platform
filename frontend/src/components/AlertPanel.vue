@@ -49,19 +49,11 @@
 
     <!-- 手动异常注入按钮 -->
     <div class="inject-section">
-      <button
-        class="inject-btn"
-        :disabled="store.pendingSensorIds.has('S01')"
-        @click="injectAnomaly('S01')"
-      >
-        {{ store.pendingSensorIds.has('S01') ? '⏳ 等待下一帧 (S01)' : '⚡ 手动注入异常 (S01)' }}
+      <button class="inject-btn" @click="injectAnomaly('S01')">
+        ⚡ 手动注入异常 (S01)
       </button>
-      <button
-        class="inject-btn"
-        :disabled="store.pendingSensorIds.has('D01')"
-        @click="injectAnomaly('D01')"
-      >
-        {{ store.pendingSensorIds.has('D01') ? '⏳ 等待下一帧 (D01)' : '⚡ 手动注入异常 (D01)' }}
+      <button class="inject-btn" @click="injectAnomaly('D01')">
+        ⚡ 手动注入异常 (D01)
       </button>
     </div>
   </div>
@@ -69,11 +61,13 @@
 
 <script setup lang="ts">
 import { useBridgeStore } from '../stores/bridgeStore'
+import { injectAnomaly as submitAnomalyInjection } from '../composables/useAnomalyInjection'
+import type { AlertSource } from '../types/live'
 
 const store = useBridgeStore()
 
-function sourceLabel(source: string): string {
-  const map: Record<string, string> = {
+function sourceLabel(source: AlertSource): string {
+  const map: Record<AlertSource, string> = {
     rule: '物理阈值',
     ai_stalwart: 'STALWART',
     ai_gan_ae: 'GAN+AE',
@@ -89,18 +83,8 @@ function formatTime(ts: number | null): string {
 }
 
 async function injectAnomaly(sensorId: string) {
-  store.markSensorPending(sensorId)
-  try {
-    const response = await fetch(
-      `http://localhost:8000/api/analysis/inject-anomaly?sensor_id=${sensorId}`,
-      { method: 'POST' }
-    )
-    if (!response.ok) throw new Error(`Injection failed: ${response.status}`)
-    console.log(`[AlertPanel] Anomaly injected to ${sensorId}`)
-  } catch (e) {
-    store.clearSensorPending(sensorId)
-    console.error('Inject anomaly error:', e)
-  }
+  const injected = await submitAnomalyInjection(sensorId)
+  if (!injected) console.error(`Injection failed for ${sensorId}`)
 }
 </script>
 

@@ -3,29 +3,23 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
 import logging
 import threading
 import time
-from typing import Any
 
 from app.engine.data_engine import MonitoringEngine
 from app.engine.simulator import DataSimulator
 from app.live_contract import (
+    LiveFrameSource,
     build_sensor_update_from_snapshot,
+    capture_live_frame_source,
     normalize_live_readings,
 )
 from app.processing import SensorDataProcessor
+from app.sensor_batch import SensorBatch
 from app.ws.websocket_manager import WebSocketManager
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True, slots=True)
-class LiveFrameSource:
-    sensors: list[dict[str, Any]]
-    alerts: list[dict[str, Any]]
-    stats: dict[str, Any]
 
 
 class SensorUpdatePublisher:
@@ -35,24 +29,32 @@ class SensorUpdatePublisher:
         self,
         engine: MonitoringEngine,
         ws_manager: WebSocketManager,
+        *,
+        max_frame_age_seconds: float = 0.5,
     ) -> None:
         self.engine = engine
         self.ws_manager = ws_manager
+        self.max_frame_age_seconds = max_frame_age_seconds
 
     def capture_snapshot(self) -> LiveFrameSource:
-        return LiveFrameSource(
-            sensors=self.engine.get_live_snapshot(limit=32),
-            alerts=self.engine.get_recent_live_alerts(),
-            stats=self.engine.get_stats(),
-        )
+        source = capture_live_frame_source(self.engine)
+        self.engine.consume_live_overrides()
+        return source
 
     def publish(
         self,
         source: LiveFrameSource | None = None,
         *,
+        generated_at: float | None = None,
         queued_at: float | None = None,
     ) -> None:
         try:
+            if (
+                generated_at is not None
+                and time.monotonic() - generated_at > self.max_frame_age_seconds
+            ):
+                logger.warning("Skipping stale server-generated live frame")
+                return
             snapshot = source or self.capture_snapshot()
             payload = build_sensor_update_from_snapshot(
                 snapshot.sensors,
@@ -80,14 +82,15 @@ def process_live_tick(
         raw_readings = []
 
     readings = normalize_live_readings(raw_readings)
+    batch = SensorBatch(records=readings)
     with processing_lock:
         try:
-            processor.process(readings)
+            processor.process(batch)
         except Exception:
             logger.exception("Live ingestion/detector pipeline failed")
         snapshot = publisher.capture_snapshot()
 
-    publisher.publish(snapshot, queued_at=generated_at)
+    publisher.publish(snapshot, generated_at=generated_at)
 
 
 class LiveStreamRunner:

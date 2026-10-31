@@ -240,6 +240,55 @@ def test_live_payload_is_built_while_processing_lock_is_held():
     assert all(observed)
 
 
+class CurrentTimeCountingSimulator:
+    is_running = False
+
+    def __init__(self):
+        self.calls = 0
+
+    def next_readings(self, timestamp=None):
+        self.calls += 1
+        now = time.time()
+        return [
+            reading(
+                sensor_id="S01",
+                value=100.0 + self.calls,
+                timestamp=now,
+            ),
+            reading(
+                sensor_id="S02",
+                value=200.0 + self.calls,
+                timestamp=now,
+            ),
+        ]
+
+
+def test_live_upload_for_existing_sensor_appears_in_next_frame():
+    services, app = create_live_app(
+        simulator=CurrentTimeCountingSimulator(),
+        interval_seconds=0.05,
+    )
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/live") as websocket:
+            websocket.receive_json()
+            upload = client.post(
+                "/api/data/upload/json?push_live=true",
+                json=[
+                    reading(
+                        sensor_id="S01",
+                        value=900.0,
+                        timestamp=time.time(),
+                    )
+                ],
+            )
+            payload = websocket.receive_json()
+
+    assert upload.status_code == 200
+    s01 = next(item for item in payload["sensors"] if item["sensor_id"] == "S01")
+    assert s01["value"] == 900.0
+
+
 def test_live_frame_includes_only_live_eligible_external_sensors():
     services, app = create_live_app(
         simulator=CountingSimulator(),

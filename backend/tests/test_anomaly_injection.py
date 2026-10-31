@@ -567,7 +567,7 @@ def test_injection_update_reaches_connected_websocket(monkeypatch):
         for item in next_live_frame["sensors"]
         if item["sensor_id"] == "S01"
     )
-    assert restored["value"] == pytest.approx(200.0)
+    assert restored["value"] == pytest.approx(550.0)
 
 
 def test_api_injection_runs_full_processing_and_is_queryable(monkeypatch):

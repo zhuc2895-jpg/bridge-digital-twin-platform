@@ -59,6 +59,7 @@ def test_blocking_close_tasks_are_bounded():
         ]
 
         assert manager.connection_count == 0
+        assert manager.pending_close_task_count == 0
         assert pending == []
 
     asyncio.run(scenario())
