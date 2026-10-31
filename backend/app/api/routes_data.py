@@ -19,16 +19,6 @@ from app.ingestion import (
 router = APIRouter()
 
 
-async def _broadcast_update(
-    services: AppServices,
-    records: list[dict],
-    push_live: bool,
-) -> None:
-    if not push_live:
-        return
-    services.sensor_updates.publish(records)
-
-
 @router.post("/upload/csv")
 async def upload_csv(
     file: UploadFile = File(...),
@@ -44,7 +34,8 @@ async def upload_csv(
 
     with services.processing_lock:
         result = services.processor.process(records)
-    await _broadcast_update(services, records, push_live)
+        if push_live:
+            services.sensor_updates.publish(records)
 
     return {
         "status": "ok",
@@ -68,7 +59,8 @@ async def upload_json(
 
     with services.processing_lock:
         result = services.processor.process(records)
-    await _broadcast_update(services, records, push_live)
+        if push_live:
+            services.sensor_updates.publish(records)
 
     return {
         "status": "ok",
@@ -104,7 +96,8 @@ async def push_single(
 
     with services.processing_lock:
         services.processor.process(records)
-    await _broadcast_update(services, records, push_live)
+        if push_live:
+            services.sensor_updates.publish(records)
     return {"status": "ok", "sensor_id": sensor_id, "value": value}
 
 
@@ -148,7 +141,8 @@ async def update_thresholds(
         },
     }
     try:
-        current_thresholds = services.engine.update_thresholds(requested)
+        with services.processing_lock:
+            current_thresholds = services.engine.update_thresholds(requested)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

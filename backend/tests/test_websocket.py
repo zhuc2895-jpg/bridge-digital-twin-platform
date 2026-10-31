@@ -7,14 +7,13 @@ import time
 from fastapi.testclient import TestClient
 
 from app.dependencies import create_services
-from app.live_stream import (
+from app.live_contract import (
     MAX_SENSOR_UPDATE_BYTES,
     build_sensor_update,
     normalize_live_readings,
 )
-from app.main import create_app
 from tests.factories import reading
-from tests.helpers import wait_until
+from tests.helpers import TrackingLock, create_live_app, wait_until
 
 
 class OneShotSimulator:
@@ -39,6 +38,29 @@ class CountingSimulator:
         return [
             reading(sensor_id="S01", value=600.0 + call, timestamp=1000.0 + call),
             reading(sensor_id="S02", value=200.0 + call, timestamp=1000.0 + call),
+        ]
+
+
+class GatedCountingSimulator:
+    is_running = False
+
+    def __init__(self):
+        self.calls = 0
+        self.release = threading.Event()
+
+    def next_readings(self, timestamp=None):
+        if not self.release.wait(timeout=5.0):
+            raise RuntimeError("test simulator gate was not released")
+        self.calls += 1
+        now = time.time()
+        return [
+            reading(
+                sensor_id=f"S{index:02d}",
+                name=f"Sensor {index}",
+                value=100.0 + index + self.calls,
+                timestamp=now,
+            )
+            for index in range(1, 9)
         ]
 
 
@@ -87,14 +109,15 @@ def _add_twenty_alerts(services, *, long_messages: bool = False):
             threshold=300.0,
             source="rule",
             timestamp=1_700_000_000.0 + index * 20,
+            details={
+                "case": index,
+                "evidence": {"source": "threshold", "sequence": index},
+            },
         )
 
 
 def test_websocket_stats_expose_retained_alert_count():
-    services = create_services()
-    services.live_stream_autostart = False
-    services.simulator = OneShotSimulator()
-    app = create_app(services)
+    services, app = create_live_app(simulator=OneShotSimulator())
 
     with TestClient(app) as client:
         with client.websocket_connect("/ws/live") as websocket:
@@ -107,8 +130,7 @@ def test_websocket_stats_expose_retained_alert_count():
 
 
 def test_live_stream_runs_without_websocket_clients():
-    services = create_services()
-    app = create_app(services)
+    services, app = create_live_app(autostart=True)
 
     with TestClient(app) as client:
         assert wait_until(lambda: services.engine.get_sensor_count() == 8)
@@ -119,44 +141,109 @@ def test_live_stream_runs_without_websocket_clients():
     assert services.simulator.is_running is False
 
 
-def test_ten_websocket_clients_share_one_simulator_loop():
-    services = create_services()
-    services.live_stream_autostart = False
-    services.simulator = CountingSimulator()
-    services.live_stream_interval_seconds = 0.1
-    app = create_app(services)
+def test_ten_websocket_clients_receive_identical_complete_live_frames():
+    simulator = GatedCountingSimulator()
+    services, app = create_live_app(
+        simulator=simulator,
+        interval_seconds=1.0,
+    )
+    _add_twenty_alerts(services)
 
     with TestClient(app) as client, ExitStack() as stack:
         websockets = [
             stack.enter_context(client.websocket_connect("/ws/live"))
             for _ in range(10)
         ]
-        assert wait_until(lambda: services.simulator.calls >= 3)
+        simulator.release.set()
 
+        generation_times = []
+        for _ in range(3):
+            payloads = [websocket.receive_json() for websocket in websockets]
+            received_at = time.time()
+            generation_times.append(payloads[0]["sensors"][0]["timestamp"])
+
+            assert all(payload == payloads[0] for payload in payloads)
+            assert len(payloads[0]["sensors"]) == 8
+            assert len(payloads[0]["alerts"]) == 20
+            assert all("details" in alert for alert in payloads[0]["alerts"])
+            assert all(
+                received_at - item["timestamp"] < 0.5
+                for item in payloads[0]["sensors"]
+            )
+
+        assert all(
+            previous + 0.8 <= current <= previous + 1.5
+            for previous, current in zip(generation_times, generation_times[1:])
+        )
         with services.processing_lock:
-            calls = services.simulator.calls
+            calls = simulator.calls
             total_readings = services.engine.get_stats()["total_readings"]
             alert_count = services.engine.get_alert_count()
 
-        payloads = [websocket.receive_json() for websocket in websockets]
-
-        assert total_readings == calls * 2
-        assert alert_count == 1
+        assert total_readings == calls * 8
+        assert alert_count == 20
         assert services.ws_manager.connection_count == 10
-        assert all(payload["type"] == "sensor_update" for payload in payloads)
 
     assert services.ws_manager.active_connections == []
     assert services.simulator.is_running is False
     assert services.live_stream.is_running is False
 
 
+def test_shared_state_mutations_use_processing_lock():
+    services, app = create_live_app()
+    lock = TrackingLock()
+    services.processing_lock = lock
+
+    with TestClient(app) as client:
+        client.post(
+            "/api/data/upload/json?push_live=false",
+            json=[reading()],
+        )
+
+        before = lock.acquisitions
+        thresholds = client.post(
+            "/api/data/config/thresholds",
+            params={"strain_yellow": 301.0},
+        )
+        assert thresholds.status_code == 200
+        assert lock.acquisitions > before
+
+        before = lock.acquisitions
+        relearn = client.post(
+            "/api/analysis/detectors/relearn",
+            params={"sensor_id": "S01"},
+        )
+        assert relearn.status_code == 200
+        assert lock.acquisitions > before
+
+
+def test_live_payload_is_built_while_processing_lock_is_held():
+    services, app = create_live_app(simulator=OneShotSimulator())
+    lock = TrackingLock()
+    services.processing_lock = lock
+    original = services.engine.get_recent_alerts
+    observed: list[bool] = []
+
+    def tracked_recent_alerts():
+        observed.append(lock.held)
+        return original()
+
+    services.engine.get_recent_alerts = tracked_recent_alerts
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/live") as websocket:
+            websocket.receive_json()
+
+    assert observed
+    assert all(observed)
+
+
 def test_sensor_update_contract_contains_recent_twenty_alerts_within_10kb():
-    services = create_services()
-    services.live_stream_autostart = False
-    services.simulator = OneShotSimulator()
-    services.live_stream_interval_seconds = 60.0
+    services, app = create_live_app(
+        simulator=OneShotSimulator(),
+        interval_seconds=60.0,
+    )
     _add_twenty_alerts(services, long_messages=True)
-    app = create_app(services)
 
     with TestClient(app) as client:
         with client.websocket_connect("/ws/live") as websocket:
@@ -178,6 +265,7 @@ def test_sensor_update_contract_contains_recent_twenty_alerts_within_10kb():
             "threshold",
             "source",
             "timestamp",
+            "details",
         }
         for alert in payload["alerts"]
     )
@@ -230,13 +318,12 @@ def test_live_readings_use_shared_strict_ingestion_rules():
 
 
 def test_bad_live_reading_is_skipped_and_next_frame_is_delivered(caplog):
-    services = create_services()
-    services.live_stream_autostart = False
-    services.simulator = BadThenGoodSimulator()
-    services.live_stream_interval_seconds = 0.02
-    app = create_app(services)
+    services, app = create_live_app(
+        simulator=BadThenGoodSimulator(),
+        interval_seconds=0.02,
+    )
 
-    with caplog.at_level(logging.WARNING, logger="app.dependencies"):
+    with caplog.at_level(logging.WARNING, logger="app.live_contract"):
         with TestClient(app) as client:
             with client.websocket_connect("/ws/live") as websocket:
                 first = websocket.receive_json()
@@ -248,14 +335,13 @@ def test_bad_live_reading_is_skipped_and_next_frame_is_delivered(caplog):
 
 
 def test_processor_failure_is_logged_and_later_frames_continue(caplog):
-    services = create_services()
-    services.live_stream_autostart = False
-    services.simulator = CountingSimulator()
-    services.live_stream_interval_seconds = 0.02
+    services, app = create_live_app(
+        simulator=CountingSimulator(),
+        interval_seconds=0.02,
+    )
     services.processor = FlakyProcessor(services.processor)
-    app = create_app(services)
 
-    with caplog.at_level(logging.ERROR, logger="app.dependencies"):
+    with caplog.at_level(logging.ERROR, logger="app.live_stream"):
         with TestClient(app) as client:
             with client.websocket_connect("/ws/live") as websocket:
                 first = websocket.receive_json()
@@ -269,9 +355,7 @@ def test_processor_failure_is_logged_and_later_frames_continue(caplog):
 
 
 def test_first_frame_latency_and_one_hz_cadence():
-    services = create_services()
-    services.live_stream_autostart = False
-    app = create_app(services)
+    services, app = create_live_app()
 
     with TestClient(app) as client:
         with client.websocket_connect("/ws/live") as websocket:
@@ -287,8 +371,7 @@ def test_first_frame_latency_and_one_hz_cadence():
 
 
 def test_late_client_does_not_receive_a_stale_cached_frame():
-    services = create_services()
-    app = create_app(services)
+    services, app = create_live_app(autostart=True)
 
     with TestClient(app) as client:
         assert wait_until(lambda: services.engine.get_sensor_count() == 8)
@@ -302,11 +385,10 @@ def test_late_client_does_not_receive_a_stale_cached_frame():
 
 
 def test_repeated_connect_disconnect_cleans_up_registry():
-    services = create_services()
-    services.live_stream_autostart = False
-    services.simulator = OneShotSimulator()
-    services.live_stream_interval_seconds = 0.05
-    app = create_app(services)
+    services, app = create_live_app(
+        simulator=OneShotSimulator(),
+        interval_seconds=0.05,
+    )
 
     with TestClient(app) as client:
         for _ in range(10):

@@ -10,7 +10,7 @@ from starlette.requests import HTTPConnection
 
 from app.engine.data_engine import MonitoringEngine
 from app.engine.simulator import DataSimulator
-from app.live_stream import LiveStreamRunner, SensorUpdatePublisher
+from app.live_stream import LiveStreamRunner, SensorUpdatePublisher, process_live_tick
 from app.ml.contracts import ReadingPredicate
 from app.ml.feature_arbitration import FeatureArbitrationDetector
 from app.ml.registry import DetectorManager, DetectorRegistry
@@ -36,7 +36,21 @@ class AppServices:
 
     def __post_init__(self) -> None:
         self.sensor_updates = SensorUpdatePublisher(self.engine, self.ws_manager)
-        self.live_stream = LiveStreamRunner(self)
+        self.live_stream = LiveStreamRunner(
+            process_tick=lambda generated_at: process_live_tick(
+                simulator=self.simulator,
+                processor=self.processor,
+                publisher=self.sensor_updates,
+                processing_lock=self.processing_lock,
+                generated_at=generated_at,
+            ),
+            interval_seconds=lambda: self.live_stream_interval_seconds,
+            set_running=lambda running: setattr(
+                self.simulator,
+                "is_running",
+                running,
+            ),
+        )
 
 
 def build_detector_registry(

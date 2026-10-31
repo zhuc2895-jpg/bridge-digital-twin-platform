@@ -77,7 +77,8 @@ async def relearn_detector_baselines(
     if sensor_id is not None and services.engine.get_latest(sensor_id) is None:
         raise HTTPException(status_code=404, detail=f"Sensor {sensor_id} not found")
     try:
-        return services.detectors.relearn(sensor_id)
+        with services.processing_lock:
+            return services.detectors.relearn(sensor_id)
     except DetectorRegistryError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -96,9 +97,9 @@ async def inject_anomaly(
             generated = simulator.inject_anomaly(target)
             injected_readings = [generated.reading.to_dict()]
             services.processor.process(injected_readings)
+            services.sensor_updates.publish(injected_readings)
     except UnknownSimulatorSensorError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    services.sensor_updates.publish(injected_readings)
 
     injection = generated.injection
     injected_sensor_id = str(injection.sensor_id)

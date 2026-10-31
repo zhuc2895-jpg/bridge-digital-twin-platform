@@ -121,14 +121,6 @@ class WebSocketManager:
     ) -> None:
         """Queue one shared payload for every currently connected client."""
         message = self.encode(data)
-        self.broadcast_message(message, queued_at=queued_at)
-
-    def broadcast_message(
-        self,
-        message: str,
-        *,
-        queued_at: float | None = None,
-    ) -> None:
         self._validate_message_size(message)
         queued = _QueuedMessage(
             text=message,
