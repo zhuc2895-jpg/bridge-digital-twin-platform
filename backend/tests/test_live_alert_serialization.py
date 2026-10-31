@@ -4,10 +4,15 @@ import time
 
 from app.dependencies import create_services
 from app.engine.data_engine import MonitoringEngine
-from app.live_contract import LiveFrameSource, build_sensor_update
+from app.live_contract import (
+    LiveFrameSource,
+    build_sensor_update,
+    build_sensor_update_from_snapshot,
+)
 from app.live_stream import SensorUpdatePublisher
 from app.sensor_batch import LiveEligibility, SensorBatch
 from app.ws.message_contract import encode_message
+
 from tests.factories import reading
 from tests.helpers import CapturingManager, ingest_records
 
@@ -189,7 +194,7 @@ def test_overflow_keeps_newest_sensor_records(monkeypatch):
             live_eligible=True,
         )
 
-    import app.live_contract as live_contract
+    from app import live_contract
 
     monkeypatch.setattr(live_contract, "MAX_SENSOR_UPDATE_BYTES", 6000)
     payload = _build(engine)
@@ -237,6 +242,55 @@ def test_boolean_alert_value_is_invalid():
     assert alert["invalid"] is True
 
 
+def test_alert_without_timestamp_is_invalid():
+    source = LiveFrameSource(
+        sensors=[],
+        alerts=[
+            {
+                "id": "alert-1",
+                "sensor_id": "S01",
+                "sensor_name": "AI detector",
+                "level": "yellow",
+                "message": "Missing event time",
+                "value": 400.0,
+                "threshold": 300.0,
+                "source": "rule",
+            }
+        ],
+        stats={},
+    )
+
+    alert = build_sensor_update_from_snapshot(source)["alerts"][0]
+
+    assert alert["timestamp"] is None
+    assert alert["invalid"] is True
+
+
+def test_rule_alert_with_nonpositive_threshold_is_invalid():
+    source = LiveFrameSource(
+        sensors=[],
+        alerts=[
+            {
+                "id": "alert-1",
+                "sensor_id": "S01",
+                "sensor_name": "Rule detector",
+                "level": "yellow",
+                "message": "Missing physical threshold",
+                "value": 400.0,
+                "threshold": 0.0,
+                "source": "rule",
+                "timestamp": 1_700_000_000.0,
+            }
+        ],
+        stats={},
+    )
+
+    alert = build_sensor_update_from_snapshot(source)["alerts"][0]
+
+    assert alert["threshold"] is None
+    assert alert["invalid"] is True
+
+
 def test_slow_encoding_consumes_total_latency_budget(monkeypatch):
     services = create_services()
     manager = CapturingManager()
@@ -255,7 +309,7 @@ def test_slow_encoding_consumes_total_latency_budget(monkeypatch):
         time.sleep(0.06)
         return original_build(*args)
 
-    import app.live_stream as live_stream
+    from app import live_stream
 
     monkeypatch.setattr(live_stream, "build_sensor_update_from_snapshot", slow_build)
 

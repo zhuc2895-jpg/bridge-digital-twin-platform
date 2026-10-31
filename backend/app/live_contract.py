@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 import logging
 import math
 import threading
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, TypedDict, cast
 
 from app.engine.data_engine import MonitoringEngine
@@ -146,8 +146,17 @@ def _alert_payload(
     limits: _WireTextLimits = _DEFAULT_TEXT_LIMITS,
 ) -> AlertWire:
     value, value_valid = _finite_number(alert.get("value"))
-    threshold, threshold_valid = _finite_number(alert.get("threshold", 0.0))
-    timestamp, timestamp_valid = _finite_number(alert.get("timestamp", 0.0))
+    threshold, threshold_valid = _finite_number(alert.get("threshold"))
+    source = _truncate_text(alert.get("source", ""), 32)
+    if source == "rule":
+        threshold_valid = (
+            threshold_valid and threshold is not None and threshold > 0
+        )
+        if not threshold_valid:
+            threshold = None
+    elif threshold is not None and threshold <= 0:
+        threshold = None
+    timestamp, timestamp_valid = _finite_number(alert.get("timestamp"))
     invalid = not all((value_valid, threshold_valid, timestamp_valid))
     if invalid:
         logger.warning(
@@ -171,7 +180,7 @@ def _alert_payload(
         ),
         "value": value,
         "threshold": threshold,
-        "source": _truncate_text(alert.get("source", ""), 32),
+        "source": source,
         "timestamp": timestamp,
         "invalid": invalid,
     }
