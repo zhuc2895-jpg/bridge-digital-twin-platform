@@ -165,16 +165,27 @@ class WebSocketManager:
                         message = channel.messages.get_nowait()
                     except queue.Empty:
                         break
-                    if (
+                    remaining = self.max_message_age_seconds - (
                         time.monotonic() - message.queued_at
-                        > self.max_message_age_seconds
-                    ):
+                    )
+                    if remaining <= 0:
                         logger.warning(
                             "Disconnecting WebSocket client with stale queued frames"
                         )
                         self.disconnect(channel.websocket)
                         return
-                    await channel.websocket.send_text(message.text)
+                    try:
+                        await asyncio.wait_for(
+                            channel.websocket.send_text(message.text),
+                            timeout=remaining,
+                        )
+                    except TimeoutError:
+                        logger.warning(
+                            "Disconnecting WebSocket client whose send exceeded "
+                            "the latency deadline"
+                        )
+                        self.disconnect(channel.websocket)
+                        return
         except asyncio.CancelledError:
             raise
         except Exception:

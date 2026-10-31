@@ -304,6 +304,65 @@ def test_bounded_sensor_update_keeps_all_twenty_alerts_and_sensor_frame():
     assert len(encoded) <= MAX_SENSOR_UPDATE_BYTES
 
 
+def test_oversized_alert_details_are_bounded_without_dropping_records():
+    services = create_services()
+    for index in range(20):
+        services.engine.submit_alert(
+            sensor_id=f"ALERT-{index:02d}",
+            sensor_name=f"Alert source {index}",
+            level="yellow",
+            message=f"Alert {index}",
+            value=400.0 + index,
+            threshold=300.0,
+            source="rule",
+            timestamp=1_700_000_000.0 + index * 20,
+            details={
+                "blob": "x" * 20_000,
+                "context": {"index": index},
+            },
+        )
+    readings = [
+        reading(sensor_id=f"S{index:02d}", value=100.0 + index)
+        for index in range(8)
+    ]
+
+    payload = build_sensor_update(services.engine, readings)
+    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+
+    assert len(payload["sensors"]) == 8
+    assert len(payload["alerts"]) == 20
+    assert len(encoded) <= MAX_SENSOR_UPDATE_BYTES
+    assert all(alert["details"]["_truncated"] is True for alert in payload["alerts"])
+
+
+def test_live_websocket_pushes_bounded_frame_with_oversized_alert_details():
+    services, app = create_live_app(
+        simulator=OneShotSimulator(),
+        interval_seconds=60.0,
+    )
+    for index in range(20):
+        services.engine.submit_alert(
+            sensor_id=f"ALERT-{index:02d}",
+            sensor_name=f"Alert source {index}",
+            level="yellow",
+            message=f"Alert {index}",
+            value=400.0 + index,
+            threshold=300.0,
+            source="rule",
+            timestamp=1_700_000_000.0 + index * 20,
+            details={"blob": "x" * 20_000},
+        )
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/live") as websocket:
+            payload = websocket.receive_json()
+
+    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+    assert len(payload["alerts"]) == 20
+    assert len(encoded) <= MAX_SENSOR_UPDATE_BYTES
+    assert all(alert["details"]["_truncated"] is True for alert in payload["alerts"])
+
+
 def test_live_readings_use_shared_strict_ingestion_rules():
     records = [
         reading(sensor_id="S01", value=100.0),

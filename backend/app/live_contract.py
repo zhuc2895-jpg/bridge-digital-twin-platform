@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import logging
 from typing import Any
 
@@ -31,6 +32,7 @@ class _WireTextLimits:
     alert_sensor_id: int
     alert_name: int
     alert_message: int
+    alert_details: int
 
 
 # Policies are ordered from richest evidence to the smallest message that can
@@ -40,24 +42,35 @@ _DEFAULT_TEXT_LIMITS = _WireTextLimits(
     alert_sensor_id=64,
     alert_name=128,
     alert_message=512,
+    alert_details=8192,
 )
 _SHORT_TEXT_LIMITS = _WireTextLimits(
     sensor_name=32,
     alert_sensor_id=16,
     alert_name=16,
     alert_message=24,
+    alert_details=1024,
 )
 _MINIMAL_TEXT_LIMITS = _WireTextLimits(
     sensor_name=8,
     alert_sensor_id=8,
     alert_name=8,
     alert_message=8,
+    alert_details=256,
 )
 _LAST_RESORT_TEXT_LIMITS = _WireTextLimits(
     sensor_name=8,
     alert_sensor_id=8,
     alert_name=0,
     alert_message=0,
+    alert_details=64,
+)
+_EMPTY_DETAILS_LIMITS = _WireTextLimits(
+    sensor_name=8,
+    alert_sensor_id=8,
+    alert_name=0,
+    alert_message=0,
+    alert_details=0,
 )
 
 
@@ -78,9 +91,28 @@ def _compact_reading(
     }
 
 
-def _alert_payload(alert: dict[str, Any]) -> dict[str, Any]:
+def _bounded_details(details: Any, limit: int) -> dict[str, Any]:
+    normalized = dict(details or {})
+    if limit <= 0:
+        return {"_truncated": True}
+    serialized = json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
+    if len(serialized) <= limit:
+        return normalized
+    return {
+        "_truncated": True,
+        "preview": serialized[:limit],
+    }
+
+
+def _alert_payload(
+    alert: dict[str, Any],
+    limits: _WireTextLimits = _DEFAULT_TEXT_LIMITS,
+) -> dict[str, Any]:
     payload = {field: alert.get(field) for field in _ALERT_FIELDS}
-    payload["details"] = dict(alert.get("details") or {})
+    payload["details"] = _bounded_details(
+        alert.get("details"),
+        limits.alert_details,
+    )
     return payload
 
 
@@ -88,7 +120,7 @@ def _compact_alert(
     alert: dict[str, Any],
     limits: _WireTextLimits,
 ) -> dict[str, Any]:
-    payload = _alert_payload(alert)
+    payload = _alert_payload(alert, limits)
     payload["sensor_id"] = _truncate_text(
         payload["sensor_id"] or "",
         limits.alert_sensor_id,
@@ -140,7 +172,11 @@ def build_sensor_update(
     if _message_size(payload) <= MAX_SENSOR_UPDATE_BYTES:
         return payload
 
-    for text_limits in (_SHORT_TEXT_LIMITS, _MINIMAL_TEXT_LIMITS):
+    for text_limits in (
+        _SHORT_TEXT_LIMITS,
+        _MINIMAL_TEXT_LIMITS,
+        _LAST_RESORT_TEXT_LIMITS,
+    ):
         sensors = _latest_sensor_readings(
             readings,
             text_limits=text_limits,
@@ -156,7 +192,7 @@ def build_sensor_update(
 
     if _message_size(payload) > MAX_SENSOR_UPDATE_BYTES:
         alerts = [
-            _compact_alert(alert, _LAST_RESORT_TEXT_LIMITS)
+            _compact_alert(alert, _EMPTY_DETAILS_LIMITS)
             for alert in alerts
         ]
         payload["alerts"] = alerts

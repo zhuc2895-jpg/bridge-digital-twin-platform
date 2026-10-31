@@ -68,6 +68,23 @@ def test_slow_client_queue_overflow_unregisters_and_closes_websocket():
     asyncio.run(scenario())
 
 
+def test_blocked_send_is_closed_at_latency_deadline():
+    async def scenario():
+        manager = WebSocketManager(max_message_age_seconds=0.02)
+        websocket = BlockingWebSocket()
+        await manager.connect(websocket)
+        manager.enqueue_broadcast({"sequence": 1})
+        await websocket.send_started.wait()
+        await asyncio.sleep(0.03)
+        websocket.release_send.set()
+
+        assert await async_wait_until(lambda: manager.connection_count == 0)
+        assert await async_wait_until(lambda: websocket.closed)
+        assert websocket.sent == []
+
+    asyncio.run(scenario())
+
+
 def test_stale_queued_frame_closes_slow_client_instead_of_skipping():
     async def scenario():
         manager = WebSocketManager(max_message_age_seconds=0.01)
