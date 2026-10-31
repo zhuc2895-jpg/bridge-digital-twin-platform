@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import logging
 import math
-from typing import Any, TypedDict
+import threading
+from typing import Any, TypedDict, cast
 
 from app.engine.data_engine import MonitoringEngine
 from app.ingestion import IngestionValidationError, validate_json_record
@@ -43,10 +44,23 @@ class SensorUpdateWire(TypedDict):
     stats: dict[str, Any]
 
 
+class AlertSnapshotRecord(TypedDict, total=False):
+    id: str
+    sensor_id: str
+    sensor_name: str
+    level: str
+    message: str
+    value: Any
+    threshold: Any
+    source: str
+    timestamp: Any
+    details: dict[str, Any]
+
+
 @dataclass(frozen=True, slots=True)
 class LiveFrameSource:
-    sensors: list[dict[str, Any]]
-    alerts: list[dict[str, Any]]
+    sensors: list[SensorReadingWire]
+    alerts: list[AlertSnapshotRecord]
     stats: dict[str, Any]
 
 
@@ -168,7 +182,7 @@ def _message_size(payload: Mapping[str, Any]) -> int:
 
 
 def _live_sensors(
-    readings: list[dict[str, Any]],
+    readings: Sequence[Mapping[str, Any]],
     limits: _WireTextLimits = _DEFAULT_TEXT_LIMITS,
 ) -> list[SensorReadingWire]:
     return [_compact_reading(reading, limits) for reading in readings]
@@ -202,18 +216,31 @@ def build_sensor_update_from_snapshot(source: LiveFrameSource) -> SensorUpdateWi
     return payload
 
 
-def capture_live_frame_source(engine: MonitoringEngine) -> LiveFrameSource:
-    """Copy the live-eligible state needed to build one Live Frame."""
-    return LiveFrameSource(
-        sensors=engine.get_live_snapshot(limit=32),
-        alerts=engine.get_recent_live_alerts(),
-        stats=engine.get_stats(),
-    )
+def capture_live_frame_source(
+    engine: MonitoringEngine,
+    processing_lock: threading.RLock,
+) -> LiveFrameSource:
+    """Copy the live-eligible state under the shared mutation boundary."""
+    with processing_lock:
+        return LiveFrameSource(
+            sensors=cast(
+                list[SensorReadingWire],
+                engine.get_live_snapshot(limit=32),
+            ),
+            alerts=cast(
+                list[AlertSnapshotRecord],
+                engine.get_recent_live_alerts(),
+            ),
+            stats=engine.get_stats(),
+        )
 
 
-def build_sensor_update(engine: MonitoringEngine) -> SensorUpdateWire:
-    """Build one bounded Live Frame from current live-eligible state."""
-    source = capture_live_frame_source(engine)
+def build_sensor_update(
+    engine: MonitoringEngine,
+    processing_lock: threading.RLock,
+) -> SensorUpdateWire:
+    """Build one bounded Live Frame from a synchronized live snapshot."""
+    source = capture_live_frame_source(engine, processing_lock)
     return build_sensor_update_from_snapshot(source)
 
 

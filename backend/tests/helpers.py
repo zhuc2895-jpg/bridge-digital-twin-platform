@@ -13,6 +13,7 @@ from fastapi import FastAPI
 
 from app.dependencies import AppServices, create_services
 from app.main import create_app
+from app.sensor_batch import LiveEligibility, SensorBatch
 
 
 @dataclass
@@ -76,3 +77,16 @@ class CapturingManager:
 
     def enqueue_broadcast(self, payload, *, queued_at=None):
         self.payloads.append(payload)
+
+def ingest_records(
+    engine,
+    records: list[dict],
+    *,
+    live_eligibility: LiveEligibility = LiveEligibility.INTERNAL,
+) -> None:
+    engine.ingest(
+        SensorBatch.from_records(
+            records,
+            live_eligibility=live_eligibility,
+        )
+    )

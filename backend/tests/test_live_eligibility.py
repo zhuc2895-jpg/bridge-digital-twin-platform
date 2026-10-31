@@ -1,16 +1,19 @@
 from app.engine.data_engine import MonitoringEngine
+from app.sensor_batch import LiveEligibility, SensorBatch
 from tests.factories import reading
+from tests.helpers import ingest_records
 
 
 def test_live_snapshot_ignores_newer_non_live_backfill():
     engine = MonitoringEngine()
-    engine.ingest(
+    ingest_records(
+        engine,
         [reading(sensor_id="S01", value=100.0, timestamp=100.0)],
-        live_eligible=True,
     )
-    engine.ingest(
+    ingest_records(
+        engine,
         [reading(sensor_id="S01", value=900.0, timestamp=200.0)],
-        live_eligible=False,
+        live_eligibility=LiveEligibility.BACKFILL,
     )
 
     snapshot = engine.get_live_snapshot()
@@ -23,7 +26,8 @@ def test_live_snapshot_ignores_newer_non_live_backfill():
 
 def test_live_snapshot_keeps_thirty_two_most_recent_sensors():
     engine = MonitoringEngine()
-    engine.ingest(
+    ingest_records(
+        engine,
         [
             reading(
                 sensor_id=f"S{index:03d}",
@@ -32,7 +36,6 @@ def test_live_snapshot_keeps_thirty_two_most_recent_sensors():
             )
             for index in range(40)
         ],
-        live_eligible=True,
     )
 
     snapshot = engine.get_live_snapshot()
@@ -81,16 +84,31 @@ def test_live_alerts_exclude_non_live_backfill_alerts():
 
 def test_older_live_reading_cannot_replace_newer_live_reading():
     engine = MonitoringEngine()
-    engine.ingest(
+    ingest_records(
+        engine,
         [reading(sensor_id="S01", value=200.0, timestamp=200.0)],
-        live_eligible=True,
     )
-    engine.ingest(
+    ingest_records(
+        engine,
         [reading(sensor_id="S01", value=100.0, timestamp=100.0)],
-        live_eligible=True,
     )
 
     snapshot = engine.get_live_snapshot()
 
     assert snapshot[0]["value"] == 200.0
     assert snapshot[0]["timestamp"] == 200.0
+
+def test_external_live_update_tracks_pending_delivery():
+    engine = MonitoringEngine()
+    engine.ingest(
+        SensorBatch(
+            records=[reading(sensor_id="S01", value=900.0, timestamp=100.0)],
+            live_eligibility=LiveEligibility.EXTERNAL,
+        )
+    )
+
+    pending = engine.get_pending_external_versions()
+
+    assert set(pending) == {"S01"}
+    engine.consume_pending_external(pending)
+    assert engine.get_pending_external_versions() == {}

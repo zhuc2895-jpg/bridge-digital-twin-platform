@@ -10,7 +10,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 
 from app.dependencies import AppServices, get_services
-from app.sensor_batch import SensorBatch
+from app.sensor_batch import LiveEligibility, SensorBatch
 from app.ingestion import (
     IngestionValidationError,
     validate_csv_batch,
@@ -28,7 +28,11 @@ def _process_records(
 ):
     batch = SensorBatch(
         records=records,
-        live_eligible=live_eligible,
+        live_eligibility=(
+            LiveEligibility.EXTERNAL
+            if live_eligible
+            else LiveEligibility.BACKFILL
+        ),
     )
     with services.processing_lock:
         return services.processor.process(batch)

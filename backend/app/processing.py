@@ -31,24 +31,15 @@ class SensorDataProcessor:
         self.engine = engine
         self.detectors = detectors
 
-    def process(
-        self,
-        batch: SensorBatch | list[dict],
-        *,
-        live_eligible: bool = True,
-    ) -> ProcessingResult:
-        sensor_batch = SensorBatch.coerce(
-            batch,
-            live_eligible=live_eligible,
-        )
-        self.engine.ingest(sensor_batch)
+    def process(self, batch: SensorBatch) -> ProcessingResult:
+        self.engine.ingest(batch)
         result = ProcessingResult(
-            rule_alerts=self.engine.check_thresholds(sensor_batch)
+            rule_alerts=self.engine.check_thresholds(batch)
         )
 
         try:
             detections = self.detectors.detect(
-                sensor_batch.records,
+                batch.records,
                 normal_predicate=self.engine.is_normal_reading,
             )
         except Exception:
@@ -68,7 +59,7 @@ class SensorDataProcessor:
                     source=detection.source or "ai_dual_confirm",
                     timestamp=detection.timestamp,
                     details=dict(detection.details),
-                    live_eligible=sensor_batch.live_eligible,
+                    live_eligible=batch.live_eligibility.is_live,
                 )
             except Exception:
                 logger.exception(

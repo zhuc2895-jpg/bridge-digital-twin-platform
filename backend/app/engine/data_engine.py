@@ -70,6 +70,8 @@ class MonitoringEngine:
         # 传感器最新状态: dict[sensor_id] -> SensorReading
         self._latest: Dict[str, SensorReading] = {}
         self._live_latest: Dict[str, SensorReading] = {}
+        self._pending_external_versions: Dict[str, int] = {}
+        self._external_version = 0
 
         # 滚动窗口历史: dict[sensor_id] -> deque(maxlen=window_size)
         self._history: Dict[str, deque] = {}
@@ -102,38 +104,34 @@ class MonitoringEngine:
             "temperature": {"yellow": 45, "orange": 55, "red": 65},
         }
 
-    def ingest(
-        self,
-        batch: SensorBatch | List[dict[str, Any]],
-        *,
-        live_eligible: bool = True,
-    ):
+    def ingest(self, batch: SensorBatch):
         """摄入一批传感器数据，并应用该批次的实时可见性策略。"""
-        sensor_batch = SensorBatch.coerce(
-            batch,
-            live_eligible=live_eligible,
-        )
         ingested_sensor_ids = set()
         sensors_needing_sort = set()
-        for item in sensor_batch.records:
+        for item in batch.records:
             reading = SensorReading(
                 sensor_id=item["sensor_id"],
                 name=item.get("name", ""),
                 type=item.get("type", "unknown"),
                 value=item["value"],
                 timestamp=item.get("timestamp", time.time()),
-                live_eligible=sensor_batch.live_eligible,
+                live_eligible=batch.live_eligibility.is_live,
             )
             current = self._latest.get(reading.sensor_id)
             if current is None or reading.timestamp >= current.timestamp:
                 self._latest[reading.sensor_id] = reading
-            if sensor_batch.live_eligible:
+            if batch.live_eligibility.is_live:
                 current_live = self._live_latest.get(reading.sensor_id)
                 if (
                     current_live is None
                     or reading.timestamp >= current_live.timestamp
                 ):
                     self._live_latest[reading.sensor_id] = reading
+                if batch.live_eligibility.is_external:
+                    self._external_version += 1
+                    self._pending_external_versions[reading.sensor_id] = (
+                        self._external_version
+                    )
 
             # 维护最近 500 条滚动窗口；超过容量后按到达顺序淘汰。
             history = self._history.setdefault(
@@ -175,16 +173,10 @@ class MonitoringEngine:
             self._min_ts = min(history[0].timestamp for history in histories)
             self._max_ts = max(history[-1].timestamp for history in histories)
 
-    def check_thresholds(
-        self,
-        batch: SensorBatch | List[dict[str, Any]],
-        *,
-        live_eligible: bool = True,
-    ) -> List[Alert]:
+    def check_thresholds(self, batch: SensorBatch) -> List[Alert]:
         """Evaluate physical thresholds and submit every matched alert."""
-        sensor_batch = SensorBatch.coerce(batch, live_eligible=live_eligible)
         alerts = []
-        for item in sensor_batch.records:
+        for item in batch.records:
             sensor_type = item.get("type", "unknown")
             value = item["value"]
             thresholds = self.thresholds.get(sensor_type, {})
@@ -213,7 +205,7 @@ class MonitoringEngine:
                 threshold=threshold,
                 source="rule",
                 timestamp=item.get("timestamp", time.time()),
-                live_eligible=sensor_batch.live_eligible,
+                live_eligible=batch.live_eligibility.is_live,
             )
             if alert is not None:
                 alerts.append(alert)
@@ -424,6 +416,14 @@ class MonitoringEngine:
             reverse=True,
         )
         return [self._reading_to_dict(reading) for reading in readings[:limit]]
+
+    def get_pending_external_versions(self) -> Dict[str, int]:
+        return dict(self._pending_external_versions)
+
+    def consume_pending_external(self, versions: Mapping[str, int]) -> None:
+        for sensor_id, version in versions.items():
+            if self._pending_external_versions.get(sensor_id) == version:
+                del self._pending_external_versions[sensor_id]
 
     def get_alert_stats(self) -> dict:
         """Summarize every retained alert, not only the recent page."""

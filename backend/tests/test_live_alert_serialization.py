@@ -1,24 +1,33 @@
 import json
+import threading
 import time
 
 from app.dependencies import create_services
 from app.engine.data_engine import MonitoringEngine
 from app.live_contract import LiveFrameSource, build_sensor_update
 from app.live_stream import SensorUpdatePublisher
+from app.sensor_batch import LiveEligibility, SensorBatch
 from app.ws.message_contract import encode_message
 from tests.factories import reading
-from tests.helpers import CapturingManager
+from tests.helpers import CapturingManager, ingest_records
+
+_SHARED_LOCK = threading.RLock()
+
+
+def _build(engine):
+    return build_sensor_update(engine, _SHARED_LOCK)
 
 
 def test_live_frame_uses_only_live_eligible_state():
     engine = MonitoringEngine()
-    engine.ingest(
+    ingest_records(
+        engine,
         [reading(sensor_id="LIVE", value=100.0, timestamp=100.0)],
-        live_eligible=True,
     )
-    engine.ingest(
+    ingest_records(
+        engine,
         [reading(sensor_id="BACKFILL", value=900.0, timestamp=200.0)],
-        live_eligible=False,
+        live_eligibility=LiveEligibility.BACKFILL,
     )
     engine.submit_alert(
         sensor_id="LIVE",
@@ -43,7 +52,7 @@ def test_live_frame_uses_only_live_eligible_state():
         live_eligible=False,
     )
 
-    payload = build_sensor_update(engine)
+    payload = _build(engine)
 
     assert [item["sensor_id"] for item in payload["sensors"]] == ["LIVE"]
     assert [item["sensor_id"] for item in payload["alerts"]] == ["LIVE"]
@@ -64,7 +73,7 @@ def test_malformed_alert_value_does_not_suppress_live_update(caplog):
         timestamp=1_700_000_000.0,
     )
     manager = CapturingManager()
-    publisher = SensorUpdatePublisher(services.engine, manager)
+    publisher = SensorUpdatePublisher(services.engine, manager, _SHARED_LOCK)
 
     publisher.publish()
 
@@ -88,7 +97,7 @@ def test_non_finite_alert_value_produces_standard_json():
         timestamp=1_700_000_000.0,
     )
 
-    message = encode_message(build_sensor_update(services.engine))
+    message = encode_message(_build(services.engine))
     payload = json.loads(
         message,
         parse_constant=lambda value: (_ for _ in ()).throw(
@@ -102,7 +111,8 @@ def test_non_finite_alert_value_produces_standard_json():
 
 def test_live_frame_contains_at_most_thirty_two_live_sensors():
     engine = MonitoringEngine()
-    engine.ingest(
+    ingest_records(
+        engine,
         [
             reading(
                 sensor_id=f"S{index:03d}",
@@ -111,22 +121,21 @@ def test_live_frame_contains_at_most_thirty_two_live_sensors():
             )
             for index in range(40)
         ],
-        live_eligible=True,
     )
 
-    payload = build_sensor_update(engine)
+    payload = _build(engine)
 
     assert len(payload["sensors"]) == 32
     assert {item["timestamp"] for item in payload["sensors"]} == set(range(8, 40))
 
 def test_unpaired_surrogate_is_isolated_from_live_frame_encoding(tmp_path):
     engine = MonitoringEngine()
-    engine.ingest(
+    ingest_records(
+        engine,
         [reading(sensor_id="S01", name="bad\ud800name", value=100.0)],
-        live_eligible=True,
     )
 
-    payload = build_sensor_update(engine)
+    payload = _build(engine)
     message = encode_message(payload)
 
     assert "\ufffd" in message
@@ -146,7 +155,7 @@ def test_invalid_alert_threshold_and_timestamp_are_null():
         timestamp=float("inf"),
     )
 
-    alert = build_sensor_update(engine)["alerts"][0]
+    alert = _build(engine)["alerts"][0]
 
     assert alert["value"] == 400.0
     assert alert["threshold"] is None
@@ -155,7 +164,8 @@ def test_invalid_alert_threshold_and_timestamp_are_null():
 
 def test_overflow_keeps_newest_sensor_records(monkeypatch):
     engine = MonitoringEngine()
-    engine.ingest(
+    ingest_records(
+        engine,
         [
             reading(
                 sensor_id=f"S{index:03d}",
@@ -165,7 +175,6 @@ def test_overflow_keeps_newest_sensor_records(monkeypatch):
             )
             for index in range(32)
         ],
-        live_eligible=True,
     )
     for index in range(20):
         engine.submit_alert(
@@ -183,7 +192,7 @@ def test_overflow_keeps_newest_sensor_records(monkeypatch):
     import app.live_contract as live_contract
 
     monkeypatch.setattr(live_contract, "MAX_SENSOR_UPDATE_BYTES", 6000)
-    payload = build_sensor_update(engine)
+    payload = _build(engine)
 
     timestamps = [item["timestamp"] for item in payload["sensors"]]
     assert timestamps == sorted(timestamps, reverse=True)
@@ -196,6 +205,7 @@ def test_late_server_processing_drops_frame_without_enqueueing():
     publisher = SensorUpdatePublisher(
         services.engine,
         manager,
+        _SHARED_LOCK,
         max_frame_age_seconds=0.5,
     )
     source = LiveFrameSource(sensors=[], alerts=[], stats={})
@@ -206,6 +216,7 @@ def test_late_server_processing_drops_frame_without_enqueueing():
     )
 
     assert manager.payloads == []
+
 
 def test_boolean_alert_value_is_invalid():
     engine = MonitoringEngine()
@@ -220,7 +231,7 @@ def test_boolean_alert_value_is_invalid():
         timestamp=1_700_000_000.0,
     )
 
-    alert = build_sensor_update(engine)["alerts"][0]
+    alert = _build(engine)["alerts"][0]
 
     assert alert["value"] is None
     assert alert["invalid"] is True
@@ -232,6 +243,7 @@ def test_slow_encoding_consumes_total_latency_budget(monkeypatch):
     publisher = SensorUpdatePublisher(
         services.engine,
         manager,
+        _SHARED_LOCK,
         max_frame_age_seconds=0.05,
     )
     source = LiveFrameSource(sensors=[], alerts=[], stats={})
@@ -250,3 +262,19 @@ def test_slow_encoding_consumes_total_latency_budget(monkeypatch):
     publisher.publish(source, generated_at=time.monotonic())
 
     assert manager.payloads == []
+
+def test_external_update_is_not_consumed_when_frame_is_skipped():
+    engine = MonitoringEngine()
+    engine.ingest(
+        SensorBatch(
+            records=[reading(sensor_id="S01", value=900.0, timestamp=100.0)],
+            live_eligibility=LiveEligibility.EXTERNAL,
+        )
+    )
+    manager = CapturingManager()
+    publisher = SensorUpdatePublisher(engine, manager, _SHARED_LOCK)
+
+    publisher.publish(generated_at=time.monotonic() - 1.0)
+
+    assert manager.payloads == []
+    assert set(engine.get_pending_external_versions()) == {"S01"}

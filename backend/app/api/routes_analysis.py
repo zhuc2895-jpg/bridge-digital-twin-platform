@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from app.dependencies import AppServices, get_services
 from app.engine.simulator import UnknownSimulatorSensorError
 from app.ml.registry import DetectorRegistryError
-from app.sensor_batch import SensorBatch
+from app.sensor_batch import LiveEligibility, SensorBatch
 from app.sensor_ids import SensorIdentifier
 
 router = APIRouter()
@@ -100,7 +100,7 @@ async def inject_anomaly(
             services.processor.process(
                 SensorBatch(
                     records=injected_readings,
-                    live_eligible=True,
+                    live_eligibility=LiveEligibility.EXTERNAL,
                 )
             )
     except UnknownSimulatorSensorError as exc:

@@ -2,6 +2,9 @@ import time
 
 import pytest
 
+from app.engine.data_engine import MonitoringEngine
+from app.sensor_batch import SensorBatch
+
 
 @pytest.mark.parametrize(
     ("params", "expected_detail"),
@@ -25,7 +28,6 @@ def test_history_range_rejects_invalid_bounds_and_limits(client, params, expecte
 
     assert response.status_code == 400
     assert expected_detail in str(response.json()).lower()
-from fastapi.testclient import TestClient
 
 
 def reading(value: float, timestamp: float, sensor_id: str = "S01") -> dict:
@@ -82,8 +84,6 @@ def test_rolling_window_evicts_in_fifo_order(client):
     timestamps = [item["timestamp"] for item in response.json()["data"]]
     assert len(timestamps) == 500
     assert timestamps == [base - 1, *[base + index for index in range(2, 501)]]
-from app.engine.data_engine import MonitoringEngine
-
 
 def test_full_history_evicts_oldest_timestamp_and_stays_queryable():
     engine = MonitoringEngine()
@@ -92,7 +92,7 @@ def test_full_history_evicts_oldest_timestamp_and_stays_queryable():
         for index in range(100_001)
     ]
 
-    engine.ingest(records)
+    engine.ingest(SensorBatch.from_records(records))
     data = engine.get_history_range("S01", 0.0, 100_000.0, 5000)
 
     assert len(data) == 5000

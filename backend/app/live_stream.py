@@ -16,7 +16,7 @@ from app.live_contract import (
     normalize_live_readings,
 )
 from app.processing import SensorDataProcessor
-from app.sensor_batch import SensorBatch
+from app.sensor_batch import LiveEligibility, SensorBatch
 from app.ws.websocket_manager import WebSocketManager
 
 logger = logging.getLogger(__name__)
@@ -29,15 +29,23 @@ class SensorUpdatePublisher:
         self,
         engine: MonitoringEngine,
         ws_manager: WebSocketManager,
+        processing_lock: threading.RLock,
         *,
         max_frame_age_seconds: float = 0.5,
     ) -> None:
         self.engine = engine
         self.ws_manager = ws_manager
+        self.processing_lock = processing_lock
         self.max_frame_age_seconds = max_frame_age_seconds
 
     def capture_snapshot(self) -> LiveFrameSource:
-        return capture_live_frame_source(self.engine)
+        return capture_live_frame_source(self.engine, self.processing_lock)
+
+    def _is_stale(self, generated_at: float | None) -> bool:
+        return (
+            generated_at is not None
+            and time.monotonic() - generated_at > self.max_frame_age_seconds
+        )
 
     def publish(
         self,
@@ -45,29 +53,25 @@ class SensorUpdatePublisher:
         *,
         generated_at: float | None = None,
         queued_at: float | None = None,
-    ) -> None:
+    ) -> bool:
         try:
-            if (
-                generated_at is not None
-                and time.monotonic() - generated_at > self.max_frame_age_seconds
-            ):
+            if self._is_stale(generated_at):
                 logger.warning("Skipping stale server-generated live frame")
-                return
+                return False
             snapshot = source or self.capture_snapshot()
             payload = build_sensor_update_from_snapshot(snapshot)
-            if (
-                generated_at is not None
-                and time.monotonic() - generated_at > self.max_frame_age_seconds
-            ):
+            if self._is_stale(generated_at):
                 logger.warning("Skipping stale server-generated live frame")
-                return
+                return False
             queue_timestamp = generated_at if generated_at is not None else queued_at
             self.ws_manager.enqueue_broadcast(
                 payload,
                 queued_at=queue_timestamp,
             )
+            return True
         except Exception:
             logger.exception("Failed to publish sensor_update; continuing live stream")
+            return False
 
 
 def process_live_tick(
@@ -86,15 +90,27 @@ def process_live_tick(
         raw_readings = []
 
     readings = normalize_live_readings(raw_readings)
-    batch = SensorBatch(records=readings)
     with processing_lock:
+        pending_external = publisher.engine.get_pending_external_versions()
+        readings = [
+            reading
+            for reading in readings
+            if str(reading["sensor_id"]) not in pending_external
+        ]
+        batch = SensorBatch(
+            records=readings,
+            live_eligibility=LiveEligibility.INTERNAL,
+        )
         try:
             processor.process(batch)
         except Exception:
             logger.exception("Live ingestion/detector pipeline failed")
         snapshot = publisher.capture_snapshot()
 
-    publisher.publish(snapshot, generated_at=generated_at)
+    published = publisher.publish(snapshot, generated_at=generated_at)
+    if published:
+        with processing_lock:
+            publisher.engine.consume_pending_external(pending_external)
 
 
 class LiveStreamRunner:

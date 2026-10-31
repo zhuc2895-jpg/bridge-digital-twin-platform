@@ -14,7 +14,13 @@ from app.live_contract import (
 )
 from app.live_stream import SensorUpdatePublisher
 from tests.factories import reading
-from tests.helpers import CapturingManager, TrackingLock, create_live_app, wait_until
+from tests.helpers import (
+    CapturingManager,
+    TrackingLock,
+    create_live_app,
+    ingest_records,
+    wait_until,
+)
 
 
 class OneShotSimulator:
@@ -265,7 +271,7 @@ class CurrentTimeCountingSimulator:
 
 def test_live_upload_for_existing_sensor_appears_in_next_frame():
     services, app = create_live_app(
-        simulator=CountingSimulator(),
+        simulator=CurrentTimeCountingSimulator(),
         interval_seconds=0.05,
     )
 
@@ -384,9 +390,9 @@ def test_bounded_sensor_update_keeps_all_twenty_alerts_and_sensor_frame():
         )
         for index in range(8)
     ]
-    services.engine.ingest(readings, live_eligible=True)
+    ingest_records(services.engine, readings)
 
-    payload = build_sensor_update(services.engine)
+    payload = build_sensor_update(services.engine, services.processing_lock)
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
 
     assert len(payload["sensors"]) == 8
@@ -415,9 +421,9 @@ def test_oversized_alert_details_are_bounded_without_dropping_records():
         reading(sensor_id=f"S{index:02d}", value=100.0 + index)
         for index in range(8)
     ]
-    services.engine.ingest(readings, live_eligible=True)
+    ingest_records(services.engine, readings)
 
-    payload = build_sensor_update(services.engine)
+    payload = build_sensor_update(services.engine, services.processing_lock)
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
 
     assert len(payload["sensors"]) == 8
@@ -440,7 +446,11 @@ def test_non_serializable_ai_details_do_not_escape_publishing():
         details={"model_votes": {"stale", "confirm"}},
     )
     manager = CapturingManager()
-    publisher = SensorUpdatePublisher(services.engine, manager)
+    publisher = SensorUpdatePublisher(
+        services.engine,
+        manager,
+        services.processing_lock,
+    )
 
     publisher.publish()
 
