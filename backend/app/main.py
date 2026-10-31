@@ -2,7 +2,7 @@
 Bridge Digital Twin Platform - FastAPI application assembly.
 """
 
-import asyncio
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Request, WebSocket, WebSocketDisconnect
@@ -17,12 +17,24 @@ from app.dependencies import AppServices, create_services, get_services
 
 def create_app(services: Optional[AppServices] = None) -> FastAPI:
     """Build an isolated application with its own mutable service state."""
+    resolved_services = services or create_services()
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI):
+        if application.state.services.live_stream_autostart:
+            application.state.services.start_live_stream()
+        try:
+            yield
+        finally:
+            application.state.services.stop_live_stream()
+
     application = FastAPI(
         title="Bridge Digital Twin Platform",
         description="数字孪生 + 桥梁结构健康监测与预警系统",
         version="1.0.0",
+        lifespan=lifespan,
     )
-    application.state.services = services or create_services()
+    application.state.services = resolved_services
 
     application.add_middleware(
         CORSMiddleware,
@@ -94,27 +106,15 @@ def create_app(services: Optional[AppServices] = None) -> FastAPI:
         websocket: WebSocket,
         services: AppServices = Depends(get_services),
     ):
-        """Stream simulator readings and alerts to a connected client."""
-        engine = services.engine
-        simulator = services.simulator
-        processor = services.processor
-        ws_manager = services.ws_manager
-
-        await ws_manager.connect(websocket)
+        """Subscribe a client to the one application-wide live stream."""
+        await services.connect_live_client(websocket)
         try:
-            simulator.is_running = True
-            while simulator.is_running:
-                with services.processing_lock:
-                    sensor_data = simulator.next_readings()
-                    processor.process(sensor_data)
-
-                await services.broadcast_sensor_update(sensor_data)
-                await asyncio.sleep(1)
+            while True:
+                await websocket.receive_text()
         except WebSocketDisconnect:
-            ws_manager.disconnect(websocket)
-        except Exception as exc:
-            ws_manager.disconnect(websocket)
-            print(f"WebSocket error: {exc}")
+            pass
+        finally:
+            services.disconnect_live_client(websocket)
 
     return application
 

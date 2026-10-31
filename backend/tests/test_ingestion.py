@@ -2,6 +2,7 @@ import time
 
 from fastapi.testclient import TestClient
 
+from app.dependencies import create_services
 from app.ingestion import validate_json_batch
 from app.main import create_app
 from app.sensor_ids import SensorIdentifier
@@ -231,8 +232,12 @@ def test_10001_csv_records_are_rejected_without_writes(client):
 
 
 def test_app_instances_do_not_share_state():
-    first_app = create_app()
-    second_app = create_app()
+    first_services = create_services()
+    first_services.live_stream_autostart = False
+    second_services = create_services()
+    second_services.live_stream_autostart = False
+    first_app = create_app(first_services)
+    second_app = create_app(second_services)
 
     with TestClient(first_app) as first_client:
         assert first_client.post("/api/data/upload/json", json=[reading()]).status_code == 200

@@ -541,6 +541,7 @@ def test_injection_update_reaches_connected_websocket(monkeypatch):
     _set_normal_values(monkeypatch)
     _set_uniform_sequence(monkeypatch, 2.5, 50.0)
     services = create_services()
+    services.live_stream_autostart = False
     app = create_app(services)
 
     with TestClient(app) as client:
@@ -575,6 +576,7 @@ def test_api_injection_runs_full_processing_and_is_queryable(monkeypatch):
     _set_uniform_sequence(monkeypatch, 2.5, 50.0)
     base = 1_700_000_000.0
     services = create_services()
+    services.live_stream_autostart = False
     services.detectors.replace_detector(
         _single_vote_arbitration_detector(
             services.engine.is_normal_reading

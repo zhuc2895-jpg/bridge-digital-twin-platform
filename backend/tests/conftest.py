@@ -1,12 +1,15 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from app.dependencies import create_services
 from app.main import create_app
 
 
 @pytest.fixture
 def app():
-    return create_app()
+    services = create_services()
+    services.live_stream_autostart = False
+    return create_app(services)
 
 
 @pytest.fixture
