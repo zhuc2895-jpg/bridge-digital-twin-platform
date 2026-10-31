@@ -266,6 +266,39 @@ def test_alert_without_timestamp_is_invalid():
     assert alert["invalid"] is True
 
 
+def test_invalid_alert_timestamp_does_not_suppress_later_frames():
+    engine = MonitoringEngine()
+    engine.submit_alert(
+        sensor_id="S01",
+        sensor_name="AI detector",
+        level="yellow",
+        message="Bad event time",
+        value=400.0,
+        threshold=0.0,
+        source="ai_feature_arbitration",
+        timestamp=None,
+    )
+    engine.submit_alert(
+        sensor_id="S01",
+        sensor_name="AI detector",
+        level="yellow",
+        message="Recovered event time",
+        value=401.0,
+        threshold=0.0,
+        source="ai_feature_arbitration",
+        timestamp=1_700_000_000.0,
+    )
+
+    payload = _build(engine)
+
+    assert len(payload["alerts"]) == 2
+    invalid = next(
+        alert for alert in payload["alerts"] if alert["message"] == "Bad event time"
+    )
+    assert invalid["timestamp"] is None
+    assert invalid["invalid"] is True
+
+
 def test_rule_alert_with_nonpositive_threshold_is_invalid():
     source = LiveFrameSource(
         sensors=[],

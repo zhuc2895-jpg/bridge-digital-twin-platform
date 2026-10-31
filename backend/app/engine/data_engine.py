@@ -44,7 +44,7 @@ class Alert:
     value: float
     threshold: float
     source: str        # rule / ai_* sources
-    timestamp: float
+    timestamp: float | None
     detection_sequence: int = 0
     details: Dict[str, Any] = field(default_factory=dict)
     live_eligible: bool = True
@@ -228,7 +228,7 @@ class MonitoringEngine:
         value: float,
         threshold: float,
         source: str,
-        timestamp: float,
+        timestamp: float | None,
         details: Optional[Mapping[str, Any]] = None,
         live_eligible: bool = True,
     ) -> Optional[Alert]:
@@ -237,7 +237,15 @@ class MonitoringEngine:
             raise ValueError(f"Unknown alert level: {level}")
         if source not in self.ALERT_SOURCES:
             raise ValueError(f"Unknown alert source: {source}")
-        if self._is_alert_in_cooldown(sensor_id, level, timestamp):
+        normalized_timestamp = self._normalize_alert_timestamp(timestamp)
+        if (
+            normalized_timestamp is not None
+            and self._is_alert_in_cooldown(
+                sensor_id,
+                level,
+                normalized_timestamp,
+            )
+        ):
             return None
 
         alert = Alert(
@@ -249,11 +257,12 @@ class MonitoringEngine:
             value=value,
             threshold=threshold,
             source=source,
-            timestamp=timestamp,
+            timestamp=normalized_timestamp,
             details=dict(details or {}),
             live_eligible=live_eligible,
         )
-        self._remember_alert_time((sensor_id, level), timestamp)
+        if normalized_timestamp is not None:
+            self._remember_alert_time((sensor_id, level), normalized_timestamp)
         self._retain_alert(alert)
         return alert
 
@@ -373,13 +382,28 @@ class MonitoringEngine:
             )
         self._alerts.append(alert)
         if len(self._alerts) > self.MAX_ALERTS:
-            self._alerts.sort(
-                key=lambda alert_record: (
-                    alert_record.timestamp,
-                    alert_record.detection_sequence,
-                )
-            )
+            self._alerts.sort(key=self._alert_sort_key)
             del self._alerts[:-self.MAX_ALERTS]
+
+    @staticmethod
+    def _normalize_alert_timestamp(timestamp: float | None) -> float | None:
+        """Return a finite event time or None when an alert timestamp is malformed."""
+        if timestamp is None or isinstance(timestamp, bool):
+            return None
+        try:
+            normalized = float(timestamp)
+        except (OverflowError, TypeError, ValueError):
+            return None
+        return normalized if math.isfinite(normalized) else None
+
+    @staticmethod
+    def _alert_sort_key(alert: Alert) -> tuple[float, int]:
+        """Sort malformed event times last without breaking valid alert ordering."""
+        timestamp = MonitoringEngine._normalize_alert_timestamp(alert.timestamp)
+        return (
+            timestamp if timestamp is not None else float("-inf"),
+            alert.detection_sequence,
+        )
 
     def _recent_alert_dicts(
         self,
@@ -395,7 +419,7 @@ class MonitoringEngine:
             self._alert_to_dict(alert)
             for alert in sorted(
                 alerts,
-                key=lambda alert: (alert.timestamp, alert.detection_sequence),
+                key=self._alert_sort_key,
                 reverse=True,
             )[:20]
         ]
@@ -544,9 +568,10 @@ class MonitoringEngine:
                 (
                     alert
                     for alert in self._alerts
-                    if start_ts <= alert.timestamp <= end_ts
+                    if alert.timestamp is not None
+                    and start_ts <= alert.timestamp <= end_ts
                 ),
-                key=lambda alert: (alert.timestamp, alert.detection_sequence),
+                key=self._alert_sort_key,
                 reverse=True,
             )
         ]
