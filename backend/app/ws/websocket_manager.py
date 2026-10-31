@@ -113,7 +113,7 @@ class WebSocketManager:
     def encode(data: dict[str, Any]) -> str:
         return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
 
-    def broadcast_now(
+    def enqueue_broadcast(
         self,
         data: dict[str, Any],
         *,
@@ -139,21 +139,6 @@ class WebSocketManager:
 
         for channel in channels:
             self._enqueue(channel, queued)
-
-    async def broadcast(self, data: dict[str, Any]) -> None:
-        """Broadcast a payload from an async request handler."""
-        self.broadcast_now(data)
-
-    async def send_to(self, websocket: WebSocket, data: dict[str, Any]) -> None:
-        message = self.encode(data)
-        self._validate_message_size(message)
-        with self._lock:
-            channel = self._channels.get(websocket)
-        if channel is not None:
-            self._enqueue(
-                channel,
-                _QueuedMessage(text=message, queued_at=time.monotonic()),
-            )
 
     def _validate_message_size(self, message: str) -> None:
         size = len(message.encode("utf-8"))

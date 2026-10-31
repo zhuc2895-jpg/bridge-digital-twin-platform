@@ -1,8 +1,8 @@
 import asyncio
 import json
-import time
 
 from app.ws.websocket_manager import WebSocketManager
+from tests.helpers import async_wait_until
 
 
 class FakeWebSocket:
@@ -36,24 +36,16 @@ class BlockingWebSocket(FakeWebSocket):
         self.sent.append(message)
 
 
-async def _wait_until(predicate, timeout: float = 1.0) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return True
-        await asyncio.sleep(0.01)
-    return predicate()
-
 
 def test_send_failure_unregisters_and_closes_websocket():
     async def scenario():
         manager = WebSocketManager()
         websocket = FakeWebSocket(fail_send=True)
         await manager.connect(websocket)
-        manager.broadcast_now({"type": "sensor_update", "sequence": 1})
+        manager.enqueue_broadcast({"type": "sensor_update", "sequence": 1})
 
-        assert await _wait_until(lambda: manager.connection_count == 0)
-        assert await _wait_until(lambda: websocket.closed)
+        assert await async_wait_until(lambda: manager.connection_count == 0)
+        assert await async_wait_until(lambda: websocket.closed)
 
     asyncio.run(scenario())
 
@@ -63,14 +55,14 @@ def test_slow_client_queue_overflow_unregisters_and_closes_websocket():
         manager = WebSocketManager()
         websocket = BlockingWebSocket()
         await manager.connect(websocket)
-        manager.broadcast_now({"sequence": 1})
+        manager.enqueue_broadcast({"sequence": 1})
         await websocket.send_started.wait()
 
         for sequence in range(2, 7):
-            manager.broadcast_now({"sequence": sequence})
+            manager.enqueue_broadcast({"sequence": sequence})
 
-        assert await _wait_until(lambda: manager.connection_count == 0)
-        assert await _wait_until(lambda: websocket.closed)
+        assert await async_wait_until(lambda: manager.connection_count == 0)
+        assert await async_wait_until(lambda: websocket.closed)
         websocket.release_send.set()
 
     asyncio.run(scenario())
@@ -81,14 +73,14 @@ def test_stale_queued_frame_closes_slow_client_instead_of_skipping():
         manager = WebSocketManager(max_message_age_seconds=0.01)
         websocket = BlockingWebSocket()
         await manager.connect(websocket)
-        manager.broadcast_now({"sequence": 1})
+        manager.enqueue_broadcast({"sequence": 1})
         await websocket.send_started.wait()
-        manager.broadcast_now({"sequence": 2})
+        manager.enqueue_broadcast({"sequence": 2})
         await asyncio.sleep(0.02)
         websocket.release_send.set()
 
-        assert await _wait_until(lambda: manager.connection_count == 0)
-        assert await _wait_until(lambda: websocket.closed)
+        assert await async_wait_until(lambda: manager.connection_count == 0)
+        assert await async_wait_until(lambda: websocket.closed)
 
     asyncio.run(scenario())
 
@@ -99,15 +91,15 @@ def test_new_client_does_not_replay_cached_frame():
         first = FakeWebSocket()
         second = FakeWebSocket()
         await manager.connect(first)
-        manager.broadcast_now({"sequence": 1})
-        assert await _wait_until(lambda: len(first.sent) == 1)
+        manager.enqueue_broadcast({"sequence": 1})
+        assert await async_wait_until(lambda: len(first.sent) == 1)
 
         await manager.connect(second)
         await asyncio.sleep(0.02)
         assert second.sent == []
 
-        manager.broadcast_now({"sequence": 2})
-        assert await _wait_until(lambda: len(second.sent) == 1)
+        manager.enqueue_broadcast({"sequence": 2})
+        assert await async_wait_until(lambda: len(second.sent) == 1)
         assert json.loads(second.sent[0]) == {"sequence": 2}
 
     asyncio.run(scenario())
@@ -124,9 +116,9 @@ def test_ten_clients_receive_identical_sustained_broadcast_sequences():
         for sequence in range(3):
             payload = {"type": "sensor_update", "sequence": sequence}
             expected.append(json.dumps(payload, separators=(",", ":")))
-            manager.broadcast_now(payload)
+            manager.enqueue_broadcast(payload)
 
-        assert await _wait_until(
+        assert await async_wait_until(
             lambda: all(len(client.sent) == 3 for client in clients)
         )
         assert [client.sent for client in clients] == [expected] * 10

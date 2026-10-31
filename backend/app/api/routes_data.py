@@ -26,7 +26,7 @@ async def _broadcast_update(
 ) -> None:
     if not push_live:
         return
-    await services.broadcast_sensor_update(records)
+    services.sensor_updates.publish(records)
 
 
 @router.post("/upload/csv")

@@ -22,11 +22,11 @@ def create_app(services: Optional[AppServices] = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         if application.state.services.live_stream_autostart:
-            application.state.services.start_live_stream()
+            application.state.services.live_stream.start()
         try:
             yield
         finally:
-            application.state.services.stop_live_stream()
+            application.state.services.live_stream.stop()
 
     application = FastAPI(
         title="Bridge Digital Twin Platform",
@@ -107,14 +107,15 @@ def create_app(services: Optional[AppServices] = None) -> FastAPI:
         services: AppServices = Depends(get_services),
     ):
         """Subscribe a client to the one application-wide live stream."""
-        await services.connect_live_client(websocket)
+        await services.ws_manager.connect(websocket)
+        services.live_stream.start()
         try:
             while True:
                 await websocket.receive_text()
         except WebSocketDisconnect:
             pass
         finally:
-            services.disconnect_live_client(websocket)
+            services.ws_manager.disconnect(websocket)
 
     return application
 

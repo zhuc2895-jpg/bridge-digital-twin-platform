@@ -35,10 +35,10 @@ def test_json_validation_retains_domain_types():
 def test_json_upload_updates_latest_state_and_health(client, app):
     broadcasts = []
 
-    async def capture_broadcast(payload):
+    def capture_broadcast(payload, *, queued_at=None):
         broadcasts.append(payload)
 
-    app.state.services.ws_manager.broadcast = capture_broadcast
+    app.state.services.ws_manager.enqueue_broadcast = capture_broadcast
 
     response = client.post(
         "/api/data/upload/json",
@@ -95,10 +95,10 @@ def test_json_ingestion_normalizes_sensor_identifier_whitespace(client):
 def test_csv_upload_and_push_live_false_are_accepted(client, app):
     broadcasts = []
 
-    async def capture_broadcast(payload):
+    def capture_broadcast(payload, *, queued_at=None):
         broadcasts.append(payload)
 
-    app.state.services.ws_manager.broadcast = capture_broadcast
+    app.state.services.ws_manager.enqueue_broadcast = capture_broadcast
 
     response = client.post(
         "/api/data/upload/csv?push_live=false",

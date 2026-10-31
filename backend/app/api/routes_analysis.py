@@ -98,7 +98,7 @@ async def inject_anomaly(
             services.processor.process(injected_readings)
     except UnknownSimulatorSensorError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await services.broadcast_sensor_update(injected_readings)
+    services.sensor_updates.publish(injected_readings)
 
     injection = generated.injection
     injected_sensor_id = str(injection.sensor_id)

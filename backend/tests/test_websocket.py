@@ -14,6 +14,7 @@ from app.live_stream import (
 )
 from app.main import create_app
 from tests.factories import reading
+from tests.helpers import wait_until
 
 
 class OneShotSimulator:
@@ -89,14 +90,6 @@ def _add_twenty_alerts(services, *, long_messages: bool = False):
         )
 
 
-def _wait_until(predicate, timeout: float = 1.0) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if predicate():
-            return True
-        time.sleep(0.01)
-    return predicate()
-
 def test_websocket_stats_expose_retained_alert_count():
     services = create_services()
     services.live_stream_autostart = False
@@ -118,11 +111,11 @@ def test_live_stream_runs_without_websocket_clients():
     app = create_app(services)
 
     with TestClient(app) as client:
-        assert _wait_until(lambda: services.engine.get_sensor_count() == 8)
-        assert services.is_live_stream_running is True
+        assert wait_until(lambda: services.engine.get_sensor_count() == 8)
+        assert services.live_stream.is_running is True
         assert client.get("/api/health").json()["simulator_running"] is True
 
-    assert services.is_live_stream_running is False
+    assert services.live_stream.is_running is False
     assert services.simulator.is_running is False
 
 
@@ -138,7 +131,7 @@ def test_ten_websocket_clients_share_one_simulator_loop():
             stack.enter_context(client.websocket_connect("/ws/live"))
             for _ in range(10)
         ]
-        assert _wait_until(lambda: services.simulator.calls >= 3)
+        assert wait_until(lambda: services.simulator.calls >= 3)
 
         with services.processing_lock:
             calls = services.simulator.calls
@@ -154,7 +147,7 @@ def test_ten_websocket_clients_share_one_simulator_loop():
 
     assert services.ws_manager.active_connections == []
     assert services.simulator.is_running is False
-    assert services.is_live_stream_running is False
+    assert services.live_stream.is_running is False
 
 
 def test_sensor_update_contract_contains_recent_twenty_alerts_within_10kb():
@@ -298,7 +291,7 @@ def test_late_client_does_not_receive_a_stale_cached_frame():
     app = create_app(services)
 
     with TestClient(app) as client:
-        assert _wait_until(lambda: services.engine.get_sensor_count() == 8)
+        assert wait_until(lambda: services.engine.get_sensor_count() == 8)
         time.sleep(0.55)
         with client.websocket_connect("/ws/live") as websocket:
             payload = websocket.receive_json()
@@ -319,8 +312,8 @@ def test_repeated_connect_disconnect_cleans_up_registry():
         for _ in range(10):
             with client.websocket_connect("/ws/live") as websocket:
                 assert websocket.receive_json()["type"] == "sensor_update"
-            assert _wait_until(lambda: services.ws_manager.connection_count == 0)
-            assert services.is_live_stream_running is True
+            assert wait_until(lambda: services.ws_manager.connection_count == 0)
+            assert services.live_stream.is_running is True
 
     assert services.ws_manager.active_connections == []
     assert services.simulator.is_running is False
