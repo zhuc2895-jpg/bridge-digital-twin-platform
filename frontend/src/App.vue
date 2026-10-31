@@ -177,7 +177,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import * as echarts from 'echarts'
 
-import type { Alert, SensorData as Sensor } from './types/live'
+import type { Alert, SensorReading as Sensor } from './types/live'
 
 const connected = ref(false)
 const sensors = ref<Sensor[]>([])

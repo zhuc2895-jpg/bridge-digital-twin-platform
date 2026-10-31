@@ -13,10 +13,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { SensorData } from '../composables/useWebSocket'
+import type { SensorReading } from '../composables/useWebSocket'
 
 const props = defineProps<{
-  sensor: SensorData
+  sensor: SensorReading
   x: number  // 0~1 相对位置
   y: number  // 0~1 相对位置
 }>()

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { SensorData, Alert, Stats } from '../types/live'
+import type { SensorReading, Alert, Stats } from '../types/live'
 
 /**
  * 桥梁状态管理 (Pinia)
@@ -9,7 +9,7 @@ import type { SensorData, Alert, Stats } from '../types/live'
 
 export const useBridgeStore = defineStore('bridge', () => {
   // 传感器数据
-  const sensorData = ref<SensorData[]>([])
+  const sensorData = ref<SensorReading[]>([])
   const alerts = ref<Alert[]>([])
   const stats = ref<Stats | null>(null)
 
@@ -31,7 +31,7 @@ export const useBridgeStore = defineStore('bridge', () => {
   const simulatorRunning = ref(false)
 
   // 更新传感器数据
-  function updateSensorData(data: SensorData[]) {
+  function updateSensorData(data: SensorReading[]) {
     sensorData.value = data
     lastUpdate.value = Date.now()
   }

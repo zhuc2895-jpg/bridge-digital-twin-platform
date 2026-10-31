@@ -1,4 +1,4 @@
-export interface SensorData {
+export interface SensorReading {
   sensor_id: string
   name: string
   type: string

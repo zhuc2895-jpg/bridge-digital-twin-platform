@@ -1,12 +1,12 @@
 import { computed, type Ref } from 'vue'
-import type { SensorData } from './useWebSocket'
+import type { SensorReading } from './useWebSocket'
 
 /**
  * 传感器数据管理
  * 按类型/位置分组、健康状态计算
  */
 
-export function useSensorData(sensorData: Ref<SensorData[]>) {
+export function useSensorData(sensorData: Ref<SensorReading[]>) {
   // 按类型分组
   const strainSensors = computed(() =>
     sensorData.value.filter(s => s.type === 'strain')
@@ -23,7 +23,7 @@ export function useSensorData(sensorData: Ref<SensorData[]>) {
 
   // 按位置分组
   const sensorsByPosition = computed(() => {
-    const map: Record<string, SensorData[]> = {}
+    const map: Record<string, SensorReading[]> = {}
     sensorData.value.forEach(s => {
       if (!map[s.position]) map[s.position] = []
       map[s.position].push(s)

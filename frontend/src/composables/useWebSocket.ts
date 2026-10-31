@@ -6,9 +6,9 @@ import { ref, onMounted, onUnmounted } from 'vue'
  * 接收传感器数据、告警信息、统计信息
  */
 
-import type { Alert, SensorData, Stats } from '../types/live'
+import type { Alert, SensorReading, Stats } from '../types/live'
 
-export type { Alert, SensorData, Stats } from '../types/live'
+export type { Alert, SensorReading, Stats } from '../types/live'
 
 export function useWebSocket() {
   const wsUrl = 'ws://localhost:8000/ws/live'
@@ -16,7 +16,7 @@ export function useWebSocket() {
   let reconnectTimer: number | null = null
 
   const connected = ref(false)
-  const sensorData = ref<SensorData[]>([])
+  const sensorData = ref<SensorReading[]>([])
   const alerts = ref<Alert[]>([])
   const stats = ref<Stats | null>(null)
   const lastUpdate = ref<number>(0)
