@@ -1,13 +1,14 @@
 import time
 
-from fastapi.testclient import TestClient
-
 from app.dependencies import create_services
 from app.ingestion import validate_json_batch
 from app.main import create_app
 from app.sensor_ids import SensorIdentifier
 from app.sensor_types import SensorType
+from fastapi.testclient import TestClient
+
 from tests.factories import reading
+from tests.helpers import CapturingManager
 
 
 def csv_text(rows: list[dict]) -> str:
@@ -33,12 +34,9 @@ def test_json_validation_retains_domain_types():
 
 
 def test_json_upload_updates_latest_state_and_health(client, app):
-    broadcasts = []
-
-    def capture_broadcast(payload, *, queued_at=None):
-        broadcasts.append(payload)
-
-    app.state.services.ws_manager.enqueue_broadcast = capture_broadcast
+    capturing_manager = CapturingManager()
+    app.state.services.ws_manager = capturing_manager
+    app.state.services.sensor_updates.ws_manager = capturing_manager
 
     response = client.post(
         "/api/data/upload/json",
@@ -55,7 +53,7 @@ def test_json_upload_updates_latest_state_and_health(client, app):
     )
 
     assert response.status_code == 200
-    assert broadcasts == []
+    assert capturing_manager.payloads == []
     assert response.json() == {
         "status": "ok",
         "records_ingested": 2,
@@ -132,12 +130,9 @@ def test_json_ingestion_normalizes_sensor_identifier_whitespace(client):
 
 
 def test_csv_upload_and_push_live_false_are_accepted(client, app):
-    broadcasts = []
-
-    def capture_broadcast(payload, *, queued_at=None):
-        broadcasts.append(payload)
-
-    app.state.services.ws_manager.enqueue_broadcast = capture_broadcast
+    capturing_manager = CapturingManager()
+    app.state.services.ws_manager = capturing_manager
+    app.state.services.sensor_updates.ws_manager = capturing_manager
 
     response = client.post(
         "/api/data/upload/csv?push_live=false",
@@ -157,7 +152,7 @@ def test_csv_upload_and_push_live_false_are_accepted(client, app):
         "alerts_triggered": 0,
         "sensors_updated": 1,
     }
-    assert broadcasts == []
+    assert capturing_manager.payloads == []
     assert client.get("/api/sensors/CSV-01").json() == reading(sensor_id="CSV-01")
 
 

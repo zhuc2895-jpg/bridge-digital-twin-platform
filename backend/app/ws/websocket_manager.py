@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
-from dataclasses import dataclass, field
 import logging
 import queue
 import threading
 import time
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import WebSocket
@@ -25,7 +25,7 @@ class MessageTooLargeError(ValueError):
 @dataclass(frozen=True, slots=True)
 class _QueuedMessage:
     text: str
-    queued_at: float
+    budget_started_at: float
 
 
 @dataclass
@@ -127,14 +127,18 @@ class WebSocketManager:
         self,
         data: Mapping[str, Any],
         *,
-        queued_at: float | None = None,
+        budget_started_at: float | None = None,
     ) -> None:
         """Queue one shared payload for every currently connected client."""
         message = encode_message(data)
         self._validate_message_size(message)
         queued = _QueuedMessage(
             text=message,
-            queued_at=time.monotonic() if queued_at is None else queued_at,
+            budget_started_at=(
+                time.monotonic()
+                if budget_started_at is None
+                else budget_started_at
+            ),
         )
         with self._lock:
             channels = list(self._channels.values())
@@ -176,7 +180,7 @@ class WebSocketManager:
                     except queue.Empty:
                         break
                     remaining = self.max_message_age_seconds - (
-                        time.monotonic() - message.queued_at
+                        time.monotonic() - message.budget_started_at
                     )
                     if remaining <= 0:
                         logger.warning(

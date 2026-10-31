@@ -5,11 +5,10 @@ import time
 from app.dependencies import create_services
 from app.engine.data_engine import MonitoringEngine
 from app.live_contract import (
-    LiveFrameSource,
-    build_sensor_update,
+    LiveSensorSnapshot,
     build_sensor_update_from_snapshot,
 )
-from app.live_stream import SensorUpdatePublisher
+from app.live_stream import SensorUpdatePublisher, build_sensor_update
 from app.sensor_batch import LiveEligibility, SensorBatch
 from app.ws.message_contract import encode_message
 
@@ -213,10 +212,10 @@ def test_late_server_processing_drops_frame_without_enqueueing():
         _SHARED_LOCK,
         max_frame_age_seconds=0.5,
     )
-    source = LiveFrameSource(sensors=[], alerts=[], stats={})
+    snapshot = LiveSensorSnapshot(sensors=[], alerts=[], stats={})
 
     publisher.publish(
-        source,
+        snapshot,
         generated_at=time.monotonic() - 1.0,
     )
 
@@ -243,7 +242,7 @@ def test_boolean_alert_value_is_invalid():
 
 
 def test_alert_without_timestamp_is_invalid():
-    source = LiveFrameSource(
+    snapshot = LiveSensorSnapshot(
         sensors=[],
         alerts=[
             {
@@ -260,7 +259,7 @@ def test_alert_without_timestamp_is_invalid():
         stats={},
     )
 
-    alert = build_sensor_update_from_snapshot(source)["alerts"][0]
+    alert = build_sensor_update_from_snapshot(snapshot)["alerts"][0]
 
     assert alert["timestamp"] is None
     assert alert["invalid"] is True
@@ -300,7 +299,7 @@ def test_invalid_alert_timestamp_does_not_suppress_later_frames():
 
 
 def test_rule_alert_with_nonpositive_threshold_is_invalid():
-    source = LiveFrameSource(
+    snapshot = LiveSensorSnapshot(
         sensors=[],
         alerts=[
             {
@@ -318,7 +317,7 @@ def test_rule_alert_with_nonpositive_threshold_is_invalid():
         stats={},
     )
 
-    alert = build_sensor_update_from_snapshot(source)["alerts"][0]
+    alert = build_sensor_update_from_snapshot(snapshot)["alerts"][0]
 
     assert alert["threshold"] is None
     assert alert["invalid"] is True
@@ -333,7 +332,7 @@ def test_slow_encoding_consumes_total_latency_budget(monkeypatch):
         _SHARED_LOCK,
         max_frame_age_seconds=0.05,
     )
-    source = LiveFrameSource(sensors=[], alerts=[], stats={})
+    snapshot = LiveSensorSnapshot(sensors=[], alerts=[], stats={})
     original_build = __import__(
         "app.live_stream", fromlist=["build_sensor_update_from_snapshot"]
     ).build_sensor_update_from_snapshot
@@ -346,7 +345,7 @@ def test_slow_encoding_consumes_total_latency_budget(monkeypatch):
 
     monkeypatch.setattr(live_stream, "build_sensor_update_from_snapshot", slow_build)
 
-    publisher.publish(source, generated_at=time.monotonic())
+    publisher.publish(snapshot, generated_at=time.monotonic())
 
     assert manager.payloads == []
 

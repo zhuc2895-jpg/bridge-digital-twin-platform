@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
-from dataclasses import dataclass
 import threading
 import time
-from typing import Any
-
-from fastapi import FastAPI
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any, Self
 
 from app.dependencies import AppServices, create_services
 from app.main import create_app
 from app.sensor_batch import LiveEligibility, SensorBatch
+from app.sensor_reading import SensorReadingRecord
+from fastapi import FastAPI
 
 
 @dataclass
@@ -25,13 +25,13 @@ class TrackingLock:
         self.acquisitions = 0
         self.held = False
 
-    def __enter__(self) -> TrackingLock:
+    def __enter__(self) -> Self:
         self._lock.acquire()
         self.acquisitions += 1
         self.held = True
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(self, *args: object) -> None:
         self.held = False
         self._lock.release()
 
@@ -75,18 +75,18 @@ class CapturingManager:
     def __init__(self) -> None:
         self.payloads: list[dict[str, Any]] = []
 
-    def enqueue_broadcast(self, payload, *, queued_at=None):
+    def enqueue_broadcast(self, payload, *, budget_started_at=None):
         self.payloads.append(payload)
 
 def ingest_records(
     engine,
-    records: list[dict],
+    records: list[SensorReadingRecord],
     *,
     live_eligibility: LiveEligibility = LiveEligibility.INTERNAL,
 ) -> None:
     engine.ingest(
-        SensorBatch.from_records(
-            records,
+        SensorBatch(
+            records=records,
             live_eligibility=live_eligibility,
         )
     )

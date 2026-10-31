@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import math
 from typing import Any
 
 from app.sensor_ids import SensorIdentifier
+from app.sensor_reading import SensorReadingRecord
 from app.sensor_types import SensorType
+
+logger = logging.getLogger(__name__)
 
 SENSOR_TYPES = frozenset(sensor_type.value for sensor_type in SensorType)
 REQUIRED_FIELDS = ("sensor_id", "name", "type", "value", "timestamp")
@@ -19,7 +23,7 @@ class IngestionValidationError(ValueError):
     """A malformed batch that must be rejected before any state changes."""
 
 
-def validate_json_batch(data: Any) -> list[dict]:
+def validate_json_batch(data: Any) -> list[SensorReadingRecord]:
     """Validate a JSON array and return normalized sensor records."""
     if not isinstance(data, list):
         raise IngestionValidationError("request body must be a JSON array")
@@ -32,7 +36,7 @@ def validate_json_batch(data: Any) -> list[dict]:
     return [validate_json_record(item, index) for index, item in enumerate(data)]
 
 
-def validate_csv_batch(content: bytes) -> list[dict]:
+def validate_csv_batch(content: bytes) -> list[SensorReadingRecord]:
     """Validate a UTF-8 CSV file and return normalized sensor records."""
     if not content:
         return []
@@ -57,7 +61,7 @@ def validate_csv_batch(content: bytes) -> list[dict]:
                 "CSV missing required column(s): " + ", ".join(missing_headers)
             )
 
-        records: list[dict] = []
+        records: list[SensorReadingRecord] = []
         for index, raw_row in enumerate(reader, start=1):
             row = {
                 (key.strip() if isinstance(key, str) else key): value
@@ -75,7 +79,7 @@ def validate_csv_batch(content: bytes) -> list[dict]:
         raise IngestionValidationError(f"invalid CSV file: {exc}") from exc
 
 
-def validate_json_record(item: Any, index: int) -> dict:
+def validate_json_record(item: Any, index: int) -> SensorReadingRecord:
     if not isinstance(item, dict):
         raise IngestionValidationError(f"record {index}: must be a JSON object")
 
@@ -90,7 +94,7 @@ def validate_json_record(item: Any, index: int) -> dict:
     }
 
 
-def _validate_csv_record(row: dict, index: int) -> dict:
+def _validate_csv_record(row: dict, index: int) -> SensorReadingRecord:
     raw_value = row.get("value")
     raw_timestamp = row.get("timestamp")
     return {
@@ -177,3 +181,28 @@ def _validated_csv_number(value: Any, index: int, field: str) -> float:
 
 def _has_text(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+def validate_live_json_records(records: Any) -> list[SensorReadingRecord]:
+    """Validate each live record independently so one bad item cannot stop a frame."""
+    if not isinstance(records, list):
+        logger.warning(
+            "Live simulator returned %s instead of a reading list",
+            type(records).__name__,
+        )
+        return []
+
+    valid: list[SensorReadingRecord] = []
+    for index, record in enumerate(records):
+        sensor_id = record.get("sensor_id") if isinstance(record, dict) else None
+        try:
+            reading = validate_json_record(record, index)
+        except (IngestionValidationError, OverflowError) as exc:
+            logger.warning(
+                "Skipping invalid live reading index=%d sensor_id=%r error=%s",
+                index,
+                sensor_id,
+                exc,
+            )
+            continue
+        valid.append(reading)
+    return valid

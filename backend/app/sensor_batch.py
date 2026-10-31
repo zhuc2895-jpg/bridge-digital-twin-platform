@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Self
+
+from app.sensor_reading import SensorReadingRecord
 
 
 class LiveEligibility(StrEnum):
@@ -23,13 +24,5 @@ class LiveEligibility(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class SensorBatch:
-    records: list[dict[str, Any]]
+    records: list[SensorReadingRecord]
     live_eligibility: LiveEligibility = LiveEligibility.INTERNAL
-
-    @classmethod
-    def from_records(
-        cls,
-        records: list[dict[str, Any]],
-        live_eligibility: LiveEligibility = LiveEligibility.INTERNAL,
-    ) -> Self:
-        return cls(records=records, live_eligibility=live_eligibility)

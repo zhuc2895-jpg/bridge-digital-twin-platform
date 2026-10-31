@@ -4,13 +4,10 @@ from __future__ import annotations
 
 import logging
 import math
-import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, TypedDict, cast
+from typing import Any, TypedDict
 
-from app.engine.data_engine import MonitoringEngine
-from app.ingestion import IngestionValidationError, validate_json_record
 from app.ws.message_contract import MAX_SENSOR_UPDATE_BYTES, encode_message
 
 logger = logging.getLogger(__name__)
@@ -58,7 +55,7 @@ class AlertSnapshotRecord(TypedDict, total=False):
 
 
 @dataclass(frozen=True, slots=True)
-class LiveFrameSource:
+class LiveSensorSnapshot:
     sensors: list[SensorReadingWire]
     alerts: list[AlertSnapshotRecord]
     stats: dict[str, Any]
@@ -197,22 +194,24 @@ def _live_sensors(
     return [_compact_reading(reading, limits) for reading in readings]
 
 
-def build_sensor_update_from_snapshot(source: LiveFrameSource) -> SensorUpdateWire:
+def build_sensor_update_from_snapshot(
+    snapshot: LiveSensorSnapshot,
+) -> SensorUpdateWire:
     """Build a bounded Live Frame from an already copied live snapshot."""
-    sensors = _live_sensors(source.sensors)
-    alerts = [_alert_payload(alert) for alert in source.alerts]
+    sensors = _live_sensors(snapshot.sensors)
+    alerts = [_alert_payload(alert) for alert in snapshot.alerts]
     payload: SensorUpdateWire = {
         "type": "sensor_update",
         "sensors": sensors,
         "alerts": alerts,
-        "stats": source.stats,
+        "stats": snapshot.stats,
     }
     if _message_size(payload) <= MAX_SENSOR_UPDATE_BYTES:
         return payload
 
     for text_limits in (_SHORT_TEXT_LIMITS, _MINIMAL_TEXT_LIMITS):
-        sensors = _live_sensors(source.sensors, text_limits)
-        alerts = [_alert_payload(alert, text_limits) for alert in source.alerts]
+        sensors = _live_sensors(snapshot.sensors, text_limits)
+        alerts = [_alert_payload(alert, text_limits) for alert in snapshot.alerts]
         payload["sensors"] = sensors
         payload["alerts"] = alerts
         if _message_size(payload) <= MAX_SENSOR_UPDATE_BYTES:
@@ -223,57 +222,3 @@ def build_sensor_update_from_snapshot(source: LiveFrameSource) -> SensorUpdateWi
 
     payload["sensors"] = sensors
     return payload
-
-
-def capture_live_frame_source(
-    engine: MonitoringEngine,
-    processing_lock: threading.RLock,
-) -> LiveFrameSource:
-    """Copy the live-eligible state under the shared mutation boundary."""
-    with processing_lock:
-        return LiveFrameSource(
-            sensors=cast(
-                list[SensorReadingWire],
-                engine.get_live_snapshot(limit=32),
-            ),
-            alerts=cast(
-                list[AlertSnapshotRecord],
-                engine.get_recent_live_alerts(),
-            ),
-            stats=engine.get_stats(),
-        )
-
-
-def build_sensor_update(
-    engine: MonitoringEngine,
-    processing_lock: threading.RLock,
-) -> SensorUpdateWire:
-    """Build one bounded Live Frame from a synchronized live snapshot."""
-    source = capture_live_frame_source(engine, processing_lock)
-    return build_sensor_update_from_snapshot(source)
-
-
-def normalize_live_readings(records: Any) -> list[dict[str, Any]]:
-    """Validate each live record independently so one bad item cannot stop a frame."""
-    if not isinstance(records, list):
-        logger.warning(
-            "Live simulator returned %s instead of a reading list",
-            type(records).__name__,
-        )
-        return []
-
-    valid: list[dict[str, Any]] = []
-    for index, record in enumerate(records):
-        sensor_id = record.get("sensor_id") if isinstance(record, dict) else None
-        try:
-            reading = validate_json_record(record, index)
-        except (IngestionValidationError, OverflowError) as exc:
-            logger.warning(
-                "Skipping invalid live reading index=%d sensor_id=%r error=%s",
-                index,
-                sensor_id,
-                exc,
-            )
-            continue
-        valid.append(reading)
-    return valid

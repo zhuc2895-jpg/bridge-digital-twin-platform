@@ -1,18 +1,15 @@
-from contextlib import ExitStack
 import json
 import logging
 import threading
 import time
-
-from fastapi.testclient import TestClient
+from contextlib import ExitStack
 
 from app.dependencies import create_services
-from app.live_contract import (
-    MAX_SENSOR_UPDATE_BYTES,
-    build_sensor_update,
-    normalize_live_readings,
-)
-from app.live_stream import SensorUpdatePublisher
+from app.ingestion import validate_live_json_records
+from app.live_contract import MAX_SENSOR_UPDATE_BYTES
+from app.live_stream import SensorUpdatePublisher, build_sensor_update
+from fastapi.testclient import TestClient
+
 from tests.factories import reading
 from tests.helpers import (
     CapturingManager,
@@ -495,7 +492,7 @@ def test_live_readings_use_shared_strict_ingestion_rules():
         reading(sensor_id="S04", name="", value=102.0),
     ]
 
-    normalized = normalize_live_readings(records)
+    normalized = validate_live_json_records(records)
 
     assert [item["sensor_id"] for item in normalized] == ["S01"]
 
@@ -506,7 +503,7 @@ def test_bad_live_reading_is_skipped_and_next_frame_is_delivered(caplog):
         interval_seconds=0.02,
     )
 
-    with caplog.at_level(logging.WARNING, logger="app.live_contract"):
+    with caplog.at_level(logging.WARNING, logger="app.ingestion"):
         with TestClient(app) as client:
             with client.websocket_connect("/ws/live") as websocket:
                 first = websocket.receive_json()

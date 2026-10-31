@@ -2,24 +2,56 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 import logging
 import threading
 import time
+from collections.abc import Callable
+from typing import cast
 
 from app.engine.data_engine import MonitoringEngine
 from app.engine.simulator import DataSimulator
+from app.ingestion import validate_live_json_records
 from app.live_contract import (
-    LiveFrameSource,
+    AlertSnapshotRecord,
+    LiveSensorSnapshot,
+    SensorReadingWire,
+    SensorUpdateWire,
     build_sensor_update_from_snapshot,
-    capture_live_frame_source,
-    normalize_live_readings,
 )
 from app.processing import SensorDataProcessor
 from app.sensor_batch import LiveEligibility, SensorBatch
 from app.ws.websocket_manager import WebSocketManager
 
 logger = logging.getLogger(__name__)
+
+
+def capture_live_snapshot(
+    engine: MonitoringEngine,
+    processing_lock: threading.RLock,
+) -> LiveSensorSnapshot:
+    """Copy the live-eligible state under the shared mutation boundary."""
+    with processing_lock:
+        return LiveSensorSnapshot(
+            sensors=cast(
+                list[SensorReadingWire],
+                engine.get_live_snapshot(limit=32),
+            ),
+            alerts=cast(
+                list[AlertSnapshotRecord],
+                engine.get_recent_live_alerts(),
+            ),
+            stats=engine.get_stats(),
+        )
+
+
+def build_sensor_update(
+    engine: MonitoringEngine,
+    processing_lock: threading.RLock,
+) -> SensorUpdateWire:
+    """Build one bounded Live Frame from a synchronized live snapshot."""
+    return build_sensor_update_from_snapshot(
+        capture_live_snapshot(engine, processing_lock)
+    )
 
 
 class SensorUpdatePublisher:
@@ -38,35 +70,34 @@ class SensorUpdatePublisher:
         self.processing_lock = processing_lock
         self.max_frame_age_seconds = max_frame_age_seconds
 
-    def capture_snapshot(self) -> LiveFrameSource:
-        return capture_live_frame_source(self.engine, self.processing_lock)
+    def capture_snapshot(self) -> LiveSensorSnapshot:
+        return capture_live_snapshot(self.engine, self.processing_lock)
 
-    def _is_stale(self, generated_at: float | None) -> bool:
-        return (
-            generated_at is not None
-            and time.monotonic() - generated_at > self.max_frame_age_seconds
-        )
+    def _skip_if_stale(self, generated_at: float | None) -> bool:
+        if (
+            generated_at is None
+            or time.monotonic() - generated_at <= self.max_frame_age_seconds
+        ):
+            return False
+        logger.warning("Skipping stale server-generated live frame")
+        return True
 
     def publish(
         self,
-        source: LiveFrameSource | None = None,
+        snapshot: LiveSensorSnapshot | None = None,
         *,
         generated_at: float | None = None,
-        queued_at: float | None = None,
     ) -> bool:
         try:
-            if self._is_stale(generated_at):
-                logger.warning("Skipping stale server-generated live frame")
+            if self._skip_if_stale(generated_at):
                 return False
-            snapshot = source or self.capture_snapshot()
-            payload = build_sensor_update_from_snapshot(snapshot)
-            if self._is_stale(generated_at):
-                logger.warning("Skipping stale server-generated live frame")
+            current_snapshot = snapshot or self.capture_snapshot()
+            payload = build_sensor_update_from_snapshot(current_snapshot)
+            if self._skip_if_stale(generated_at):
                 return False
-            queue_timestamp = generated_at if generated_at is not None else queued_at
             self.ws_manager.enqueue_broadcast(
                 payload,
-                queued_at=queue_timestamp,
+                budget_started_at=generated_at,
             )
             return True
         except Exception:
@@ -89,7 +120,7 @@ def process_live_tick(
         logger.exception("Live simulator generation failed")
         raw_readings = []
 
-    readings = normalize_live_readings(raw_readings)
+    readings = validate_live_json_records(raw_readings)
     with processing_lock:
         pending_external = publisher.engine.get_pending_external_versions()
         readings = [
@@ -137,9 +168,12 @@ class LiveStreamRunner:
     def start(self) -> None:
         with self._lifecycle_lock:
             thread = self._thread
-            if thread is not None and thread.is_alive():
-                if not self._stop_event.is_set():
-                    return
+            if (
+                thread is not None
+                and thread.is_alive()
+                and not self._stop_event.is_set()
+            ):
+                return
 
         if thread is not None and thread.is_alive():
             thread.join(timeout=2.0)

@@ -1,8 +1,8 @@
 import time
 
 import pytest
-
 from app.sensor_batch import SensorBatch
+
 from tests.factories import reading, sensor_records
 
 
@@ -53,8 +53,8 @@ def test_snapshot_rejects_non_finite_timestamp(client, ts):
 def test_snapshot_interface_stays_under_100ms_with_eight_full_histories(client, app):
     base = 1_700_000_000.0
     app.state.services.engine.ingest(
-        SensorBatch.from_records(
-            sensor_records(
+        SensorBatch(
+            records=sensor_records(
                 base=base,
                 sensor_count=8,
                 sample_count=100_000,

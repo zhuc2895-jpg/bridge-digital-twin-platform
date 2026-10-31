@@ -5,14 +5,15 @@
 传感器ID与前端3D位置一一对应
 """
 
-from dataclasses import dataclass
 import random
 import threading
 import time
+from dataclasses import dataclass
 
 import numpy as np
 
 from app.sensor_ids import SensorIdentifier
+from app.sensor_reading import SensorReadingRecord
 from app.sensor_types import SensorType
 
 AUTOMATIC_INJECTION_TARGET = SensorIdentifier("S01")
@@ -74,7 +75,7 @@ class SimulatorReading:
     value: float
     timestamp: float
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> SensorReadingRecord:
         return {
             "sensor_id": self.sensor_id,
             "name": self.name,
@@ -145,13 +146,13 @@ class DataSimulator:
         self.anomaly_inject_interval = 200  # 每200周期自动注入一次异常
         self._frame_lock = threading.Lock()
 
-    def next_readings(self, timestamp: float | None = None) -> list[dict]:
+    def next_readings(self, timestamp: float | None = None) -> list[SensorReadingRecord]:
         """Generate one complete frame; concurrent callers own complete frames."""
         with self._frame_lock:
             self.tick += 1
             return self._build_readings(timestamp)
 
-    def _build_readings(self, timestamp: float | None) -> list[dict]:
+    def _build_readings(self, timestamp: float | None) -> list[SensorReadingRecord]:
         reading_timestamp = time.time() if timestamp is None else float(timestamp)
         return [
             self._next_reading_unlocked(

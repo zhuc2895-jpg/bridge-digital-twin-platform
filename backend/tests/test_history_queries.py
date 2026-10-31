@@ -1,7 +1,6 @@
 import time
 
 import pytest
-
 from app.engine.data_engine import MonitoringEngine
 from app.sensor_batch import SensorBatch
 
@@ -92,7 +91,7 @@ def test_full_history_evicts_oldest_timestamp_and_stays_queryable():
         for index in range(100_001)
     ]
 
-    engine.ingest(SensorBatch.from_records(records))
+    engine.ingest(SensorBatch(records=records))
     data = engine.get_history_range("S01", 0.0, 100_000.0, 5000)
 
     assert len(data) == 5000

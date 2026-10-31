@@ -10,19 +10,20 @@ from typing import Any, Optional
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 
 from app.dependencies import AppServices, get_services
-from app.sensor_batch import LiveEligibility, SensorBatch
 from app.ingestion import (
     IngestionValidationError,
     validate_csv_batch,
     validate_json_batch,
 )
+from app.sensor_batch import LiveEligibility, SensorBatch
+from app.sensor_reading import SensorReadingRecord
 
 router = APIRouter()
 
 
 def _process_records(
     services: AppServices,
-    records: list[dict],
+    records: list[SensorReadingRecord],
     *,
     live_eligible: bool,
 ):
