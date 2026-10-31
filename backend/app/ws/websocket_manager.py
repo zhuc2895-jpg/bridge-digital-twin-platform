@@ -50,10 +50,13 @@ class WebSocketManager:
         self,
         max_message_bytes: int = MAX_SENSOR_UPDATE_BYTES,
         max_message_age_seconds: float = 0.5,
+        close_timeout_seconds: float = 1.0,
     ):
         self.max_message_bytes = max_message_bytes
         self.max_message_age_seconds = max_message_age_seconds
+        self.close_timeout_seconds = close_timeout_seconds
         self._channels: dict[WebSocket, _ClientChannel] = {}
+        self._close_tasks: set[asyncio.Task[None]] = set()
         self._lock = threading.RLock()
 
     @property
@@ -97,18 +100,24 @@ class WebSocketManager:
                 logger.debug("Event loop already closed for WebSocket client")
         logger.info("WebSocket client disconnected; active=%d", active_count)
 
-    @staticmethod
-    def _cancel_sender_and_close(channel: _ClientChannel) -> None:
+    def _cancel_sender_and_close(self, channel: _ClientChannel) -> None:
         if channel.sender_task is not None:
             channel.sender_task.cancel()
-        asyncio.create_task(WebSocketManager._close_websocket(channel.websocket))
+        task = asyncio.create_task(
+            self._close_websocket(channel.websocket),
+            name=f"ws-close-{id(channel.websocket)}",
+        )
+        self._close_tasks.add(task)
+        task.add_done_callback(self._close_tasks.discard)
 
-    @staticmethod
-    async def _close_websocket(websocket: WebSocket) -> None:
+    async def _close_websocket(self, websocket: WebSocket) -> None:
         try:
-            await websocket.close()
+            await asyncio.wait_for(
+                websocket.close(),
+                timeout=self.close_timeout_seconds,
+            )
         except Exception:
-            logger.debug("WebSocket was already closed", exc_info=True)
+            logger.debug("WebSocket close did not complete cleanly", exc_info=True)
 
     def enqueue_broadcast(
         self,

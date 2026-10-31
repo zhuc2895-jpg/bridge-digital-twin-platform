@@ -10,4 +10,9 @@ MAX_SENSOR_UPDATE_BYTES = 10 * 1024
 
 
 def encode_message(data: Mapping[str, Any]) -> str:
-    return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    return json.dumps(
+        data,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        allow_nan=False,
+    )

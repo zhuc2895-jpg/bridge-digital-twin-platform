@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 import json
 import logging
+import math
 from typing import Any, TypedDict
 
 from app.engine.data_engine import MonitoringEngine
@@ -141,6 +142,7 @@ def _bounded_details(details: Any, limit: int) -> dict[str, Any]:
             ensure_ascii=False,
             separators=(",", ":"),
             default=_json_default,
+            allow_nan=False,
         )
     except Exception:
         try:
@@ -159,24 +161,53 @@ def _bounded_details(details: Any, limit: int) -> dict[str, Any]:
     }
 
 
+def _finite_number(value: Any) -> tuple[float, bool]:
+    try:
+        number = float(value)
+    except (OverflowError, TypeError, ValueError):
+        return 0.0, False
+    if not math.isfinite(number):
+        return 0.0, False
+    return number, True
+
+
 def _alert_payload(
     alert: Mapping[str, Any],
     limits: _WireTextLimits = _DEFAULT_TEXT_LIMITS,
 ) -> AlertWire:
+    value, value_valid = _finite_number(alert.get("value", 0.0))
+    threshold, threshold_valid = _finite_number(alert.get("threshold", 0.0))
+    timestamp, timestamp_valid = _finite_number(alert.get("timestamp", 0.0))
+    invalid_fields = [
+        field
+        for field, valid in (
+            ("value", value_valid),
+            ("threshold", threshold_valid),
+            ("timestamp", timestamp_valid),
+        )
+        if not valid
+    ]
+    details = _bounded_details(
+        alert.get("details"),
+        limits.alert_details,
+    )
+    if invalid_fields:
+        details["_invalid_fields"] = invalid_fields
+        logger.warning(
+            "Sanitizing invalid sensor_update alert fields: %s",
+            ", ".join(invalid_fields),
+        )
     return {
         "id": str(alert.get("id", "")),
         "sensor_id": str(alert.get("sensor_id", "")),
         "sensor_name": str(alert.get("sensor_name", "")),
         "level": str(alert.get("level", "")),
         "message": str(alert.get("message", "")),
-        "value": float(alert.get("value", 0.0)),
-        "threshold": float(alert.get("threshold", 0.0)),
+        "value": value,
+        "threshold": threshold,
         "source": str(alert.get("source", "")),
-        "timestamp": float(alert.get("timestamp", 0.0)),
-        "details": _bounded_details(
-            alert.get("details"),
-            limits.alert_details,
-        ),
+        "timestamp": timestamp,
+        "details": details,
     }
 
 

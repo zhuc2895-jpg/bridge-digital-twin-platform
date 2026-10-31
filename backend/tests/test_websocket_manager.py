@@ -36,6 +36,33 @@ class BlockingWebSocket(FakeWebSocket):
         self.sent.append(message)
 
 
+class BlockingCloseWebSocket(FakeWebSocket):
+    async def close(self):
+        await asyncio.Event().wait()
+
+
+
+def test_blocking_close_tasks_are_bounded():
+    async def scenario():
+        manager = WebSocketManager(close_timeout_seconds=0.01)
+        for _ in range(20):
+            websocket = BlockingCloseWebSocket()
+            await manager.connect(websocket)
+            manager.disconnect(websocket)
+
+        await asyncio.sleep(0.05)
+        current = asyncio.current_task()
+        pending = [
+            task
+            for task in asyncio.all_tasks()
+            if task is not current and not task.done()
+        ]
+
+        assert manager.connection_count == 0
+        assert pending == []
+
+    asyncio.run(scenario())
+
 
 def test_send_failure_unregisters_and_closes_websocket():
     async def scenario():
