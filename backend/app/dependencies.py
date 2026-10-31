@@ -35,7 +35,11 @@ class AppServices:
     live_stream: LiveStreamRunner = field(init=False)
 
     def __post_init__(self) -> None:
-        self.sensor_updates = SensorUpdatePublisher(self.engine, self.ws_manager)
+        self.sensor_updates = SensorUpdatePublisher(
+            self.engine,
+            self.ws_manager,
+            self.processing_lock,
+        )
         self.live_stream = LiveStreamRunner(
             process_tick=lambda generated_at: process_live_tick(
                 simulator=self.simulator,
