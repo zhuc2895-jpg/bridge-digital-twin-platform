@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import math
 from bisect import bisect_right
 from dataclasses import dataclass, field, replace
-import math
 from typing import Any, Mapping, Sequence
 
 from app.ml.contracts import (
@@ -13,6 +13,7 @@ from app.ml.contracts import (
     DetectionResult,
     ReadingPredicate,
 )
+from app.ml.spatial_residual import SpatialEvidence, SpatialResidualModel
 
 MEAN_SHIFT_THRESHOLD = 2.0
 VARIANCE_CHANGE_THRESHOLD = 2.0
@@ -44,6 +45,8 @@ class ArbitrationDecision:
     recent_standard_deviation: float | None = None
     historical_standard_deviation: float | None = None
     raw_trend_slope: float | None = None
+    spatial: dict[str, Any] = field(default_factory=dict)
+    spatial_action: str = "not_applicable"
 
     def to_details(self) -> dict[str, Any]:
         details: dict[str, Any] = {
@@ -64,6 +67,8 @@ class ArbitrationDecision:
             "exceeded_features": list(self.exceeded_features),
             "exceeded_count": len(self.exceeded_features),
             "final_conclusion": self.conclusion,
+            "spatial": dict(self.spatial),
+            "spatial_action": self.spatial_action,
         }
         if self.available:
             details.update(
@@ -106,6 +111,7 @@ class FeatureArbitrator:
         variance_change_threshold: float = VARIANCE_CHANGE_THRESHOLD,
         trend_slope_threshold: float = TREND_SLOPE_THRESHOLD,
         required_features: int = REQUIRED_EXCEEDED_FEATURES,
+        spatial_model: SpatialResidualModel | None = None,
     ) -> None:
         if min(
             mean_shift_threshold,
@@ -122,6 +128,7 @@ class FeatureArbitrator:
         self.variance_change_threshold = float(variance_change_threshold)
         self.trend_slope_threshold = float(trend_slope_threshold)
         self.required_features = required_features
+        self.spatial_model = spatial_model or SpatialResidualModel()
         self.window_required = self.recent_window_size + self.historical_window_size
 
         self._windows: dict[str, list[tuple[float, int, float]]] = {}
@@ -134,7 +141,7 @@ class FeatureArbitrator:
         self._suspected = 0
 
     @property
-    def parameters(self) -> dict[str, float | int]:
+    def parameters(self) -> dict[str, Any]:
         return {
             "recent_window_size": self.recent_window_size,
             "historical_window_size": self.historical_window_size,
@@ -143,7 +150,11 @@ class FeatureArbitrator:
             "variance_change_threshold": self.variance_change_threshold,
             "trend_slope_threshold": self.trend_slope_threshold,
             "required_features": self.required_features,
+            "spatial_residual": self.spatial_model.parameters,
         }
+
+    def observe_spatial_reading(self, reading: Mapping[str, Any]) -> None:
+        self.spatial_model.observe_reading(reading)
 
     def observe(self, reading: Mapping[str, Any]) -> ArbitrationDecision:
         """Append one reading and return the current window decision."""
@@ -181,6 +192,8 @@ class FeatureArbitrator:
         if not batch:
             return {}
 
+        self.spatial_model.observe_batch(batch)
+        spatial_evidence = self._spatial_evidence_for_batch(batch)
         prepared: list[tuple[int, str, tuple[float, int, float]]] = []
         touched_sensors: set[str] = set()
         for reading in batch:
@@ -226,6 +239,7 @@ class FeatureArbitrator:
             decision = self._decide(
                 event_window,
                 window_available=len(event_window),
+                spatial_evidence=spatial_evidence.get(index),
             )
             decisions[index] = decision
             if decision.conclusion == "confirmed":
@@ -242,16 +256,51 @@ class FeatureArbitrator:
                 del window[: len(window) - MAX_RETAINED_READINGS]
         return decisions
 
+    def _spatial_evidence_for_batch(
+        self,
+        readings: Sequence[Mapping[str, Any]],
+    ) -> dict[int, SpatialEvidence]:
+        snapshots: dict[float, dict[str, float]] = {}
+        for reading in readings:
+            try:
+                timestamp = float(reading["timestamp"])
+                value = float(reading["value"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not math.isfinite(timestamp) or not math.isfinite(value):
+                continue
+            snapshots.setdefault(timestamp, {})[str(reading["sensor_id"])] = value
+
+        cache: dict[float, dict[str, SpatialEvidence]] = {}
+        evidence_by_index: dict[int, SpatialEvidence] = {}
+        for index, reading in enumerate(readings):
+            try:
+                timestamp = float(reading["timestamp"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            sensor_id = str(reading["sensor_id"])
+            if timestamp not in cache:
+                cache[timestamp] = self.spatial_model.evaluate_snapshot(
+                    snapshots.get(timestamp, {})
+                )
+            evidence = cache[timestamp].get(sensor_id)
+            if evidence is None:
+                reason = (
+                    "model_not_ready"
+                    if not self.spatial_model.ready
+                    else "sensor_unavailable"
+                )
+                evidence = self.spatial_model.unavailable(sensor_id, reason)
+            evidence_by_index[index] = evidence
+        return evidence_by_index
+
     def reset(self, sensor_id: str | None = None) -> None:
         if sensor_id is None:
-            self._windows.clear()
-            self._observations.clear()
-            self._latest_decisions.clear()
-            self._latest_entries.clear()
-            self._sequence = 0
+            self.reset_windows()
             self._total_observed = 0
             self._confirmed = 0
             self._suspected = 0
+            self.spatial_model.reset()
             return
 
         current_sensor_id = str(sensor_id)
@@ -259,6 +308,14 @@ class FeatureArbitrator:
         self._observations.pop(current_sensor_id, None)
         self._latest_decisions.pop(current_sensor_id, None)
         self._latest_entries.pop(current_sensor_id, None)
+
+    def reset_windows(self) -> None:
+        """Clear per-sensor event windows while keeping learned spatial state."""
+        self._windows.clear()
+        self._observations.clear()
+        self._latest_decisions.clear()
+        self._latest_entries.clear()
+        self._sequence = 0
 
     def get_stats(self) -> dict[str, Any]:
         sensors = {}
@@ -281,6 +338,7 @@ class FeatureArbitrator:
             "total_observed": self._total_observed,
             "confirmed_decisions": self._confirmed,
             "suspected_decisions": self._suspected,
+            "spatial_residual": self.spatial_model.get_stats(),
             "sensors": sensors,
         }
 
@@ -309,7 +367,11 @@ class FeatureArbitrator:
         values: Sequence[float],
         *,
         window_available: int,
+        spatial_evidence: SpatialEvidence | None = None,
     ) -> ArbitrationDecision:
+        spatial_details = (
+            spatial_evidence.to_details() if spatial_evidence is not None else {}
+        )
         if len(values) < self.window_required:
             return ArbitrationDecision(
                 available=False,
@@ -324,6 +386,8 @@ class FeatureArbitrator:
                 required_features=self.required_features,
                 conclusion="insufficient_window",
                 level=None,
+                spatial=spatial_details,
+                spatial_action="not_applied",
             )
 
         historical = [
@@ -407,6 +471,25 @@ class FeatureArbitrator:
             conclusion = "normal"
             level = None
 
+        spatial_action = "not_applied"
+        if spatial_evidence is not None:
+            if (
+                spatial_evidence.status == "isolated_outlier"
+                and conclusion == "confirmed"
+            ):
+                conclusion = "suspected"
+                level = "yellow"
+                spatial_action = "capped_isolated_outlier"
+            elif spatial_evidence.status == "coherent" and conclusion in {
+                "confirmed",
+                "suspected",
+            }:
+                spatial_action = "coherent_support"
+            elif spatial_evidence.status == "consistent":
+                spatial_action = "consistent"
+            elif not spatial_evidence.available:
+                spatial_action = "unavailable"
+
         return ArbitrationDecision(
             available=True,
             window_available=window_available,
@@ -425,6 +508,8 @@ class FeatureArbitrator:
             recent_standard_deviation=_rounded(recent_std),
             historical_standard_deviation=_rounded(historical_std),
             raw_trend_slope=_rounded(raw_trend_slope),
+            spatial=spatial_details,
+            spatial_action=spatial_action,
         )
 
     @property
@@ -476,6 +561,7 @@ class FeatureArbitrationDetector(BaseDetector):
         status = self.detector.learn_baseline(reading, is_normal=is_normal)
         if is_normal:
             self.arbitrator.observe(reading)
+            self.arbitrator.observe_spatial_reading(reading)
         entry = self._history_entry(reading)
         state = self._sensor_history(entry.sensor_id)
         state.entries.append(entry)
@@ -498,6 +584,17 @@ class FeatureArbitrationDetector(BaseDetector):
             return
         current_sensor_id = str(sensor_id)
         self._history.pop(current_sensor_id, None)
+
+    def flush(self) -> None:
+        flush = getattr(self.detector, "flush", None)
+        if callable(flush):
+            flush()
+
+    def reset_arbitration_history(self) -> None:
+        """Start a new recording with fresh causal windows but trained models."""
+        self.arbitrator.reset_windows()
+        self._history.clear()
+        self._history_sequence = 0
 
     def detect_one(self, reading: Mapping[str, Any]) -> DetectionResult:
         return self.detect_batch([reading])[0]
@@ -663,7 +760,12 @@ class FeatureArbitrationDetector(BaseDetector):
         if decision is None:
             return result
         triggered_models = self._triggered_models(result)
-        if result.anomalous or not triggered_models:
+        requires_uncertainty_arbitration = bool(
+            result.details.get("uncertainty_gate")
+        )
+        if (
+            result.anomalous and not requires_uncertainty_arbitration
+        ) or not triggered_models:
             return result
 
         details = dict(result.details)
@@ -685,20 +787,27 @@ class FeatureArbitrationDetector(BaseDetector):
         exceeded = decision.exceeded_features
         confidence = min(1.0, len(exceeded) / 3.0)
         feature_summary = ", ".join(exceeded)
+        conclusion = (
+            "suspected"
+            if requires_uncertainty_arbitration
+            else decision.conclusion
+        )
+        level = "yellow" if requires_uncertainty_arbitration else decision.level
+        details["final_conclusion"] = conclusion
         return replace(
             result,
             anomalous=True,
             score=confidence,
             confidence=confidence,
             reason=(
-                f"feature arbitration {decision.conclusion}: "
+                f"feature arbitration {conclusion}: "
                 f"{len(exceeded)} feature(s) exceeded threshold"
             ),
-            level=decision.level,
+            level=level,
             source="ai_feature_arbitration",
             message=(
                 f"[AI特征仲裁] {result.name} "
-                f"{'确认异常' if decision.conclusion == 'confirmed' else '疑似异常'} "
+                f"{'确认异常' if conclusion == 'confirmed' else '疑似异常'} "
                 f"(超限:{feature_summary})"
             ),
             details=details,

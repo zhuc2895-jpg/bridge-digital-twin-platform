@@ -16,3 +16,7 @@
 - 权威文件或规范名称、版本和具体章节。
 - 应变、位移、加速度、温度各自的黄/橙/红阈值及单位。
 - 阈值是否适用于所有同类型传感器，或需要按传感器进一步区分。
+
+## Comments
+
+- 2026-11-01: Audited the project plan and repository records. They describe the intended threshold policy and provisional defaults but contain no authoritative SRS table, bridge-design clause, signed engineering threshold sheet, version, or effective date. The ticket remains `needs-info`; replacing the numeric defaults would fabricate provenance and is intentionally not done.

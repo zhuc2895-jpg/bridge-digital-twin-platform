@@ -6,11 +6,15 @@
 
 **Status:** ready-for-agent
 
-- [ ] GAN-AE 至少装配 8 个可控差异的重构子模型，差异来源和数量可配置且可复现。
-- [ ] GAN-AE 返回重构误差均值、误差方差、归一化认知度和模型就绪状态。
-- [ ] 投票详情包含 `cognition`、`uncertainty`、`consensus_confidence`、各模型票和原始置信度。
-- [ ] 高不确定度或低认知度结果最多生成疑似黄色告警，并进入特征仲裁，不得直接升级为橙/红。
-- [ ] 认知度和置信度阈值可配置，模型故障或子模型不足时安全回退到现有三模型投票。
-- [ ] 告警详情保留不确定性证据，最近告警和时段查询可读取。
-- [ ] 覆盖正常、单票、双票、三票、高分歧、低认知度、子模型故障和阈值边界的测试。
-- [ ] VBA 基准报告优化前后准确率、误报率、召回率和置信度分布，确认门控没有降低主要指标。
+- [x] GAN-AE 至少装配 8 个可控差异的重构子模型，差异来源和数量可配置且可复现。
+- [x] GAN-AE 返回重构误差均值、误差方差、归一化认知度和模型就绪状态。
+- [x] 投票详情包含 `cognition`、`uncertainty`、`consensus_confidence`、各模型票和原始置信度。
+- [x] 高不确定度或低认知度结果最多生成疑似黄色告警，并进入特征仲裁，不得直接升级为橙/红。
+- [x] 认知度和置信度阈值可配置，模型故障或子模型不足时安全回退到现有三模型投票。
+- [x] 告警详情保留不确定性证据，最近告警和时段查询可读取。
+- [x] 覆盖正常、单票、双票、三票、高分歧、低认知度、子模型故障和阈值边界的测试。
+- [x] VBA 基准报告优化前后准确率、误报率、召回率和置信度分布，确认门控没有降低主要指标。
+
+## Comments
+
+- 2026-11-01: Implemented eight configurable, reproducible GAN-AE reconstruction submodels with latent-rank/step/learning-rate/seed differences; ensemble mean/variance, cognition, uncertainty, readiness, submodel failures, and fallback evidence now flow through voting details. Low cognition/high uncertainty is capped at yellow suspected and still enters feature arbitration, where severity remains capped. Added 12 cognition/gating/alert-evidence tests and ADR-ready VBA traceability. Enhanced VBA report: accuracy 0.9706, FPR 0.0278, recall 0.9688; 31 gated AI alerts and low-cognition/high-uncertainty bins both show 100% error concentration versus the 2.78% overall FPR.

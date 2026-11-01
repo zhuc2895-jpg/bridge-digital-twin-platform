@@ -6,11 +6,15 @@
 
 **Status:** ready-for-agent
 
-- [ ] 标定数据契约记录工况、测点坐标、方向、输入特征、目标载荷或响应、数据来源、保真度等级和版本。
-- [ ] 仿真基础预测模块可在虚拟标定样本上独立训练、保存、加载和替换。
-- [ ] 实测补偿模块以基础预测和实测特征为输入，在留出标定样本上降低基础模型的预测误差。
-- [ ] 采用补偿式架构而非把实测数据直接映射回仿真空间；两种方案可在测试中对比但默认启用补偿式。
-- [ ] 输出预测值、子学习器方差、可靠性和是否超出训练域；不可靠结果必须回退到物理阈值链路。
-- [ ] 提供响应估算接口，返回模型版本、输入质量、预测值、不确定性和回退原因。
-- [ ] 使用可复现的合成夹具覆盖正常预测、补偿改进、训练不足、越域输入、缺失特征和模型损坏回退。
-- [ ] 文档明确合成夹具只验证行为，真实有限元与标定数据到位后必须单独执行工程精度验收。
+- [x] 标定数据契约记录工况、测点坐标、方向、输入特征、目标载荷或响应、数据来源、保真度等级和版本。
+- [x] 仿真基础预测模块可在虚拟标定样本上独立训练、保存、加载和替换。
+- [x] 实测补偿模块以基础预测和实测特征为输入，在留出标定样本上降低基础模型的预测误差。
+- [x] 采用补偿式架构而非把实测数据直接映射回仿真空间；两种方案可在测试中对比但默认启用补偿式。
+- [x] 输出预测值、子学习器方差、可靠性和是否超出训练域；不可靠结果必须回退到物理阈值链路。
+- [x] 提供响应估算接口，返回模型版本、输入质量、预测值、不确定性和回退原因。
+- [x] 使用可复现的合成夹具覆盖正常预测、补偿改进、训练不足、越域输入、缺失特征和模型损坏回退。
+- [x] 文档明确合成夹具只验证行为，真实有限元与标定数据到位后必须单独执行工程精度验收。
+
+## Comments
+
+- 2026-11-01: Added versioned `CalibrationCase`/`CalibrationDataset` contracts, deterministic 200-case fixture, bootstrap-ridge simulation prior with save/load/replace, measurement compensation model, direct-mapping comparison, reliability/OOD gating, and the `POST /api/analysis/response-estimate` endpoint. Seven tests cover round-trip provenance, model replacement, held-out compensation improvement, insufficient data, missing features, OOD fallback, corrupted artifacts, and API behavior. Synthetic hold-out base MAE 34.82 improved to compensated MAE 17.85; high/medium/low reliability bins report 12.08/22.54/48.72 MAE respectively.

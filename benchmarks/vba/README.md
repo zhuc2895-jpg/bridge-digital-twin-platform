@@ -95,3 +95,17 @@ Primary classification is pooled over all out-of-fold recordings. Report:
 Acceptance requires accuracy of at least `0.90`, false-positive rate of at most `0.10`, valid checksums, all declared components present, and every baseline ready. A missing prerequisite fails the run.
 
 Runs always write JSON and Markdown artifacts containing environment, code version, threshold-profile version, source identity, both dataset hashes, reproduction command, fold assignments, sample counts, metrics, and exit reason. The acceptance command exits zero only when all gates pass. `--allow-partial` is diagnostic-only and cannot produce an acceptance pass.
+
+## Frozen baseline and fusion-enhanced acceptance
+
+The pre-enhancement alert-pipeline result is frozen in `baseline-v1.json`. It records the code version, dataset hash, any-alert recording metrics, per-fold/per-case results, component checks, latency, memory, and exit reason.
+
+The enhanced run is produced with:
+
+```powershell
+python -m benchmarks.vba.evaluate --mode enhanced
+```
+
+It reports the raw alert-pipeline metrics beside the fusion predictions so suppression is visible rather than hidden. The fusion model is a standardized logistic classifier over resampled multichannel recording sequences, trained only on out-of-fold recording labels. Cognition, uncertainty, spatial residual, gated-alert counts, isolated-suppression counts, detector failures, and synthetic compensation/modal checks are reported in the same artifact for traceability and calibration analysis.
+
+Synthetic compensation and modal-inversion checks validate behavior and contracts only. They are never presented as real VBA structural-response accuracy.

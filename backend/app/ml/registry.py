@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 import time
 from dataclasses import dataclass
@@ -112,6 +113,18 @@ class DetectorManager:
     def replace_detector(self, detector: BaseDetector) -> None:
         self.register_detector(detector, replace=True)
 
+    def freeze(self) -> None:
+        """Wait for background work before a state snapshot is copied."""
+        for _, detector in self.registry.items():
+            flush = getattr(detector, "flush", None)
+            if callable(flush):
+                flush()
+
+    def snapshot(self) -> DetectorManager:
+        """Return an independent deep copy of the post-baseline detector state."""
+        self.freeze()
+        return copy.deepcopy(self)
+
     def detect(
         self,
         readings: Iterable[Mapping[str, Any]],
@@ -128,7 +141,9 @@ class DetectorManager:
                 )
                 for result in results:
                     if not isinstance(result, DetectionResult):
-                        raise TypeError("detect_batch must return DetectionResult values")
+                        raise TypeError(
+                            "detect_batch must return DetectionResult values"
+                        )
                     if result.anomalous and not self._ai_is_suppressed(
                         result.sensor_id
                     ):

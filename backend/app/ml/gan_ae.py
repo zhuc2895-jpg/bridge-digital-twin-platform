@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import math
 from collections import deque
 from dataclasses import dataclass, field
-import math
 from typing import Any, Mapping
 
 import numpy as np
@@ -34,6 +34,10 @@ class _ReconstructionModel:
     threshold: float
     training_windows: int
     adversarial: _AdversarialModel
+    submodels: tuple[_AdversarialModel, ...] = ()
+    ensemble_available: bool = True
+    submodel_failures: tuple[str, ...] = ()
+    submodel_specs: tuple[tuple[int, float, int, int], ...] = ()
 
 
 @dataclass
@@ -62,6 +66,9 @@ class GanAEDetector(BaseDetector):
         min_scale: float = 1e-9,
         adversarial_steps: int = 25,
         adversarial_learning_rate: float = 0.05,
+        n_submodels: int = 8,
+        cognition_threshold: float = 0.35,
+        uncertainty_threshold: float = 0.45,
         random_state: int = 42,
     ) -> None:
         if required_readings < 2:
@@ -80,6 +87,12 @@ class GanAEDetector(BaseDetector):
             raise ValueError("adversarial_steps must be positive")
         if adversarial_learning_rate <= 0:
             raise ValueError("adversarial_learning_rate must be positive")
+        if n_submodels < 8:
+            raise ValueError("n_submodels must be at least eight")
+        if not 0 <= cognition_threshold <= 1:
+            raise ValueError("cognition_threshold must be between zero and one")
+        if not 0 <= uncertainty_threshold <= 1:
+            raise ValueError("uncertainty_threshold must be between zero and one")
 
         self.sequence_length = sequence_length
         self.window_size = window_size
@@ -88,6 +101,9 @@ class GanAEDetector(BaseDetector):
         self.min_scale = float(min_scale)
         self.adversarial_steps = adversarial_steps
         self.adversarial_learning_rate = float(adversarial_learning_rate)
+        self.n_submodels = int(n_submodels)
+        self.cognition_threshold = float(cognition_threshold)
+        self.uncertainty_threshold = float(uncertainty_threshold)
         self.random_state = random_state
         self._baselines = BaselineLearner(required_readings=required_readings)
         self._states: dict[str, _SensorState] = {}
@@ -105,6 +121,9 @@ class GanAEDetector(BaseDetector):
             "min_scale": self.min_scale,
             "adversarial_steps": self.adversarial_steps,
             "adversarial_learning_rate": self.adversarial_learning_rate,
+            "n_submodels": self.n_submodels,
+            "cognition_threshold": self.cognition_threshold,
+            "uncertainty_threshold": self.uncertainty_threshold,
             "random_state": self.random_state,
         }
 
@@ -201,6 +220,13 @@ class GanAEDetector(BaseDetector):
                     "reconstruction_std": round(model.error_std, 9),
                     "threshold": round(model.threshold, 9),
                     "threshold_sigma": self.threshold_sigma,
+                    "reconstruction_error_variance": 0.0,
+                    "cognition": 1.0,
+                    "uncertainty": 0.0,
+                    "submodel_count": len(model.submodels or (model.adversarial,)),
+                    "submodel_votes": [],
+                    "ensemble_available": model.ensemble_available,
+                    "submodel_failures": list(model.submodel_failures),
                     "training_windows": model.training_windows,
                     "gan_enabled": True,
                     "discriminator_real_probability": round(
@@ -217,7 +243,14 @@ class GanAEDetector(BaseDetector):
             )
 
         window = self._window_with(state, value)
-        error = self._reconstruction_error(window, model)
+        (
+            error,
+            error_variance,
+            cognition,
+            uncertainty,
+            submodel_errors,
+            submodel_votes,
+        ) = self._ensemble_statistics(window, model)
         discriminator_probability = self._discriminator_probability(window, model)
         anomalous = error > model.threshold
         score = min(1.0, error / max(model.threshold * 2.0, self.min_scale))
@@ -245,6 +278,17 @@ class GanAEDetector(BaseDetector):
                 "vote": anomalous,
                 "model_ready": True,
                 "reconstruction_error": round(error, 9),
+                "reconstruction_error_mean": round(error, 9),
+                "reconstruction_error_variance": round(error_variance, 9),
+                "reconstruction_error_std": round(math.sqrt(error_variance), 9),
+                "cognition": round(cognition, 6),
+                "uncertainty": round(uncertainty, 6),
+                "submodel_count": len(model.submodels or (model.adversarial,)),
+                "submodel_errors": [round(value, 9) for value in submodel_errors],
+                "submodel_votes": submodel_votes,
+                "ensemble_available": model.ensemble_available,
+                "submodel_failures": list(model.submodel_failures),
+                "submodel_specs": list(model.submodel_specs),
                 "reconstruction_path": "encoder_generator_decoder",
                 "generator_reconstruction_error": round(error, 9),
                 "reconstruction_mean": round(model.error_mean, 9),
@@ -282,6 +326,17 @@ class GanAEDetector(BaseDetector):
                 ),
                 "reconstruction_std": (model.error_std if model is not None else None),
                 "threshold": model.threshold if model is not None else None,
+                "submodel_count": (
+                    len(model.submodels or (model.adversarial,))
+                    if model is not None
+                    else 0
+                ),
+                "ensemble_available": (
+                    model.ensemble_available if model is not None else False
+                ),
+                "submodel_failures": (
+                    list(model.submodel_failures) if model is not None else []
+                ),
                 "adversarial_steps": (
                     model.adversarial.steps if model is not None else 0
                 ),
@@ -323,17 +378,23 @@ class GanAEDetector(BaseDetector):
         value_scale = float(np.mean(np.abs(window_mean)))
         window_scale = max(rms, value_scale * 1e-6, self.min_scale)
         normalized = centered / window_scale
-        adversarial = self._train_adversarial_model(
+        submodels, failures, specs = self._train_submodels(
             normalized,
             sensor_id=state.sensor_id,
         )
-        latent = normalized @ adversarial.encoder_weight.T + adversarial.encoder_bias
-        reconstructed = (
-            latent @ adversarial.generator_weight + adversarial.generator_bias
+        if not submodels:
+            return None
+        adversarial = submodels[0]
+        training_errors = np.stack(
+            [
+                self._training_errors(normalized, submodel)
+                for submodel in submodels
+            ],
+            axis=0,
         )
-        errors = np.mean(np.square(normalized - reconstructed), axis=1)
-        error_mean = float(np.mean(errors))
-        error_std = float(np.std(errors))
+        ensemble_errors = np.mean(training_errors, axis=0)
+        error_mean = float(np.mean(ensemble_errors))
+        error_std = float(np.std(ensemble_errors))
         threshold = error_mean + self.threshold_sigma * error_std
         return _ReconstructionModel(
             window_mean=window_mean,
@@ -343,13 +404,80 @@ class GanAEDetector(BaseDetector):
             threshold=threshold,
             training_windows=len(windows),
             adversarial=adversarial,
+            submodels=tuple(submodels),
+            ensemble_available=len(submodels) >= self.n_submodels,
+            submodel_failures=tuple(failures),
+            submodel_specs=tuple(specs),
         )
+
+    def _train_submodels(
+        self,
+        normalized_windows: np.ndarray,
+        *,
+        sensor_id: str,
+    ) -> tuple[
+        list[_AdversarialModel],
+        list[str],
+        list[tuple[int, float, int, int]],
+    ]:
+        base_seed = self._sensor_seed(sensor_id)
+        submodels: list[_AdversarialModel] = []
+        failures: list[str] = []
+        specs: list[tuple[int, float, int, int]] = []
+        for index in range(self.n_submodels):
+            latent_rank = max(
+                1,
+                min(
+                    self.sequence_length - 1,
+                    self.latent_rank + (index % 3) - 1,
+                ),
+            )
+            learning_rate = self.adversarial_learning_rate * (0.70 + 0.05 * index)
+            steps = max(5, self.adversarial_steps - (index % 2) * 5)
+            seed = base_seed + index * 1009
+            try:
+                model = self._train_adversarial_model(
+                    normalized_windows,
+                    latent_rank=latent_rank,
+                    learning_rate=learning_rate,
+                    steps=steps,
+                    seed=seed,
+                )
+            except Exception as exc:
+                failures.append(f"{index}:{type(exc).__name__}:{exc}")
+                continue
+            submodels.append(model)
+            specs.append((index, latent_rank, steps, seed))
+        return submodels, failures, specs
+
+    def _sensor_seed(self, sensor_id: str) -> int:
+        return self.random_state + sum(
+            (index + 1) * ord(character)
+            for index, character in enumerate(sensor_id)
+        )
+
+    @staticmethod
+    def _training_errors(
+        normalized_windows: np.ndarray,
+        submodel: _AdversarialModel,
+    ) -> np.ndarray:
+        latent = (
+            normalized_windows @ submodel.encoder_weight.T
+            + submodel.encoder_bias
+        )
+        reconstructed = (
+            latent @ submodel.generator_weight + submodel.generator_bias
+        )
+        return np.mean(np.square(normalized_windows - reconstructed), axis=1)
 
     def _train_adversarial_model(
         self,
         normalized_windows: np.ndarray,
         *,
-        sensor_id: str,
+        latent_rank: int,
+        learning_rate: float,
+        steps: int,
+        seed: int,
     ) -> _AdversarialModel:
         """Train the autoencoder decoder as a generator against a discriminator."""
         sample_count, window_length = normalized_windows.shape
@@ -357,22 +485,17 @@ class GanAEDetector(BaseDetector):
             normalized_windows,
             full_matrices=False,
         )
-        encoder_weight = right_vectors[: self.latent_rank].copy()
+        encoder_weight = right_vectors[:latent_rank].copy()
         generator_weight = encoder_weight.copy()
         encoder_bias = np.zeros(encoder_weight.shape[0], dtype=float)
         generator_bias = np.zeros(window_length, dtype=float)
         discriminator_weight = np.zeros(window_length, dtype=float)
         discriminator_bias = 0.0
-        learning_rate = self.adversarial_learning_rate
-
-        seed = self.random_state + sum(
-            (index + 1) * ord(character) for index, character in enumerate(sensor_id)
-        )
         rng = np.random.default_rng(seed)
         encoder_weight += rng.normal(0.0, 1e-8, size=encoder_weight.shape)
         generator_weight += rng.normal(0.0, 1e-8, size=generator_weight.shape)
 
-        for _ in range(self.adversarial_steps):
+        for _ in range(steps):
             latent = normalized_windows @ encoder_weight.T + encoder_bias
             reconstructed = latent @ generator_weight + generator_bias
             real_probability = self._sigmoid(
@@ -446,7 +569,7 @@ class GanAEDetector(BaseDetector):
             discriminator_weight=discriminator_weight,
             discriminator_bias=discriminator_bias,
             discriminator_loss=discriminator_loss,
-            steps=self.adversarial_steps,
+            steps=steps,
         )
 
     def _discriminator_probability(
@@ -476,31 +599,58 @@ class GanAEDetector(BaseDetector):
         self,
         window: np.ndarray,
         model: _ReconstructionModel,
+        submodel: _AdversarialModel | None = None,
     ) -> float:
         normalized = (window - model.window_mean) / model.window_scale
-        latent = self._encode(normalized, model)
-        reconstructed = self._decode(latent, model)
+        active_model = submodel or model.adversarial
+        latent = self._encode(normalized, active_model)
+        reconstructed = self._decode(latent, active_model)
         return float(np.mean(np.square(normalized - reconstructed)))
+
+    def _ensemble_statistics(
+        self,
+        window: np.ndarray,
+        model: _ReconstructionModel,
+    ) -> tuple[float, float, float, float, list[float], list[bool]]:
+        submodels = model.submodels or (model.adversarial,)
+        errors = [
+            self._reconstruction_error(window, model, submodel)
+            for submodel in submodels
+        ]
+        mean = float(np.mean(errors))
+        variance = float(np.var(errors))
+        votes = [error > model.threshold for error in errors]
+        if not model.ensemble_available:
+            return mean, variance, 1.0, 0.0, errors, votes
+
+        vote_fraction = sum(votes) / len(votes)
+        split_uncertainty = 4.0 * vote_fraction * (1.0 - vote_fraction)
+        denominator = max(
+            abs(mean),
+            model.threshold * 0.05,
+            self.min_scale,
+        )
+        dispersion = 1.0 - math.exp(-math.sqrt(variance) / denominator)
+        uncertainty = min(1.0, max(split_uncertainty, dispersion))
+        cognition = max(0.0, 1.0 - uncertainty)
+        return mean, variance, cognition, uncertainty, errors, votes
 
     @staticmethod
     def _encode(
         normalized_window: np.ndarray,
-        model: _ReconstructionModel,
+        model: _AdversarialModel,
     ) -> np.ndarray:
         return (
-            normalized_window @ model.adversarial.encoder_weight.T
-            + model.adversarial.encoder_bias
+            normalized_window @ model.encoder_weight.T
+            + model.encoder_bias
         )
 
     @staticmethod
     def _decode(
         latent: np.ndarray,
-        model: _ReconstructionModel,
+        model: _AdversarialModel,
     ) -> np.ndarray:
-        return (
-            latent @ model.adversarial.generator_weight
-            + model.adversarial.generator_bias
-        )
+        return latent @ model.generator_weight + model.generator_bias
 
     def _confidence(self, error: float, model: _ReconstructionModel) -> float:
         if error <= model.threshold:

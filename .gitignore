@@ -31,6 +31,7 @@ backend/tests/artifacts/
 Thumbs.db
 .idea/
 .vscode/
+$null
 
 # External raw datasets
 data/external/
@@ -41,3 +42,4 @@ data/state/
 # Generated acceptance reports
 benchmarks/runs/
 benchmarks/stability/runs/
+benchmarks/vba/evidence-cache-v1.json

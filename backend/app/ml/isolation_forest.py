@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
+import math
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-import math
-
-import numpy as np
 from typing import Any, Mapping, Sequence
 
+import numpy as np
 from sklearn.ensemble import IsolationForest  # type: ignore[import-untyped]
 
 from app.ml.baseline import BaselineLearner
@@ -135,6 +134,15 @@ class IsolationForestDetector(BaseDetector):
             self._states.clear()
             return
         self._states.pop(str(sensor_id), None)
+
+    def flush(self) -> None:
+        """Wait for pending refits so the detector can be safely snapshotted."""
+        executor = self._executor
+        if executor is not None:
+            executor.shutdown(wait=True)
+            self._executor = None
+        for state in self._states.values():
+            state.refit_pending = False
 
     def detect_one(self, reading: Mapping[str, Any]) -> DetectionResult:
         sensor_id = str(reading["sensor_id"])

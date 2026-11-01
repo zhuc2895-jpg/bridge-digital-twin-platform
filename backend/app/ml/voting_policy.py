@@ -9,6 +9,8 @@ from app.ml.contracts import BaseDetector, DetectionResult
 
 CONFIDENCE_THRESHOLD = 0.7
 MIN_VOTES = 2
+COGNITION_THRESHOLD = 0.35
+UNCERTAINTY_THRESHOLD = 0.45
 
 
 @dataclass(frozen=True)
@@ -23,6 +25,8 @@ class ModelVote:
     confidence: float
     score: float
     reason: str
+    cognition: float = 1.0
+    uncertainty: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -33,6 +37,8 @@ class ModelVote:
             "confidence": self.confidence,
             "score": self.score,
             "reason": self.reason,
+            "cognition": self.cognition,
+            "uncertainty": self.uncertainty,
         }
 
 
@@ -42,6 +48,9 @@ class VoteTally:
 
     votes: tuple[ModelVote, ...]
     min_votes: int = MIN_VOTES
+    confidence_threshold: float = CONFIDENCE_THRESHOLD
+    cognition_threshold: float = COGNITION_THRESHOLD
+    uncertainty_threshold: float = UNCERTAINTY_THRESHOLD
 
     @property
     def participating_models(self) -> list[str]:
@@ -55,12 +64,44 @@ class VoteTally:
     def confirmed(self) -> bool:
         return len(self.participating_models) >= self.min_votes
 
+    @property
+    def cognition(self) -> float:
+        ready = [vote for vote in self.votes if vote.ready]
+        return min((vote.cognition for vote in ready), default=1.0)
+
+    @property
+    def uncertainty(self) -> float:
+        ready = [vote for vote in self.votes if vote.ready]
+        return max((vote.uncertainty for vote in ready), default=0.0)
+
+    @property
+    def consensus_confidence(self) -> float:
+        participating = [vote for vote in self.votes if vote.vote]
+        if not participating:
+            return 0.0
+        average_confidence = sum(
+            vote.confidence for vote in participating
+        ) / len(participating)
+        return max(0.0, min(1.0, average_confidence * self.cognition))
+
+    @property
+    def uncertainty_gate(self) -> bool:
+        return (
+            self.cognition < self.cognition_threshold
+            or self.uncertainty >= self.uncertainty_threshold
+        )
+
     def to_details(
         self,
         *,
         inference_elapsed_ms: float | None = None,
-        confidence_threshold: float = CONFIDENCE_THRESHOLD,
+        confidence_threshold: float | None = None,
     ) -> dict[str, Any]:
+        effective_confidence_threshold = (
+            self.confidence_threshold
+            if confidence_threshold is None
+            else confidence_threshold
+        )
         participating = self.participating_models
         details = {
             "votes": {vote.model_id: vote.vote for vote in self.votes},
@@ -72,11 +113,30 @@ class VoteTally:
             "ready_models": self.ready_models,
             "model_ready": bool(self.ready_models),
             "model_results": {vote.model_id: vote.to_dict() for vote in self.votes},
-            "confidence_threshold": confidence_threshold,
+            "confidence_threshold": effective_confidence_threshold,
             "min_votes": self.min_votes,
+            "cognition": round(self.cognition, 6),
+            "uncertainty": round(self.uncertainty, 6),
+            "consensus_confidence": round(self.consensus_confidence, 6),
+            "uncertainty_gate": self.uncertainty_gate,
+            "cognition_threshold": self.cognition_threshold,
+            "uncertainty_threshold": self.uncertainty_threshold,
+            "gate_reasons": [
+                reason
+                for reason, active in (
+                    ("low_cognition", self.cognition < self.cognition_threshold),
+                    (
+                        "high_uncertainty",
+                        self.uncertainty >= self.uncertainty_threshold,
+                    ),
+                )
+                if active
+            ],
             "voting_parameters": {
-                "confidence_threshold": confidence_threshold,
+                "confidence_threshold": effective_confidence_threshold,
                 "min_votes": self.min_votes,
+                "cognition_threshold": self.cognition_threshold,
+                "uncertainty_threshold": self.uncertainty_threshold,
                 "models": [vote.model_id for vote in self.votes],
             },
         }
@@ -93,13 +153,21 @@ class MajorityVotePolicy:
         *,
         confidence_threshold: float = CONFIDENCE_THRESHOLD,
         min_votes: int = MIN_VOTES,
+        cognition_threshold: float = COGNITION_THRESHOLD,
+        uncertainty_threshold: float = UNCERTAINTY_THRESHOLD,
     ) -> None:
         if not 0 <= confidence_threshold <= 1:
             raise ValueError("confidence_threshold must be between zero and one")
         if not 2 <= min_votes <= 3:
             raise ValueError("min_votes must be between two and three")
+        if not 0 <= cognition_threshold <= 1:
+            raise ValueError("cognition_threshold must be between zero and one")
+        if not 0 <= uncertainty_threshold <= 1:
+            raise ValueError("uncertainty_threshold must be between zero and one")
         self.confidence_threshold = float(confidence_threshold)
         self.min_votes = int(min_votes)
+        self.cognition_threshold = float(cognition_threshold)
+        self.uncertainty_threshold = float(uncertainty_threshold)
 
     def tally(
         self,
@@ -113,6 +181,9 @@ class MajorityVotePolicy:
             ready = readiness.get(model_id, False)
             confidence = float(result.confidence) if result is not None else 0.0
             score = float(result.score) if result is not None else 0.0
+            details = result.details if result is not None else {}
+            cognition = _bounded_float(details.get("cognition"), 1.0)
+            uncertainty = _bounded_float(details.get("uncertainty"), 0.0)
             votes.append(
                 ModelVote(
                     model_id=model_id,
@@ -128,9 +199,17 @@ class MajorityVotePolicy:
                     confidence=confidence,
                     score=score,
                     reason=(result.reason if result is not None else "model_failed"),
+                    cognition=cognition,
+                    uncertainty=uncertainty,
                 )
             )
-        return VoteTally(tuple(votes), min_votes=self.min_votes)
+        return VoteTally(
+            tuple(votes),
+            min_votes=self.min_votes,
+            confidence_threshold=self.confidence_threshold,
+            cognition_threshold=self.cognition_threshold,
+            uncertainty_threshold=self.uncertainty_threshold,
+        )
 
     def known_normal(
         self,
@@ -147,10 +226,15 @@ class MajorityVotePolicy:
                     confidence=0.0,
                     score=0.0,
                     reason="known normal batch",
+                    cognition=1.0,
+                    uncertainty=0.0,
                 )
                 for detector in detectors
             ),
             min_votes=self.min_votes,
+            confidence_threshold=self.confidence_threshold,
+            cognition_threshold=self.cognition_threshold,
+            uncertainty_threshold=self.uncertainty_threshold,
         )
 
     def result(
@@ -167,7 +251,7 @@ class MajorityVotePolicy:
             confidence_threshold=self.confidence_threshold,
         )
         participating = tally.participating_models
-        if tally.confirmed:
+        if tally.confirmed and not tally.uncertainty_gate:
             confidence = max(vote.confidence for vote in tally.votes if vote.vote)
             score = max(vote.score for vote in tally.votes if vote.vote)
             details["level_reason"] = (
@@ -196,6 +280,30 @@ class MajorityVotePolicy:
                 details=details,
             )
 
+        if tally.confirmed:
+            confidence = max(vote.confidence for vote in tally.votes if vote.vote)
+            score = max(vote.score for vote in tally.votes if vote.vote)
+            details["level_reason"] = "uncertainty gate caps severity at yellow"
+            return DetectionResult(
+                sensor_id=sensor_id,
+                name=str(reading.get("name", sensor_id)),
+                value=float(reading["value"]),
+                timestamp=float(reading["timestamp"]),
+                detector_id=detector_id,
+                anomalous=True,
+                score=score,
+                confidence=confidence,
+                reason="low cognition or high uncertainty requires arbitration",
+                level="yellow",
+                source="ai_dual_confirm",
+                message=(
+                    f"[AI疑似] {reading.get('name', sensor_id)} 异常 "
+                    f"(认知度:{tally.cognition:.0%}, "
+                    f"不确定度:{tally.uncertainty:.0%})，进入特征仲裁"
+                ),
+                details=details,
+            )
+
         return DetectionResult(
             sensor_id=sensor_id,
             name=str(reading.get("name", sensor_id)),
@@ -209,9 +317,21 @@ class MajorityVotePolicy:
                 default=0.0,
             ),
             reason=(
-                "insufficient confident model votes"
+                (
+                    "uncertainty gate requires arbitration"
+                    if tally.uncertainty_gate
+                    else "insufficient confident model votes"
+                )
                 if tally.ready_models
                 else "models_not_ready"
             ),
             details=details,
         )
+
+
+def _bounded_float(value: Any, default: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(0.0, min(1.0, number))

@@ -13,9 +13,15 @@ from app.config import AppConfig
 from app.engine.data_engine import MonitoringEngine
 from app.engine.simulator import DataSimulator
 from app.live_stream import LiveStreamRunner, LiveTickPipeline
+from app.ml.compensation import (
+    ResponseCompensationEstimator,
+    default_calibration_dataset,
+)
 from app.ml.contracts import ReadingPredicate
 from app.ml.feature_arbitration import FeatureArbitrationDetector, FeatureArbitrator
+from app.ml.modal_inversion import ModalInversionModel, default_modal_dataset
 from app.ml.registry import DetectorManager, DetectorRegistry
+from app.ml.spatial_residual import SpatialResidualModel
 from app.ml.voting import VotingDetector
 from app.persistence import (
     CheckpointManager,
@@ -36,6 +42,8 @@ class AppServices:
     processor: SensorDataProcessor
     ws_manager: WebSocketManager
     config: AppConfig
+    response_estimator: ResponseCompensationEstimator
+    modal_model: ModalInversionModel
     persistence: CheckpointManager | None = None
     live_stream_interval_seconds: float = 1.0
     live_stream_autostart: bool = True
@@ -68,6 +76,9 @@ def build_detector_registry(
                 VotingDetector(
                     confidence_threshold=config.ai_confidence_threshold,
                     min_votes=config.ai_min_votes,
+                    cognition_threshold=config.cognition_threshold,
+                    uncertainty_threshold=config.uncertainty_threshold,
+                    gan_submodels=config.gan_submodels,
                 ),
                 arbitrator=FeatureArbitrator(
                     mean_shift_threshold=config.feature_mean_shift_threshold,
@@ -75,6 +86,16 @@ def build_detector_registry(
                         config.feature_variance_change_threshold
                     ),
                     trend_slope_threshold=config.feature_trend_slope_threshold,
+                    spatial_model=SpatialResidualModel(
+                        min_training_snapshots=(
+                            config.spatial_min_training_snapshots
+                        ),
+                        min_sensors=config.spatial_min_sensors,
+                        residual_threshold=config.spatial_residual_threshold,
+                        min_coherent_sensors=config.spatial_min_coherent_sensors,
+                        alpha=config.spatial_alpha,
+                        weights=config.spatial_weights,
+                    ),
                 ),
                 normal_predicate=normal_predicate,
             )
@@ -110,6 +131,12 @@ def create_services(
             config=resolved_config,
         )
     )
+    calibration = default_calibration_dataset()
+    response_estimator = ResponseCompensationEstimator(
+        calibration.cases,
+        version=calibration.version,
+    )
+    modal_model = ModalInversionModel(default_modal_dataset())
     return AppServices(
         engine=engine,
         simulator=DataSimulator(),
@@ -117,6 +144,8 @@ def create_services(
         processor=SensorDataProcessor(engine, detectors, persistence=persistence),
         ws_manager=WebSocketManager(),
         config=resolved_config,
+        response_estimator=response_estimator,
+        modal_model=modal_model,
         persistence=persistence,
         live_stream_interval_seconds=resolved_config.live_interval_seconds,
         live_stream_autostart=resolved_config.simulation_enabled,

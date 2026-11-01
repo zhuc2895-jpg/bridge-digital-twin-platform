@@ -16,8 +16,10 @@ from app.ml.gan_ae import GanAEDetector
 from app.ml.isolation_forest import IsolationForestDetector
 from app.ml.stalwart import StalwartDetector
 from app.ml.voting_policy import (
+    COGNITION_THRESHOLD,
     CONFIDENCE_THRESHOLD,
     MIN_VOTES,
+    UNCERTAINTY_THRESHOLD,
     MajorityVotePolicy,
 )
 
@@ -36,13 +38,20 @@ class VotingDetector(BaseDetector):
         *,
         confidence_threshold: float = CONFIDENCE_THRESHOLD,
         min_votes: int = MIN_VOTES,
+        cognition_threshold: float = COGNITION_THRESHOLD,
+        uncertainty_threshold: float = UNCERTAINTY_THRESHOLD,
+        gan_submodels: int = 8,
     ) -> None:
         self.detectors = list(
             detectors
             if detectors is not None
             else [
                 StalwartDetector(),
-                GanAEDetector(),
+                GanAEDetector(
+                    n_submodels=gan_submodels,
+                    cognition_threshold=cognition_threshold,
+                    uncertainty_threshold=uncertainty_threshold,
+                ),
                 IsolationForestDetector(),
             ]
         )
@@ -55,6 +64,8 @@ class VotingDetector(BaseDetector):
         self.policy = MajorityVotePolicy(
             confidence_threshold=confidence_threshold,
             min_votes=min_votes,
+            cognition_threshold=cognition_threshold,
+            uncertainty_threshold=uncertainty_threshold,
         )
         self._normal_details = self.policy.known_normal(self.detectors).to_details(
             confidence_threshold=self.policy.confidence_threshold,
@@ -68,6 +79,8 @@ class VotingDetector(BaseDetector):
         return {
             "confidence_threshold": self.policy.confidence_threshold,
             "min_votes": self.policy.min_votes,
+            "cognition_threshold": self.policy.cognition_threshold,
+            "uncertainty_threshold": self.policy.uncertainty_threshold,
             "models": [detector.detector_id for detector in self.detectors],
         }
 
@@ -122,6 +135,12 @@ class VotingDetector(BaseDetector):
             raise RuntimeError(
                 f"failed to reset {len(errors)} voting model baselines"
             ) from errors[0]
+
+    def flush(self) -> None:
+        for detector in self.detectors:
+            flush = getattr(detector, "flush", None)
+            if callable(flush):
+                flush()
 
     def detect_one(self, reading: Mapping[str, Any]) -> DetectionResult:
         started = time.perf_counter()

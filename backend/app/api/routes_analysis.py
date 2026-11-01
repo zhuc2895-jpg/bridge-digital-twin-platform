@@ -2,6 +2,8 @@
 数据分析 REST API
 """
 
+import math
+
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -18,6 +20,19 @@ router = APIRouter()
 
 class AnomalyInjectionRequest(BaseModel):
     sensor_id: str
+
+
+class ResponseEstimateRequest(BaseModel):
+    features: dict[str, float]
+    sensor_id: str | None = None
+    condition: str | None = None
+
+
+class DeformationInversionRequest(BaseModel):
+    timestamp: float | None = None
+    measurements: dict[str, dict[str, float]] | None = None
+    snr: dict[str, dict[str, float]] | None = None
+    confidence: dict[str, dict[str, float]] | None = None
 
 
 def _resolve_anomaly_target(
@@ -140,6 +155,88 @@ async def get_top_spikes(services: AppServices = Depends(get_services)):
     """获取 Top-K 峰值"""
     engine = services.engine
     return engine.get_top_spikes()
+
+
+@router.post("/response-estimate")
+async def estimate_structural_response(
+    payload: ResponseEstimateRequest,
+    services: AppServices = Depends(get_services),
+):
+    """Estimate response through simulation prior plus measurement compensation."""
+    estimate = services.response_estimator.estimate(payload.features)
+    return {
+        "status": "estimated" if estimate.prediction is not None else "fallback",
+        "sensor_id": payload.sensor_id,
+        "condition": payload.condition,
+        **estimate.to_dict(),
+    }
+
+
+@router.post("/deformation-inversion")
+async def invert_full_field_deformation(
+    payload: DeformationInversionRequest,
+    services: AppServices = Depends(get_services),
+):
+    """Invert modal coordinates and return the associated full-field deformation."""
+    engine = services.engine
+    timestamp = payload.timestamp
+    time_range = engine.get_time_range()
+    if timestamp is not None:
+        if not math.isfinite(timestamp):
+            raise HTTPException(status_code=400, detail="timestamp must be finite")
+        if not time_range["has_data"]:
+            raise HTTPException(
+                status_code=400,
+                detail="No sensor history is available",
+            )
+        if not time_range["start"] <= timestamp <= time_range["end"]:
+            raise HTTPException(
+                status_code=400,
+                detail="timestamp is outside the retained sensor history",
+            )
+
+    snapshot = engine.get_snapshot_at(timestamp) if timestamp is not None else None
+    if timestamp is not None and not snapshot:
+        raise HTTPException(
+            status_code=400,
+            detail="No sensor snapshot exists at the requested timestamp",
+        )
+
+    measurements = payload.measurements
+    source = "measurements"
+    if measurements is None:
+        if timestamp is None:
+            if not time_range["has_data"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No sensor history is available",
+                )
+            timestamp = time_range["end"]
+            snapshot = engine.get_snapshot_at(timestamp)
+        if not snapshot:
+            raise HTTPException(
+                status_code=400,
+                detail="No sensor snapshot exists at the requested timestamp",
+            )
+        primary_direction = services.modal_model.dataset.directions[0]
+        measurements = {
+            sensor_id: {primary_direction: float(reading["value"])}
+            for sensor_id, reading in snapshot.items()
+        }
+        source = "snapshot"
+
+    result = services.modal_model.invert(
+        measurements,
+        snr=payload.snr,
+        confidence=payload.confidence,
+    )
+    return {
+        "status": "ok" if result.available else "unavailable",
+        "source": source,
+        "timestamp": timestamp,
+        "snapshot": snapshot,
+        **result.to_dict(),
+    }
 
 
 @router.get("/report", response_class=HTMLResponse)

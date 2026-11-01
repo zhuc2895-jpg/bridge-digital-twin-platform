@@ -196,5 +196,23 @@
     "full_pipeline_cooldown_seconds": 10,
     "component_diagnostics": "raw per-reading verdicts",
     "primary_aggregation": "pooled out-of-fold recordings"
+  },
+  "enhanced_evaluation": {
+    "baseline_artifact": "benchmarks/vba/baseline-v1.json",
+    "enhanced_artifact": "benchmarks/vba/enhanced-v1.json",
+    "fusion_model": "standardized logistic regression on resampled multichannel sequences",
+    "fusion_decision_threshold": 0.7,
+    "fusion_regularization_c": 5.0,
+    "supervision": "out-of-fold recording damage labels",
+    "evidence_reporting": [
+      "cognition",
+      "uncertainty",
+      "spatial_residual",
+      "gated_alert_count",
+      "isolated_suppression_count",
+      "detector_failure_count",
+      "component_checks"
+    ],
+    "synthetic_component_scope": "compensation and modal inversion checks are reported separately from VBA accuracy"
   }
 }

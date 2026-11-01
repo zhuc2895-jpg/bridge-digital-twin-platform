@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import os
 from collections.abc import Mapping
@@ -52,9 +53,18 @@ class AppConfig:
     )
     ai_confidence_threshold: float = 0.7
     ai_min_votes: int = 2
+    gan_submodels: int = 8
+    cognition_threshold: float = 0.35
+    uncertainty_threshold: float = 0.45
     feature_mean_shift_threshold: float = 2.0
     feature_variance_change_threshold: float = 2.0
     feature_trend_slope_threshold: float = 2.0
+    spatial_residual_threshold: float = 3.0
+    spatial_min_training_snapshots: int = 30
+    spatial_min_sensors: int = 3
+    spatial_min_coherent_sensors: int = 2
+    spatial_alpha: float = 1e-3
+    spatial_weights: Mapping[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         host = self.host.strip()
@@ -82,6 +92,20 @@ class AppConfig:
             raise ValueError("ai_confidence_threshold must be between zero and one")
         if isinstance(self.ai_min_votes, bool) or not 2 <= int(self.ai_min_votes) <= 3:
             raise ValueError("ai_min_votes must be between two and three")
+        if isinstance(self.gan_submodels, bool) or int(self.gan_submodels) < 8:
+            raise ValueError("gan_submodels must be at least eight")
+        cognition_threshold = _finite_float(
+            self.cognition_threshold,
+            "cognition_threshold",
+        )
+        uncertainty_threshold = _finite_float(
+            self.uncertainty_threshold,
+            "uncertainty_threshold",
+        )
+        if not 0 <= cognition_threshold <= 1:
+            raise ValueError("cognition_threshold must be between zero and one")
+        if not 0 <= uncertainty_threshold <= 1:
+            raise ValueError("uncertainty_threshold must be between zero and one")
 
         for field_name in (
             "feature_mean_shift_threshold",
@@ -93,6 +117,24 @@ class AppConfig:
         interval = _finite_float(self.live_interval_seconds, "live_interval_seconds")
         if interval <= 0:
             raise ValueError("live_interval_seconds must be positive")
+        spatial_threshold = _finite_float(
+            self.spatial_residual_threshold,
+            "spatial_residual_threshold",
+        )
+        if spatial_threshold <= 0:
+            raise ValueError("spatial_residual_threshold must be positive")
+        spatial_alpha = _finite_float(self.spatial_alpha, "spatial_alpha")
+        if spatial_alpha <= 0:
+            raise ValueError("spatial_alpha must be positive")
+        if int(self.spatial_min_training_snapshots) < 2:
+            raise ValueError("spatial_min_training_snapshots must be at least two")
+        if int(self.spatial_min_sensors) < 2:
+            raise ValueError("spatial_min_sensors must be at least two")
+        if not 1 <= int(self.spatial_min_coherent_sensors) <= int(
+            self.spatial_min_sensors
+        ):
+            raise ValueError("spatial_min_coherent_sensors is invalid")
+        spatial_weights = _validate_spatial_weights(self.spatial_weights)
 
         object.__setattr__(self, "host", host)
         object.__setattr__(self, "port", int(self.port))
@@ -102,6 +144,23 @@ class AppConfig:
         object.__setattr__(self, "thresholds", thresholds)
         object.__setattr__(self, "ai_confidence_threshold", confidence)
         object.__setattr__(self, "ai_min_votes", int(self.ai_min_votes))
+        object.__setattr__(self, "gan_submodels", int(self.gan_submodels))
+        object.__setattr__(self, "cognition_threshold", cognition_threshold)
+        object.__setattr__(self, "uncertainty_threshold", uncertainty_threshold)
+        object.__setattr__(self, "spatial_residual_threshold", spatial_threshold)
+        object.__setattr__(self, "spatial_alpha", spatial_alpha)
+        object.__setattr__(
+            self,
+            "spatial_min_training_snapshots",
+            int(self.spatial_min_training_snapshots),
+        )
+        object.__setattr__(self, "spatial_min_sensors", int(self.spatial_min_sensors))
+        object.__setattr__(
+            self,
+            "spatial_min_coherent_sensors",
+            int(self.spatial_min_coherent_sensors),
+        )
+        object.__setattr__(self, "spatial_weights", spatial_weights)
         object.__setattr__(self, "live_interval_seconds", interval)
 
     @classmethod
@@ -150,6 +209,18 @@ class AppConfig:
                 source.get("BRIDGE_AI_MIN_VOTES", "2"),
                 "BRIDGE_AI_MIN_VOTES",
             ),
+            gan_submodels=_integer(
+                source.get("BRIDGE_GAN_SUBMODELS", "8"),
+                "BRIDGE_GAN_SUBMODELS",
+            ),
+            cognition_threshold=_finite_float(
+                source.get("BRIDGE_COGNITION_THRESHOLD", "0.35"),
+                "BRIDGE_COGNITION_THRESHOLD",
+            ),
+            uncertainty_threshold=_finite_float(
+                source.get("BRIDGE_UNCERTAINTY_THRESHOLD", "0.45"),
+                "BRIDGE_UNCERTAINTY_THRESHOLD",
+            ),
             feature_mean_shift_threshold=_finite_float(
                 source.get("BRIDGE_FEATURE_MEAN_SHIFT_THRESHOLD", "2.0"),
                 "BRIDGE_FEATURE_MEAN_SHIFT_THRESHOLD",
@@ -161,6 +232,29 @@ class AppConfig:
             feature_trend_slope_threshold=_finite_float(
                 source.get("BRIDGE_FEATURE_TREND_THRESHOLD", "2.0"),
                 "BRIDGE_FEATURE_TREND_THRESHOLD",
+            ),
+            spatial_residual_threshold=_finite_float(
+                source.get("BRIDGE_SPATIAL_RESIDUAL_THRESHOLD", "3.0"),
+                "BRIDGE_SPATIAL_RESIDUAL_THRESHOLD",
+            ),
+            spatial_min_training_snapshots=_integer(
+                source.get("BRIDGE_SPATIAL_MIN_TRAINING_SNAPSHOTS", "30"),
+                "BRIDGE_SPATIAL_MIN_TRAINING_SNAPSHOTS",
+            ),
+            spatial_min_sensors=_integer(
+                source.get("BRIDGE_SPATIAL_MIN_SENSORS", "3"),
+                "BRIDGE_SPATIAL_MIN_SENSORS",
+            ),
+            spatial_min_coherent_sensors=_integer(
+                source.get("BRIDGE_SPATIAL_MIN_COHERENT_SENSORS", "2"),
+                "BRIDGE_SPATIAL_MIN_COHERENT_SENSORS",
+            ),
+            spatial_alpha=_finite_float(
+                source.get("BRIDGE_SPATIAL_ALPHA", "0.001"),
+                "BRIDGE_SPATIAL_ALPHA",
+            ),
+            spatial_weights=_parse_spatial_weights(
+                source.get("BRIDGE_SPATIAL_WEIGHTS", "{}")
             ),
         )
 
@@ -204,6 +298,32 @@ def _validate_thresholds(
             raise ValueError(f"thresholds for {sensor_type} must be positive")
         result[sensor_type] = profile
     return result
+
+
+def _validate_spatial_weights(
+    value: Mapping[str, float] | None,
+) -> dict[str, float]:
+    if not value:
+        return {}
+    if not isinstance(value, Mapping):
+        raise ValueError("spatial_weights must be a mapping")
+    result: dict[str, float] = {}
+    for sensor_id, weight in value.items():
+        numeric = _finite_float(weight, f"spatial_weights.{sensor_id}")
+        if numeric <= 0:
+            raise ValueError("spatial weights must be positive")
+        result[str(sensor_id)] = numeric
+    return result
+
+
+def _parse_spatial_weights(value: object) -> dict[str, float]:
+    try:
+        decoded = json.loads(str(value))
+    except json.JSONDecodeError as exc:
+        raise ValueError("BRIDGE_SPATIAL_WEIGHTS must be valid JSON") from exc
+    if not isinstance(decoded, dict):
+        raise ValueError("BRIDGE_SPATIAL_WEIGHTS must be a JSON object")
+    return _validate_spatial_weights(decoded)
 
 
 def _finite_float(value: object, field: str) -> float:

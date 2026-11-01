@@ -7,8 +7,6 @@ from pathlib import Path
 from typing import Any, Mapping
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.config import AppConfig
 from app.dependencies import create_services
 from app.ingestion import validate_live_json_records
@@ -21,6 +19,7 @@ from app.observability import (
     stable_error_payload,
 )
 from app.sensor_batch import LiveEligibility, SensorBatch
+from fastapi.testclient import TestClient
 
 from tests.factories import reading
 
@@ -60,6 +59,12 @@ def test_config_from_env_overrides_runtime_and_algorithm_settings(
             "BRIDGE_FEATURE_MEAN_SHIFT_THRESHOLD": "2.4",
             "BRIDGE_FEATURE_VARIANCE_THRESHOLD": "2.5",
             "BRIDGE_FEATURE_TREND_THRESHOLD": "2.6",
+            "BRIDGE_SPATIAL_RESIDUAL_THRESHOLD": "2.8",
+            "BRIDGE_SPATIAL_MIN_TRAINING_SNAPSHOTS": "40",
+            "BRIDGE_SPATIAL_MIN_SENSORS": "4",
+            "BRIDGE_SPATIAL_MIN_COHERENT_SENSORS": "3",
+            "BRIDGE_SPATIAL_ALPHA": "0.02",
+            "BRIDGE_SPATIAL_WEIGHTS": '{"S03": 1.5}',
         }
     )
 
@@ -70,6 +75,12 @@ def test_config_from_env_overrides_runtime_and_algorithm_settings(
     assert config.cors_origins == ("https://a.example", "https://b.example")
     assert config.simulation_enabled is False
     assert config.live_interval_seconds == 2.5
+    assert config.spatial_residual_threshold == 2.8
+    assert config.spatial_min_training_snapshots == 40
+    assert config.spatial_min_sensors == 4
+    assert config.spatial_min_coherent_sensors == 3
+    assert config.spatial_alpha == 0.02
+    assert config.spatial_weights == {"S03": 1.5}
     assert config.thresholds["strain"] == {
         "yellow": 310.0,
         "orange": 460.0,
@@ -94,6 +105,12 @@ def test_config_from_env_overrides_runtime_and_algorithm_settings(
     assert ensemble.parameters["feature_arbitration"][
         "trend_slope_threshold"
     ] == 2.6
+    assert ensemble.parameters["feature_arbitration"]["spatial_residual"][
+        "residual_threshold"
+    ] == 2.8
+    assert ensemble.parameters["feature_arbitration"]["spatial_residual"][
+        "weights"
+    ] == {"S03": 1.5}
 
 
 @pytest.mark.parametrize(
@@ -106,6 +123,10 @@ def test_config_from_env_overrides_runtime_and_algorithm_settings(
         {"ai_confidence_threshold": 1.1},
         {"ai_min_votes": 1},
         {"feature_mean_shift_threshold": 0},
+        {"spatial_residual_threshold": 0},
+        {"spatial_min_sensors": 1},
+        {"spatial_min_coherent_sensors": 5},
+        {"spatial_weights": {"S01": 0}},
         {
             "thresholds": {
                 "strain": {"yellow": 300, "orange": 200, "red": 600},

@@ -1,0 +1,4211 @@
+{
+  "schema_version": 1,
+  "dataset_id": "synthetic-bridge-calibration",
+  "version": "synthetic-calibration-v1",
+  "metadata": {
+    "source_kind": "synthetic",
+    "limitations": "Synthetic fixtures validate contracts and behavior only; real finite-element and field calibration accuracy is not claimed."
+  },
+  "cases": [
+    {
+      "case_id": "C0000",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 409.5824194223853,
+        "temperature_c": 12.555137590082094,
+        "damage_index": 0.8585979199113825,
+        "span_ratio": 0.6973680290593639
+      },
+      "target": 394.69717787087274,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0001",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        10.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 404.4558807961412,
+        "temperature_c": 26.44257221107815,
+        "damage_index": 0.12811363267554587,
+        "span_ratio": 0.45038593789556713
+      },
+      "target": 379.0111538009241,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0002",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        20.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 357.54604803226584,
+        "temperature_c": 27.910464530833195,
+        "damage_index": 0.44341419882733113,
+        "span_ratio": 0.2272387217847769
+      },
+      "target": 345.3251575049569,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0003",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        30.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 431.0524687970328,
+        "temperature_c": 20.266575964882595,
+        "damage_index": 0.7580877400853738,
+        "span_ratio": 0.35452596812986836
+      },
+      "target": 413.06129481382106,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0004",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        40.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 411.3533988295047,
+        "temperature_c": 2.785548314078703,
+        "damage_index": 0.4667210037270342,
+        "span_ratio": 0.04380376578722878
+      },
+      "target": 353.9612596122161,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0005",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        0.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 397.9048623631269,
+        "temperature_c": 33.7003892973684,
+        "damage_index": 0.32582535813815194,
+        "span_ratio": 0.3704597060348689
+      },
+      "target": 389.1551254916699,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0006",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        10.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 151.96860213418864,
+        "temperature_c": 14.028197049037349,
+        "damage_index": 0.2269093490508841,
+        "span_ratio": 0.6698139946825103
+      },
+      "target": 170.81189438142397,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0007",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        20.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 432.9039205580804,
+        "temperature_c": 27.190574299872075,
+        "damage_index": 0.38747837903017446,
+        "span_ratio": 0.2883281039302441
+      },
+      "target": 407.1384811909099,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0008",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        30.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 179.96328099004333,
+        "temperature_c": -4.7055092099597795,
+        "damage_index": 0.7869243775021384,
+        "span_ratio": 0.6648508565920321
+      },
+      "target": 187.17946536436315,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0009",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        40.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 283.566310215336,
+        "temperature_c": 17.74964783811575,
+        "damage_index": 0.13979699812765745,
+        "span_ratio": 0.11453007353597344
+      },
+      "target": 260.0260980864945,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0010",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        0.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 326.0944425924755,
+        "temperature_c": 25.599954296641023,
+        "damage_index": 0.6347183200005908,
+        "span_ratio": 0.5535794006579958
+      },
+      "target": 338.44953052957,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0011",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        10.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 112.32713382717576,
+        "temperature_c": 12.468695569294496,
+        "damage_index": 0.2145846728195292,
+        "span_ratio": 0.40852864372463615
+      },
+      "target": 123.36799677499882,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0012",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        20.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 123.3210966756264,
+        "temperature_c": 6.2553556808798625,
+        "damage_index": 0.2935937577666836,
+        "span_ratio": 0.6619165147268951
+      },
+      "target": 138.27991221393606,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0013",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        30.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 365.725416130955,
+        "temperature_c": 11.255474457602823,
+        "damage_index": 0.8140203846660347,
+        "span_ratio": 0.1669729199077039
+      },
+      "target": 343.6559230489584,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0014",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        40.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 388.9437402385801,
+        "temperature_c": 13.475089210055494,
+        "damage_index": 0.1612717790336018,
+        "span_ratio": 0.5010447751033635
+      },
+      "target": 351.52863158934696,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0015",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 278.4625102296123,
+        "temperature_c": 10.2408490438593,
+        "damage_index": 0.3015120891478765,
+        "span_ratio": 0.6302825931188885
+      },
+      "target": 262.47051392138434,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0016",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        10.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 147.20236084820613,
+        "temperature_c": 33.47590658198058,
+        "damage_index": 0.908580690707607,
+        "span_ratio": 0.6997071338107496
+      },
+      "target": 220.83530291929924,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0017",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        20.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 411.50036158631787,
+        "temperature_c": 23.675607566359822,
+        "damage_index": 0.44936150214378867,
+        "span_ratio": 0.272241561845159
+      },
+      "target": 384.49219783971677,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0018",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        30.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 282.31051593344444,
+        "temperature_c": 3.0945345918092126,
+        "damage_index": 0.3059566241506525,
+        "span_ratio": 0.579219568941896
+      },
+      "target": 255.9998940859168,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0019",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        40.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 403.40781193408407,
+        "temperature_c": 23.77851823803747,
+        "damage_index": 0.4320930397751037,
+        "span_ratio": 0.6273088407024432
+      },
+      "target": 390.8643777051683,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0020",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        0.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 133.77772845595564,
+        "temperature_c": 11.632296086824386,
+        "damage_index": 0.04161417386189248,
+        "span_ratio": 0.49399081924451893
+      },
+      "target": 140.1773125736611,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0021",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        10.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 141.36118708902066,
+        "temperature_c": 18.50578288710848,
+        "damage_index": 0.1705929685368861,
+        "span_ratio": 0.9251201183767972
+      },
+      "target": 168.58060761896851,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0022",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        20.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 336.36619659256667,
+        "temperature_c": -4.0878451588121,
+        "damage_index": 0.9585592132414453,
+        "span_ratio": 0.48230343694290023
+      },
+      "target": 318.57999718878136,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0023",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        30.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 294.66333233526416,
+        "temperature_c": 14.628279774180836,
+        "damage_index": 0.9378264549749828,
+        "span_ratio": 0.5717280523760754
+      },
+      "target": 307.81570598888436,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0024",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        40.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 232.62759893702088,
+        "temperature_c": 15.82689609886151,
+        "damage_index": 0.4389114603050467,
+        "span_ratio": 0.021612079880330426
+      },
+      "target": 226.26194225242682,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0025",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        0.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 156.0996355994443,
+        "temperature_c": 17.161445741561977,
+        "damage_index": 0.10857574113544355,
+        "span_ratio": 0.6722400930398117
+      },
+      "target": 175.18189765653955,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0026",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        10.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 407.4589967670628,
+        "temperature_c": -0.6903621617641376,
+        "damage_index": 0.9160118451376079,
+        "span_ratio": 0.23021399089488082
+      },
+      "target": 366.20105124440374,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0027",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        20.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 248.3689135449755,
+        "temperature_c": 28.191589725296524,
+        "damage_index": 0.8082514720643018,
+        "span_ratio": 0.31713889282271535
+      },
+      "target": 278.8898980912054,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0028",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        30.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 306.0228516926858,
+        "temperature_c": 5.23860362270411,
+        "damage_index": 0.9360435700489633,
+        "span_ratio": 0.16460781758201815
+      },
+      "target": 291.10224838520776,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0029",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        40.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 496.9502256223348,
+        "temperature_c": 30.667090650196556,
+        "damage_index": 0.7486080194569492,
+        "span_ratio": 0.8907924908785249
+      },
+      "target": 494.5485078008521,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0030",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 226.37162073231718,
+        "temperature_c": 25.88049728443952,
+        "damage_index": 0.6616612631677611,
+        "span_ratio": 0.37365772887371007
+      },
+      "target": 255.91839387100052,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0031",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        10.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 204.98420636914585,
+        "temperature_c": 32.47252602135117,
+        "damage_index": 0.24097057500568475,
+        "span_ratio": 0.12275793241148603
+      },
+      "target": 220.8878371898633,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0032",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        20.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 171.70732326309565,
+        "temperature_c": 18.97531166083374,
+        "damage_index": 0.8745620408374645,
+        "span_ratio": 0.19643466571457324
+      },
+      "target": 203.30121194491844,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0033",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        30.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 488.73057042438694,
+        "temperature_c": 15.02964744809369,
+        "damage_index": 0.14389750255125078,
+        "span_ratio": 0.013936287708201545
+      },
+      "target": 418.2856384304447,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0034",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        40.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 371.06346944514297,
+        "temperature_c": -0.12669981485875503,
+        "damage_index": 0.506329931620633,
+        "span_ratio": 0.6942624356428865
+      },
+      "target": 334.79201833662876,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0035",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        0.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 421.6498104729051,
+        "temperature_c": 23.616285184632066,
+        "damage_index": 0.7389840039155418,
+        "span_ratio": 0.13105775155731325
+      },
+      "target": 400.37259619962936,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0036",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        10.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 295.43361814061336,
+        "temperature_c": 21.5145685105433,
+        "damage_index": 0.9556232570469699,
+        "span_ratio": 0.286446226882055
+      },
+      "target": 309.9904904191057,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0037",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        20.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 322.0792169307299,
+        "temperature_c": 20.359004467243405,
+        "damage_index": 0.1058974037507533,
+        "span_ratio": 0.14033959706391264
+      },
+      "target": 297.83933981915465,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0038",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        30.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 338.41702129374914,
+        "temperature_c": 32.32092886400845,
+        "damage_index": 0.8043609156129707,
+        "span_ratio": 0.4673816015552915
+      },
+      "target": 358.9872122226051,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0039",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        40.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 143.65759870629398,
+        "temperature_c": 28.177144595309457,
+        "damage_index": 0.7968170883251617,
+        "span_ratio": 0.2326407419664337
+      },
+      "target": 188.12077798667295,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0040",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        0.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 447.0955815104045,
+        "temperature_c": 19.124286293549027,
+        "damage_index": 0.4125715692736803,
+        "span_ratio": 0.3741840434071827
+      },
+      "target": 411.2017570853876,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0041",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        10.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 446.99625270093,
+        "temperature_c": 13.15587528305199,
+        "damage_index": 0.24783956295135812,
+        "span_ratio": 0.23666236299758114
+      },
+      "target": 394.2901349148814,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0042",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        20.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 142.11123194164998,
+        "temperature_c": -2.3376457217928737,
+        "damage_index": 0.5944336637564518,
+        "span_ratio": 0.14617324419269828
+      },
+      "target": 138.56757347857737,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0043",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        30.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 157.54877318845706,
+        "temperature_c": 31.83881889949801,
+        "damage_index": 0.16553172273527816,
+        "span_ratio": 0.28472008233793555
+      },
+      "target": 179.70873991840625,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0044",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        40.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 108.45920653457601,
+        "temperature_c": -2.7841836334295955,
+        "damage_index": 0.1746414709358527,
+        "span_ratio": 0.05338193262717539
+      },
+      "target": 94.23201347863652,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0045",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 257.4521827328113,
+        "temperature_c": 7.7196438780819765,
+        "damage_index": 0.5045262370222301,
+        "span_ratio": 0.8750049422346086
+      },
+      "target": 262.3399114654868,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0046",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        10.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 172.59936383860963,
+        "temperature_c": 4.469794844175841,
+        "damage_index": 0.24938757583221183,
+        "span_ratio": 0.5712326517427727
+      },
+      "target": 169.86243908705495,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0047",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        20.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 249.44565538382864,
+        "temperature_c": 15.95011794870549,
+        "damage_index": 0.10167190290371597,
+        "span_ratio": 0.8334585537885597
+      },
+      "target": 250.58534640211582,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0048",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        30.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 139.6452566319502,
+        "temperature_c": 28.742998063910107,
+        "damage_index": 0.9026531439276171,
+        "span_ratio": 0.9795706805865927
+      },
+      "target": 214.63125856460888,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0049",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        40.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 356.9933103982191,
+        "temperature_c": 26.15985418312516,
+        "damage_index": 0.13455220841314708,
+        "span_ratio": 0.5360680359476373
+      },
+      "target": 344.16213462968176,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0050",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        0.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 285.11974623740633,
+        "temperature_c": 10.40357984401414,
+        "damage_index": 0.6395632712371101,
+        "span_ratio": 0.26646331750084606
+      },
+      "target": 271.31152301537475,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0051",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        10.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 266.755747437954,
+        "temperature_c": 4.302797621154948,
+        "damage_index": 0.367511810115128,
+        "span_ratio": 0.3663924498262474
+      },
+      "target": 244.2393068424766,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0052",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        20.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 374.29733818237816,
+        "temperature_c": 6.875058982851412,
+        "damage_index": 0.9488579267153404,
+        "span_ratio": 0.9163480195381779
+      },
+      "target": 377.9073402617336,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0053",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        30.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 314.17391593200125,
+        "temperature_c": 28.942419550944983,
+        "damage_index": 0.652587340560102,
+        "span_ratio": 0.8043918279470774
+      },
+      "target": 339.03604730082964,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0054",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        40.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 215.2622456729847,
+        "temperature_c": 24.395726492411633,
+        "damage_index": 0.20240459312571835,
+        "span_ratio": 0.6947981288184982
+      },
+      "target": 235.01621169753602,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0055",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        0.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 138.03829929197383,
+        "temperature_c": 24.028625130857076,
+        "damage_index": 0.08449321882352023,
+        "span_ratio": 0.935939822700626
+      },
+      "target": 170.71480797956502,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0056",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        10.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 420.3536704340387,
+        "temperature_c": 18.747280178654165,
+        "damage_index": 0.7826241046295469,
+        "span_ratio": 0.7951148389830859
+      },
+      "target": 414.864656753468,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0057",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        20.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 336.03035814332367,
+        "temperature_c": -1.1980320974239511,
+        "damage_index": 0.6161657000241213,
+        "span_ratio": 0.1712913040927888
+      },
+      "target": 299.4250468923119,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0058",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        30.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 286.39406119249094,
+        "temperature_c": 15.90527102052491,
+        "damage_index": 0.7639233900065879,
+        "span_ratio": 0.7992447165120666
+      },
+      "target": 301.81611150434236,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0059",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        40.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 472.4944942760407,
+        "temperature_c": -0.21065645995508753,
+        "damage_index": 0.1171035659001105,
+        "span_ratio": 0.08770901191076841
+      },
+      "target": 387.098679600606,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0060",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 409.7285664567373,
+        "temperature_c": 21.849256532343702,
+        "damage_index": 0.33363775832823817,
+        "span_ratio": 0.8983665473615358
+      },
+      "target": 397.25848078267444,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0061",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        10.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 245.6768071088216,
+        "temperature_c": 7.577599208170515,
+        "damage_index": 0.15761164862499966,
+        "span_ratio": 0.14778337254219165
+      },
+      "target": 216.01304386189815,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0062",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        20.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 253.32792911096394,
+        "temperature_c": 24.187428347095118,
+        "damage_index": 0.5529930652528999,
+        "span_ratio": 0.9361399868384622
+      },
+      "target": 286.20099892806655,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0063",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        30.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 250.5437893923305,
+        "temperature_c": 34.46526179697288,
+        "damage_index": 0.7177602360036435,
+        "span_ratio": 0.9511946600038411
+      },
+      "target": 307.6955437922063,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0064",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        40.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 354.82955359648304,
+        "temperature_c": -0.12313286659549671,
+        "damage_index": 0.5882579999692207,
+        "span_ratio": 0.6860963651054488
+      },
+      "target": 330.5437629166088,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0065",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        0.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 430.1598044785285,
+        "temperature_c": 6.814361013763595,
+        "damage_index": 0.4585480817985511,
+        "span_ratio": 0.4423141270678932
+      },
+      "target": 386.0858722763369,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0066",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        10.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 412.51761417260633,
+        "temperature_c": -0.5764635601555801,
+        "damage_index": 0.9970346578375731,
+        "span_ratio": 0.8792000243077452
+      },
+      "target": 395.9690712624131,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0067",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        20.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 142.56781274855314,
+        "temperature_c": 34.964189218969544,
+        "damage_index": 0.6656847361065369,
+        "span_ratio": 0.650125015558797
+      },
+      "target": 206.8573919281343,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0068",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        30.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 111.59980128178776,
+        "temperature_c": 4.633122321645882,
+        "damage_index": 0.143021875166635,
+        "span_ratio": 0.7767679406922186
+      },
+      "target": 124.35985940197011,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0069",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        40.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 362.50761573099606,
+        "temperature_c": -3.5534915802121514,
+        "damage_index": 0.0054298341287004614,
+        "span_ratio": 0.051657917014398924
+      },
+      "target": 282.5674793788974,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0070",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        0.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 195.4211282509554,
+        "temperature_c": 28.976353716922915,
+        "damage_index": 0.057231940153260386,
+        "span_ratio": 0.8009638536416762
+      },
+      "target": 220.43505174564595,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0071",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        10.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 379.24831359145486,
+        "temperature_c": 28.519208746215327,
+        "damage_index": 0.04015129954706642,
+        "span_ratio": 0.20178211071905539
+      },
+      "target": 349.67097675313573,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0072",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        20.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 440.452439904774,
+        "temperature_c": 1.2085196976436352,
+        "damage_index": 0.7346210919351616,
+        "span_ratio": 0.1930414908689041
+      },
+      "target": 390.3582692849123,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0073",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        30.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 492.08191395947273,
+        "temperature_c": 19.461744239082783,
+        "damage_index": 0.054500314991295595,
+        "span_ratio": 0.6163089699275328
+      },
+      "target": 439.84760416295137,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0074",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        40.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 383.8313140402483,
+        "temperature_c": 1.9251138569001292,
+        "damage_index": 0.09172100582419807,
+        "span_ratio": 0.18353322888031898
+      },
+      "target": 316.36421738088154,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0075",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 413.6323793365632,
+        "temperature_c": 20.456333684311076,
+        "damage_index": 0.5724131499586373,
+        "span_ratio": 0.1451302546650497
+      },
+      "target": 385.3846602509513,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0076",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        10.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 331.2068863230169,
+        "temperature_c": 22.991037783562646,
+        "damage_index": 0.6492331552453089,
+        "span_ratio": 0.9405944096955184
+      },
+      "target": 349.16211873049866,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0077",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        20.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 261.6137562963064,
+        "temperature_c": 13.966749179304724,
+        "damage_index": 0.11921752619774462,
+        "span_ratio": 0.13409460987276534
+      },
+      "target": 238.55198922248385,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0078",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        30.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 271.16128547254,
+        "temperature_c": 19.43950188146513,
+        "damage_index": 0.634629117418263,
+        "span_ratio": 0.41181089658557024
+      },
+      "target": 275.9273686256669,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0079",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        40.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 335.3224993636033,
+        "temperature_c": 7.681636452689515,
+        "damage_index": 0.0360598342773637,
+        "span_ratio": 0.4184000441568604
+      },
+      "target": 296.38773947742357,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0080",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        0.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 328.98317324884624,
+        "temperature_c": 17.630876017276837,
+        "damage_index": 0.7020021811103714,
+        "span_ratio": 0.64794848220121
+      },
+      "target": 335.04888701535424,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0081",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        10.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 414.97288879438156,
+        "temperature_c": 16.965775343987175,
+        "damage_index": 0.4314181951798901,
+        "span_ratio": 0.6260124809410571
+      },
+      "target": 393.11475442996226,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0082",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        20.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 394.68227539288813,
+        "temperature_c": 30.456115468948312,
+        "damage_index": 0.9210571972951916,
+        "span_ratio": 0.5036329251830992
+      },
+      "target": 405.5606736966289,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0083",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        30.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 225.7802766976805,
+        "temperature_c": 28.495294493802746,
+        "damage_index": 0.4941416465174234,
+        "span_ratio": 0.11585672433526839
+      },
+      "target": 243.74563103604822,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0084",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        40.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 122.22716676275115,
+        "temperature_c": 6.224457445346236,
+        "damage_index": 0.3341300405015458,
+        "span_ratio": 0.1729944451915938
+      },
+      "target": 121.7012980219956,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0085",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        0.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 105.8731374240283,
+        "temperature_c": 28.08693698082746,
+        "damage_index": 0.8565480235745582,
+        "span_ratio": 0.3722615731915482
+      },
+      "target": 166.09752066842924,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0086",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        10.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 147.86902234595772,
+        "temperature_c": 9.596774443130101,
+        "damage_index": 0.9584291809009724,
+        "span_ratio": 0.9954644725836371
+      },
+      "target": 198.287865765748,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0087",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        20.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 375.066019666437,
+        "temperature_c": 23.21625461936051,
+        "damage_index": 0.38784169516364975,
+        "span_ratio": 0.6408886345861594
+      },
+      "target": 366.46978517400817,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0088",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        30.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 310.03532118690447,
+        "temperature_c": 1.5500521703318348,
+        "damage_index": 0.16590686787653364,
+        "span_ratio": 0.8363042905502379
+      },
+      "target": 281.4573661108446,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0089",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        40.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 435.62789235268536,
+        "temperature_c": 34.6128665730509,
+        "damage_index": 0.1415958885687747,
+        "span_ratio": 0.4482456132543511
+      },
+      "target": 415.0777998081453,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0090",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 402.1320691178978,
+        "temperature_c": 12.35116109290372,
+        "damage_index": 0.4693269341904013,
+        "span_ratio": 0.15067297381324019
+      },
+      "target": 359.21718078512464,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0091",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        10.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 117.85963558971156,
+        "temperature_c": 4.31409139774825,
+        "damage_index": 0.29205933031452835,
+        "span_ratio": 0.4901975424015864
+      },
+      "target": 122.64361882440333,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0092",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        20.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 133.6461338227528,
+        "temperature_c": 4.746698162228542,
+        "damage_index": 0.8435883847625412,
+        "span_ratio": 0.6375887004784591
+      },
+      "target": 165.27282931060898,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0093",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        30.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 405.16120761581163,
+        "temperature_c": -2.6756607311421066,
+        "damage_index": 0.3666083849326124,
+        "span_ratio": 0.5395274352616787
+      },
+      "target": 352.93350744301716,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0094",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        40.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 293.02900343491757,
+        "temperature_c": 25.745103578375165,
+        "damage_index": 0.852015516881169,
+        "span_ratio": 0.5047914829034981
+      },
+      "target": 315.3020641831242,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0095",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        0.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 440.1097195334887,
+        "temperature_c": 8.623631823660972,
+        "damage_index": 0.4988169585314852,
+        "span_ratio": 0.5314110410045777
+      },
+      "target": 398.1633484924119,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0096",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        10.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 466.9350690206704,
+        "temperature_c": 20.233289614589694,
+        "damage_index": 0.17750658243696749,
+        "span_ratio": 0.33885563560960497
+      },
+      "target": 417.53738013872675,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0097",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        20.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 470.98418340161066,
+        "temperature_c": 12.92829313027486,
+        "damage_index": 0.30753507242078615,
+        "span_ratio": 0.5984771915577366
+      },
+      "target": 424.30593780237376,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0098",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        30.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 381.213386279557,
+        "temperature_c": 20.350790922770518,
+        "damage_index": 0.9818059475425355,
+        "span_ratio": 0.620357709658044
+      },
+      "target": 390.05262173114346,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0099",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        40.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 461.3311487856212,
+        "temperature_c": 23.827837868734065,
+        "damage_index": 0.9632112235493796,
+        "span_ratio": 0.7820051707381772
+      },
+      "target": 462.38637226580624,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0100",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        0.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 392.96540119751506,
+        "temperature_c": 12.603547981094746,
+        "damage_index": 0.5531038024112752,
+        "span_ratio": 0.6541024094823568
+      },
+      "target": 371.67052523777676,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0101",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        10.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 215.2912981951621,
+        "temperature_c": 24.350139897516648,
+        "damage_index": 0.7499835379352686,
+        "span_ratio": 0.3464928613130488
+      },
+      "target": 240.06845021783272,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0102",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        20.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 410.93725101167144,
+        "temperature_c": 14.587989672676237,
+        "damage_index": 0.9855401694949262,
+        "span_ratio": 0.46497345619365305
+      },
+      "target": 400.34085659558247,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0103",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        30.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 417.472860223989,
+        "temperature_c": -1.6072291075267175,
+        "damage_index": 0.5554617101377639,
+        "span_ratio": 0.8020597869857242
+      },
+      "target": 380.2361369299672,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0104",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        40.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 114.78829088046969,
+        "temperature_c": 9.908093652269368,
+        "damage_index": 0.04869847231385127,
+        "span_ratio": 0.109282291114558
+      },
+      "target": 107.32536931910687,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0105",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 409.48827310065053,
+        "temperature_c": 29.618261922226516,
+        "damage_index": 0.7394314684765099,
+        "span_ratio": 0.8008715921066321
+      },
+      "target": 418.7114564005651,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0106",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        10.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 348.7591093500983,
+        "temperature_c": 29.32501218499293,
+        "damage_index": 0.0045001249396591225,
+        "span_ratio": 0.5146293421163498
+      },
+      "target": 333.07129523431763,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0107",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        20.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 260.5422230213552,
+        "temperature_c": 30.82539525534787,
+        "damage_index": 0.6716128088558587,
+        "span_ratio": 0.2376583633605973
+      },
+      "target": 283.310149163183,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0108",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        30.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 441.33786845762376,
+        "temperature_c": 6.95774604475622,
+        "damage_index": 0.590320250883149,
+        "span_ratio": 0.3969400677478341
+      },
+      "target": 396.9703060601579,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0109",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        40.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 175.03747277579652,
+        "temperature_c": -1.6075363505694762,
+        "damage_index": 0.34192693854566036,
+        "span_ratio": 0.7176391476415676
+      },
+      "target": 177.95099963155698,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0110",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        0.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 218.54482280446598,
+        "temperature_c": 11.317678045251288,
+        "damage_index": 0.1368212780296263,
+        "span_ratio": 0.5748719296230336
+      },
+      "target": 210.86595851272295,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0111",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        10.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 466.1195041142219,
+        "temperature_c": 14.876663845213976,
+        "damage_index": 0.1343669133130615,
+        "span_ratio": 0.3653784631991335
+      },
+      "target": 408.64207435447565,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0112",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        20.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 107.06751239996488,
+        "temperature_c": 13.131196660006538,
+        "damage_index": 0.6345402649517972,
+        "span_ratio": 0.34329246237890776
+      },
+      "target": 134.69723304479342,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0113",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        30.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 400.7852486299662,
+        "temperature_c": 16.63426547779805,
+        "damage_index": 0.28454087511182524,
+        "span_ratio": 0.8969967987729952
+      },
+      "target": 375.6073140981165,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0114",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        40.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 463.6259257691794,
+        "temperature_c": 16.181682211402894,
+        "damage_index": 0.7423179494179767,
+        "span_ratio": 0.5907447941637661
+      },
+      "target": 438.1966093990006,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0115",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        0.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 196.54882465066515,
+        "temperature_c": 7.899693886746611,
+        "damage_index": 0.15544156408342247,
+        "span_ratio": 0.8743143652908074
+      },
+      "target": 201.18123561221145,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0116",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        10.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 416.7897700565496,
+        "temperature_c": 26.35296437502854,
+        "damage_index": 0.4383862585841929,
+        "span_ratio": 0.47625730858672566
+      },
+      "target": 399.722918505037,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0117",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        20.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 425.85537724715306,
+        "temperature_c": 31.10215876876928,
+        "damage_index": 0.7875898362293392,
+        "span_ratio": 0.18517934495356758
+      },
+      "target": 421.9636325966756,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0118",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        30.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 361.16885062559936,
+        "temperature_c": 33.213977127512436,
+        "damage_index": 0.5127320643001113,
+        "span_ratio": 0.4329724928677672
+      },
+      "target": 362.0602071961849,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0119",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        40.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 141.2010736520635,
+        "temperature_c": -3.3568362678061225,
+        "damage_index": 0.24606661150493847,
+        "span_ratio": 0.06553043391838242
+      },
+      "target": 119.0881838263683,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0120",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 225.02797961143358,
+        "temperature_c": -2.9615806970045577,
+        "damage_index": 0.1116003682492267,
+        "span_ratio": 0.3845043779899281
+      },
+      "target": 191.2687308419194,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0121",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        10.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 182.80821660992478,
+        "temperature_c": 7.082862751345541,
+        "damage_index": 0.3941257771780975,
+        "span_ratio": 0.4166096330691479
+      },
+      "target": 185.1072954482712,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0122",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        20.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 445.1058254963512,
+        "temperature_c": -4.950677499523675,
+        "damage_index": 0.5081673558128751,
+        "span_ratio": 0.4895020065072081
+      },
+      "target": 384.4685541981121,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0123",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        30.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 412.2324550106337,
+        "temperature_c": 28.64814824859826,
+        "damage_index": 0.26034854341525004,
+        "span_ratio": 0.32249044096772983
+      },
+      "target": 381.843196472148,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0124",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        40.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 373.3033430635252,
+        "temperature_c": 4.130115018536822,
+        "damage_index": 0.33073574205486667,
+        "span_ratio": 0.9303846175891505
+      },
+      "target": 341.7735595151199,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0125",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        0.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 384.62321663871114,
+        "temperature_c": 1.0181604622989626,
+        "damage_index": 0.047374020005481854,
+        "span_ratio": 0.13820537163853075
+      },
+      "target": 315.6576857575977,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0126",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        10.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 175.32878992454073,
+        "temperature_c": -3.748659483934218,
+        "damage_index": 0.11062946756220327,
+        "span_ratio": 0.6201492866282963
+      },
+      "target": 161.79662749603054,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0127",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        20.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 336.0781531064505,
+        "temperature_c": 28.977413323591165,
+        "damage_index": 0.004741392911873921,
+        "span_ratio": 0.8533694593423667
+      },
+      "target": 335.15408896921207,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0128",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        30.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 409.1749552541136,
+        "temperature_c": 29.219661671623427,
+        "damage_index": 0.2542634837541573,
+        "span_ratio": 0.9187936809026809
+      },
+      "target": 406.14231754964595,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0129",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        40.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 493.85981344705743,
+        "temperature_c": 9.461443145567973,
+        "damage_index": 0.8131593458201128,
+        "span_ratio": 0.31839911782845964
+      },
+      "target": 450.9907918724487,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0130",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        0.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 186.54227809016058,
+        "temperature_c": 11.561043751569457,
+        "damage_index": 0.3176356343635617,
+        "span_ratio": 0.07810839308036388
+      },
+      "target": 176.08542566469586,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0131",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        10.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 107.61365912699463,
+        "temperature_c": 1.6195103032710012,
+        "damage_index": 0.7251833208508688,
+        "span_ratio": 0.7080912356835879
+      },
+      "target": 142.89379714186734,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0132",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        20.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 456.0077828470782,
+        "temperature_c": 18.753221921137904,
+        "damage_index": 0.12602634174662652,
+        "span_ratio": 0.14371866145553414
+      },
+      "target": 398.2385395272087,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0133",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        30.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 302.9170806328173,
+        "temperature_c": 34.67097903714843,
+        "damage_index": 0.004007604733339498,
+        "span_ratio": 0.016579801897556923
+      },
+      "target": 291.64962332447857,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0134",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        40.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 150.76399020740524,
+        "temperature_c": 30.892087990163745,
+        "damage_index": 0.8803803001276922,
+        "span_ratio": 0.5362004131113752
+      },
+      "target": 210.68759999898387,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0135",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 120.20787854880206,
+        "temperature_c": 18.782704355634575,
+        "damage_index": 0.294755193202763,
+        "span_ratio": 0.6636210466603519
+      },
+      "target": 150.25058084292937,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0136",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        10.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 338.28550987429094,
+        "temperature_c": 4.25122158747409,
+        "damage_index": 0.8738884979038014,
+        "span_ratio": 0.2536645065618285
+      },
+      "target": 315.7080280934708,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0137",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        20.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 258.4666000236996,
+        "temperature_c": 22.104830543991763,
+        "damage_index": 0.7257696347154339,
+        "span_ratio": 0.5669377953193868
+      },
+      "target": 278.927838560095,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0138",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        30.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 267.70895516032203,
+        "temperature_c": 15.583322075421236,
+        "damage_index": 0.012469877941213237,
+        "span_ratio": 0.7960285563103784
+      },
+      "target": 258.05010396541377,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0139",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        40.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 137.62878523575833,
+        "temperature_c": 30.58625686701589,
+        "damage_index": 0.39500724004055643,
+        "span_ratio": 0.6825815982092204
+      },
+      "target": 184.1372456842952,
+      "source": "simulation",
+      "fidelity": "medium",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0140",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        0.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 171.37670472873236,
+        "temperature_c": 2.981679715979615,
+        "damage_index": 0.8589828605577138,
+        "span_ratio": 0.9125827441419312
+      },
+      "target": 265.59589021705267,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0141",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        10.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 393.3979618251319,
+        "temperature_c": 30.134629352432064,
+        "damage_index": 0.3790526950373052,
+        "span_ratio": 0.5170194868494292
+      },
+      "target": 383.8315885582409,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0142",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        20.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 413.18405201043396,
+        "temperature_c": 17.797352745661055,
+        "damage_index": 0.10461509680477521,
+        "span_ratio": 0.90397329087804
+      },
+      "target": 374.09108902086905,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0143",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        30.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 139.9449908642918,
+        "temperature_c": 3.1758946832571677,
+        "damage_index": 0.7436003651076519,
+        "span_ratio": 0.023140094581946435
+      },
+      "target": 204.76852914243938,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0144",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        40.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 387.7250134763294,
+        "temperature_c": 30.502843539521734,
+        "damage_index": 0.39462988815008226,
+        "span_ratio": 0.31913248859966603
+      },
+      "target": 380.12030721816336,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0145",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        0.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 263.65599104991884,
+        "temperature_c": 19.07099023470834,
+        "damage_index": 0.9353813695664948,
+        "span_ratio": 0.4676402566265965
+      },
+      "target": 343.8545317872339,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0146",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        10.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 257.64279303724743,
+        "temperature_c": 0.24434772104879432,
+        "damage_index": 0.1628715005545549,
+        "span_ratio": 0.6845620733936773
+      },
+      "target": 244.86527221665173,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0147",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        20.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 197.43869814344296,
+        "temperature_c": -1.0430197958071075,
+        "damage_index": 0.7535045630002579,
+        "span_ratio": 0.88103605191787
+      },
+      "target": 274.4610010151414,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0148",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        30.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 174.30645394843486,
+        "temperature_c": 15.880492054660493,
+        "damage_index": 0.46841664124677096,
+        "span_ratio": 0.2594398398545342
+      },
+      "target": 207.67505284534298,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0149",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        40.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 483.73293905424333,
+        "temperature_c": 21.10076803010653,
+        "damage_index": 0.4955065566286184,
+        "span_ratio": 0.11069207402961612
+      },
+      "target": 455.9090375215909,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0150",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 405.9214210428937,
+        "temperature_c": 30.068431890584776,
+        "damage_index": 0.9016418535664384,
+        "span_ratio": 0.9845686082507541
+      },
+      "target": 469.4430649017475,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0151",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        10.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 128.72885620115375,
+        "temperature_c": 0.5117414371122075,
+        "damage_index": 0.3044665264760329,
+        "span_ratio": 0.5528982540644615
+      },
+      "target": 152.39464405686653,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0152",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        20.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 346.70247163092364,
+        "temperature_c": 16.694576092088198,
+        "damage_index": 0.16531132336729115,
+        "span_ratio": 0.25325547440019736
+      },
+      "target": 310.3330985260585,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0153",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        30.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 333.69114402448724,
+        "temperature_c": 24.405177100785338,
+        "damage_index": 0.29603286291002573,
+        "span_ratio": 0.37125263708827716
+      },
+      "target": 321.4077252639778,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0154",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        40.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 408.94119506982724,
+        "temperature_c": 3.272541100561268,
+        "damage_index": 0.941538856738099,
+        "span_ratio": 0.1206553374436864
+      },
+      "target": 443.49199671270844,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0155",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        0.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 205.81592446052443,
+        "temperature_c": 28.859141442718283,
+        "damage_index": 0.17949207234608744,
+        "span_ratio": 0.4135679313099698
+      },
+      "target": 207.31441655051134,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0156",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        10.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 384.0980805343946,
+        "temperature_c": 29.05338597608815,
+        "damage_index": 0.8745751398555718,
+        "span_ratio": 0.33932214573656094
+      },
+      "target": 432.7433177519019,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0157",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        20.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 197.91860062005816,
+        "temperature_c": 1.4501625140769647,
+        "damage_index": 0.9400190108075147,
+        "span_ratio": 0.8879888286055799
+      },
+      "target": 297.50749991258226,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0158",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        30.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 296.2431662047487,
+        "temperature_c": 16.189826647299917,
+        "damage_index": 0.5365680135770893,
+        "span_ratio": 0.43456308469769034
+      },
+      "target": 319.35706176047603,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0159",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        40.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 480.8998863382733,
+        "temperature_c": 14.281230383454023,
+        "damage_index": 0.953205524905189,
+        "span_ratio": 0.16357687771010998
+      },
+      "target": 507.96510278426797,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0160",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        0.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 201.27384245064061,
+        "temperature_c": -3.7978168495528486,
+        "damage_index": 0.11895331074021132,
+        "span_ratio": 0.9168484076291957
+      },
+      "target": 202.9385857501109,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0161",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        10.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 286.00565279570924,
+        "temperature_c": 11.018049809811131,
+        "damage_index": 0.5318860913460681,
+        "span_ratio": 0.18723894461534152
+      },
+      "target": 298.92915069275443,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0162",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        20.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 396.6458530926061,
+        "temperature_c": 13.750371880558099,
+        "damage_index": 0.15287712212633597,
+        "span_ratio": 0.9206658582735678
+      },
+      "target": 365.6749140279766,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0163",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        30.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 236.96147072425146,
+        "temperature_c": 26.778281219835375,
+        "damage_index": 0.6227087449882082,
+        "span_ratio": 0.7508385847448596
+      },
+      "target": 296.55440358196273,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0164",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        40.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 469.5133264372721,
+        "temperature_c": 12.519584116814904,
+        "damage_index": 0.6390136492641646,
+        "span_ratio": 0.002308772586742003
+      },
+      "target": 454.5480301648899,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0165",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 124.8252426160621,
+        "temperature_c": 13.33048166146056,
+        "damage_index": 0.12903005718204175,
+        "span_ratio": 0.1523267101575757
+      },
+      "target": 123.98506244196248,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0166",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        10.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 468.740980061998,
+        "temperature_c": 7.766259784322802,
+        "damage_index": 0.7261801283839011,
+        "span_ratio": 0.4610994301549076
+      },
+      "target": 476.7514497493284,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0167",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        20.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 289.1135891035993,
+        "temperature_c": 33.00244378497749,
+        "damage_index": 0.34271364275495586,
+        "span_ratio": 0.17723550124927256
+      },
+      "target": 288.66939884023896,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0168",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        30.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 116.1014959759695,
+        "temperature_c": 12.985307536907222,
+        "damage_index": 0.8924876896873263,
+        "span_ratio": 0.7496186189228675
+      },
+      "target": 226.72608696224208,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0169",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        40.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 363.9982875204605,
+        "temperature_c": 7.099211245517125,
+        "damage_index": 0.9475355996659923,
+        "span_ratio": 0.3663354885565363
+      },
+      "target": 419.24975053284044,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0170",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        0.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 324.7275720251997,
+        "temperature_c": 23.791301400861848,
+        "damage_index": 0.5089341517513543,
+        "span_ratio": 0.9070863269095085
+      },
+      "target": 355.9804630729215,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0171",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        10.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 236.94497332002163,
+        "temperature_c": 11.326266729240523,
+        "damage_index": 0.4400501082335524,
+        "span_ratio": 0.12580701831228525
+      },
+      "target": 250.41035558281442,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0172",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        20.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 362.2070953372209,
+        "temperature_c": 21.516388568403812,
+        "damage_index": 0.019766445342691674,
+        "span_ratio": 0.3265468426717799
+      },
+      "target": 309.430680557755,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0173",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        30.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 444.25216055845203,
+        "temperature_c": 4.867215089045892,
+        "damage_index": 0.6678491588479863,
+        "span_ratio": 0.12936280345827444
+      },
+      "target": 440.3413600593233,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0174",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        40.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 213.4083066396917,
+        "temperature_c": 21.989461893971118,
+        "damage_index": 0.9103269101852525,
+        "span_ratio": 0.20252240792418597
+      },
+      "target": 291.5681573344809,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0175",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        0.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 481.1689873942263,
+        "temperature_c": 19.402419315486952,
+        "damage_index": 0.2551069310273807,
+        "span_ratio": 0.6254781569139363
+      },
+      "target": 442.12873192969755,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0176",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        10.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 259.87045406545474,
+        "temperature_c": 22.41710883044057,
+        "damage_index": 0.02322758234675848,
+        "span_ratio": 0.40006144613475536
+      },
+      "target": 230.19816556927492,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0177",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        20.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 277.57715455839053,
+        "temperature_c": 32.437499977429034,
+        "damage_index": 0.8539843761472291,
+        "span_ratio": 0.32221567382293825
+      },
+      "target": 345.47031619681144,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0178",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        30.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 352.8810000459449,
+        "temperature_c": 8.364450678350224,
+        "damage_index": 0.24420500076588825,
+        "span_ratio": 0.9126718352555361
+      },
+      "target": 341.2769847192045,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0179",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        40.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 491.2817723058245,
+        "temperature_c": 24.79966103118754,
+        "damage_index": 0.7646672285619996,
+        "span_ratio": 0.7625900919626407
+      },
+      "target": 516.4463639609777,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0180",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 196.09051045960126,
+        "temperature_c": 20.79276777437162,
+        "damage_index": 0.28932013610233454,
+        "span_ratio": 0.2578084097023544
+      },
+      "target": 205.88468605804889,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0181",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        10.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 187.54264351785287,
+        "temperature_c": 27.642240670113246,
+        "damage_index": 0.860569919294376,
+        "span_ratio": 0.16769951967778096
+      },
+      "target": 265.7083410327414,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0182",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        20.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 419.00433427230104,
+        "temperature_c": 28.566954649372974,
+        "damage_index": 0.13832907011604922,
+        "span_ratio": 0.7743359011830512
+      },
+      "target": 382.3050681761604,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0183",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        30.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 499.4438060047663,
+        "temperature_c": 2.7036329292363925,
+        "damage_index": 0.15396358257762643,
+        "span_ratio": 0.4228003325467935
+      },
+      "target": 433.8657173614758,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0184",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        40.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 492.3284582132137,
+        "temperature_c": -2.2143745363442147,
+        "damage_index": 0.13799751734790533,
+        "span_ratio": 0.7907379738959939
+      },
+      "target": 433.630528572466,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0185",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        0.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 365.38130289163473,
+        "temperature_c": -0.5262079047729129,
+        "damage_index": 0.8325292849240071,
+        "span_ratio": 0.17635638000807585
+      },
+      "target": 396.5878143231884,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0186",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        10.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 300.30645963211134,
+        "temperature_c": 22.446516624606016,
+        "damage_index": 0.6526867348692552,
+        "span_ratio": 0.9920420055280549
+      },
+      "target": 357.5524324012574,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0187",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        20.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 391.13731958748735,
+        "temperature_c": 34.06656312866357,
+        "damage_index": 0.3183263876290203,
+        "span_ratio": 0.4612088858375738
+      },
+      "target": 376.2580345139712,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0188",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        30.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 368.9057724893779,
+        "temperature_c": 9.133507802738713,
+        "damage_index": 0.7874638746315022,
+        "span_ratio": 0.8321200752819861
+      },
+      "target": 417.57219014568517,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0189",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        40.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 228.6182728963598,
+        "temperature_c": 24.952831186682193,
+        "damage_index": 0.801389433842723,
+        "span_ratio": 0.49125744639136615
+      },
+      "target": 301.12611096668235,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0190",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        0.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 451.62751186358406,
+        "temperature_c": -1.156190681124749,
+        "damage_index": 0.1535255220546139,
+        "span_ratio": 0.5338400132739604
+      },
+      "target": 394.76504200430276,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0191",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        10.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 100.20749766628221,
+        "temperature_c": 12.452666387770527,
+        "damage_index": 0.7746238812922298,
+        "span_ratio": 0.034838350279915664
+      },
+      "target": 179.04873217729903,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0192",
+      "condition": "condition-0",
+      "sensor_id": "S01",
+      "coordinates": [
+        20.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 167.20033943114845,
+        "temperature_c": 0.8745493928561698,
+        "damage_index": 0.8608009736205361,
+        "span_ratio": 0.8231246099500947
+      },
+      "target": 261.2007359303451,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0193",
+      "condition": "condition-1",
+      "sensor_id": "S02",
+      "coordinates": [
+        30.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 137.10243096979792,
+        "temperature_c": 10.779260717550176,
+        "damage_index": 0.7377975561063729,
+        "span_ratio": 0.25745195932396336
+      },
+      "target": 209.14117918183862,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0194",
+      "condition": "condition-2",
+      "sensor_id": "S03",
+      "coordinates": [
+        40.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 400.1063951792932,
+        "temperature_c": 13.587185514293182,
+        "damage_index": 0.3679043402218176,
+        "span_ratio": 0.21918921647863232
+      },
+      "target": 374.35392059319355,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0195",
+      "condition": "condition-3",
+      "sensor_id": "S04",
+      "coordinates": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 147.5641392135842,
+        "temperature_c": -1.560705995562195,
+        "damage_index": 0.17629136502213016,
+        "span_ratio": 0.17534651145392188
+      },
+      "target": 145.17590038664198,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0196",
+      "condition": "condition-4",
+      "sensor_id": "S05",
+      "coordinates": [
+        10.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 496.155382944193,
+        "temperature_c": 0.48845031162449537,
+        "damage_index": 0.6535398256936433,
+        "span_ratio": 0.4487295072012506
+      },
+      "target": 489.0691907480987,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0197",
+      "condition": "condition-5",
+      "sensor_id": "S06",
+      "coordinates": [
+        20.0,
+        10.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 490.2382583313599,
+        "temperature_c": 29.91435835096715,
+        "damage_index": 0.19230067903513304,
+        "span_ratio": 0.22079792120893404
+      },
+      "target": 430.2979861074804,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0198",
+      "condition": "condition-6",
+      "sensor_id": "S07",
+      "coordinates": [
+        30.0,
+        0.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 393.89005231223194,
+        "temperature_c": 17.656826032385787,
+        "damage_index": 0.5509087684904029,
+        "span_ratio": 0.8285469248387858
+      },
+      "target": 412.8468920371126,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    },
+    {
+      "case_id": "C0199",
+      "condition": "condition-7",
+      "sensor_id": "S08",
+      "coordinates": [
+        40.0,
+        5.0,
+        0.0
+      ],
+      "direction": "longitudinal",
+      "features": {
+        "load_kn": 119.78365485840627,
+        "temperature_c": 19.062338098240627,
+        "damage_index": 0.4861920756222755,
+        "span_ratio": 0.2601846553429914
+      },
+      "target": 166.6284816425864,
+      "source": "measurement",
+      "fidelity": "high",
+      "version": "synthetic-calibration-v1"
+    }
+  ]
+}

@@ -1,0 +1,585 @@
+{
+  "schema_version": 1,
+  "dataset_id": "synthetic-bridge-modes",
+  "version": "synthetic-modes-v1",
+  "sensors": [
+    "S01",
+    "S02",
+    "S03",
+    "S04",
+    "S05",
+    "S06",
+    "S07",
+    "S08"
+  ],
+  "directions": [
+    "longitudinal",
+    "transverse",
+    "diagonal"
+  ],
+  "field_points": [
+    "P00",
+    "P01",
+    "P02",
+    "P03",
+    "P04",
+    "P05",
+    "P06",
+    "P07",
+    "P08",
+    "P09",
+    "P10",
+    "P11"
+  ],
+  "metadata": {
+    "source_kind": "synthetic",
+    "limitations": "Synthetic modes validate inversion behavior only. Real accuracy requires finite-element modes and measured deformation."
+  },
+  "modes": [
+    {
+      "mode_id": "M1",
+      "frequency_hz": 2.0,
+      "energy_contribution": 0.5,
+      "strain_shape": {
+        "S01": {
+          "longitudinal": -0.301727,
+          "transverse": -0.157003,
+          "diagonal": 0.497446
+        },
+        "S02": {
+          "longitudinal": -0.012861,
+          "transverse": 0.280212,
+          "diagonal": 0.095251
+        },
+        "S03": {
+          "longitudinal": 0.164733,
+          "transverse": 0.114761,
+          "diagonal": 0.066308
+        },
+        "S04": {
+          "longitudinal": -0.234845,
+          "transverse": 0.091897,
+          "diagonal": -0.168474
+        },
+        "S05": {
+          "longitudinal": -0.015103,
+          "transverse": -0.181664,
+          "diagonal": -0.192286
+        },
+        "S06": {
+          "longitudinal": -0.038456,
+          "transverse": -0.047392,
+          "diagonal": 0.000166
+        },
+        "S07": {
+          "longitudinal": -0.023399,
+          "transverse": -0.013118,
+          "diagonal": -0.051824
+        },
+        "S08": {
+          "longitudinal": -0.392746,
+          "transverse": 0.391676,
+          "diagonal": 0.165598
+        }
+      },
+      "displacement_shape": {
+        "P00": {
+          "longitudinal": -0.151095,
+          "transverse": 0.047879,
+          "diagonal": -0.079122
+        },
+        "P01": {
+          "longitudinal": -0.286256,
+          "transverse": -0.144397,
+          "diagonal": 0.147061
+        },
+        "P02": {
+          "longitudinal": 0.041578,
+          "transverse": 0.176939,
+          "diagonal": -0.228775
+        },
+        "P03": {
+          "longitudinal": 0.014378,
+          "transverse": -0.015337,
+          "diagonal": -0.009366
+        },
+        "P04": {
+          "longitudinal": 0.11881,
+          "transverse": 0.140581,
+          "diagonal": -0.200888
+        },
+        "P05": {
+          "longitudinal": 0.127701,
+          "transverse": -0.427738,
+          "diagonal": -0.063543
+        },
+        "P06": {
+          "longitudinal": -0.124573,
+          "transverse": -0.135792,
+          "diagonal": 0.065491
+        },
+        "P07": {
+          "longitudinal": 0.219329,
+          "transverse": -0.167426,
+          "diagonal": -0.085383
+        },
+        "P08": {
+          "longitudinal": 0.160221,
+          "transverse": 0.098887,
+          "diagonal": 0.20787
+        },
+        "P09": {
+          "longitudinal": 0.095256,
+          "transverse": 0.00349,
+          "diagonal": -0.006376
+        },
+        "P10": {
+          "longitudinal": 0.228957,
+          "transverse": -0.290126,
+          "diagonal": -0.24141
+        },
+        "P11": {
+          "longitudinal": 0.126843,
+          "transverse": 0.023061,
+          "diagonal": -0.244541
+        }
+      }
+    },
+    {
+      "mode_id": "M2",
+      "frequency_hz": 2.8,
+      "energy_contribution": 0.24,
+      "strain_shape": {
+        "S01": {
+          "longitudinal": 0.356968,
+          "transverse": -0.240727,
+          "diagonal": 0.054119
+        },
+        "S02": {
+          "longitudinal": 0.169977,
+          "transverse": -0.147497,
+          "diagonal": -0.311603
+        },
+        "S03": {
+          "longitudinal": 0.12487,
+          "transverse": 0.123771,
+          "diagonal": -0.047514
+        },
+        "S04": {
+          "longitudinal": 0.099355,
+          "transverse": 0.030752,
+          "diagonal": 0.113915
+        },
+        "S05": {
+          "longitudinal": 0.104367,
+          "transverse": 0.19964,
+          "diagonal": -0.17275
+        },
+        "S06": {
+          "longitudinal": 0.35311,
+          "transverse": -0.13348,
+          "diagonal": -0.224017
+        },
+        "S07": {
+          "longitudinal": 0.105575,
+          "transverse": -0.071743,
+          "diagonal": -0.404652
+        },
+        "S08": {
+          "longitudinal": 0.092099,
+          "transverse": 0.282106,
+          "diagonal": 0.256138
+        }
+      },
+      "displacement_shape": {
+        "P00": {
+          "longitudinal": 0.010153,
+          "transverse": -0.007783,
+          "diagonal": 0.192865
+        },
+        "P01": {
+          "longitudinal": -0.035339,
+          "transverse": -0.062153,
+          "diagonal": -0.034732
+        },
+        "P02": {
+          "longitudinal": -0.292572,
+          "transverse": 0.136596,
+          "diagonal": 0.154864
+        },
+        "P03": {
+          "longitudinal": 0.112376,
+          "transverse": -0.153965,
+          "diagonal": -0.04741
+        },
+        "P04": {
+          "longitudinal": -6.2e-05,
+          "transverse": 0.185895,
+          "diagonal": -0.137095
+        },
+        "P05": {
+          "longitudinal": -0.205661,
+          "transverse": 0.137697,
+          "diagonal": -0.259172
+        },
+        "P06": {
+          "longitudinal": -0.251959,
+          "transverse": 0.097394,
+          "diagonal": 0.259663
+        },
+        "P07": {
+          "longitudinal": 0.161588,
+          "transverse": 0.048952,
+          "diagonal": 0.197519
+        },
+        "P08": {
+          "longitudinal": -0.201368,
+          "transverse": 0.133082,
+          "diagonal": 0.147726
+        },
+        "P09": {
+          "longitudinal": 0.371217,
+          "transverse": 0.31268,
+          "diagonal": 0.058903
+        },
+        "P10": {
+          "longitudinal": -0.14655,
+          "transverse": -0.098459,
+          "diagonal": 0.05368
+        },
+        "P11": {
+          "longitudinal": -0.143072,
+          "transverse": 0.131703,
+          "diagonal": 0.093885
+        }
+      }
+    },
+    {
+      "mode_id": "M3",
+      "frequency_hz": 3.6,
+      "energy_contribution": 0.12,
+      "strain_shape": {
+        "S01": {
+          "longitudinal": -0.107973,
+          "transverse": 0.086342,
+          "diagonal": -0.156885
+        },
+        "S02": {
+          "longitudinal": -0.240602,
+          "transverse": 0.166881,
+          "diagonal": -0.095144
+        },
+        "S03": {
+          "longitudinal": -0.184632,
+          "transverse": -0.117455,
+          "diagonal": 0.27386
+        },
+        "S04": {
+          "longitudinal": 0.327129,
+          "transverse": 0.126888,
+          "diagonal": -0.33238
+        },
+        "S05": {
+          "longitudinal": -0.067534,
+          "transverse": -0.210487,
+          "diagonal": -0.0412
+        },
+        "S06": {
+          "longitudinal": 0.015719,
+          "transverse": -0.436686,
+          "diagonal": 0.237385
+        },
+        "S07": {
+          "longitudinal": 0.226248,
+          "transverse": -0.186021,
+          "diagonal": -0.134781
+        },
+        "S08": {
+          "longitudinal": 0.198813,
+          "transverse": 0.047852,
+          "diagonal": 0.247745
+        }
+      },
+      "displacement_shape": {
+        "P00": {
+          "longitudinal": -0.19288,
+          "transverse": -0.085457,
+          "diagonal": -0.236445
+        },
+        "P01": {
+          "longitudinal": 0.076992,
+          "transverse": 0.417191,
+          "diagonal": 0.009055
+        },
+        "P02": {
+          "longitudinal": 0.309241,
+          "transverse": 0.114054,
+          "diagonal": 0.018261
+        },
+        "P03": {
+          "longitudinal": 0.131298,
+          "transverse": -0.219679,
+          "diagonal": -0.035673
+        },
+        "P04": {
+          "longitudinal": -0.211525,
+          "transverse": -0.309215,
+          "diagonal": -0.066988
+        },
+        "P05": {
+          "longitudinal": -0.05463,
+          "transverse": -0.125305,
+          "diagonal": -0.08435
+        },
+        "P06": {
+          "longitudinal": 0.155572,
+          "transverse": 0.100647,
+          "diagonal": 0.174691
+        },
+        "P07": {
+          "longitudinal": -0.012132,
+          "transverse": -0.270715,
+          "diagonal": 0.009668
+        },
+        "P08": {
+          "longitudinal": -0.118379,
+          "transverse": 0.169449,
+          "diagonal": -0.0518
+        },
+        "P09": {
+          "longitudinal": 0.014528,
+          "transverse": 0.1634,
+          "diagonal": 0.068054
+        },
+        "P10": {
+          "longitudinal": 0.084392,
+          "transverse": -0.163217,
+          "diagonal": 0.322856
+        },
+        "P11": {
+          "longitudinal": 0.070323,
+          "transverse": 0.12119,
+          "diagonal": 0.01359
+        }
+      }
+    },
+    {
+      "mode_id": "M4",
+      "frequency_hz": 4.4,
+      "energy_contribution": 0.09,
+      "strain_shape": {
+        "S01": {
+          "longitudinal": -0.006146,
+          "transverse": -0.023604,
+          "diagonal": -0.261042
+        },
+        "S02": {
+          "longitudinal": -0.173876,
+          "transverse": 0.42432,
+          "diagonal": -0.351891
+        },
+        "S03": {
+          "longitudinal": 0.278535,
+          "transverse": 0.281425,
+          "diagonal": 0.011699
+        },
+        "S04": {
+          "longitudinal": -0.054599,
+          "transverse": -0.160198,
+          "diagonal": -0.063763
+        },
+        "S05": {
+          "longitudinal": -0.047397,
+          "transverse": -0.193622,
+          "diagonal": -0.074471
+        },
+        "S06": {
+          "longitudinal": 0.111945,
+          "transverse": -0.135287,
+          "diagonal": -0.147403
+        },
+        "S07": {
+          "longitudinal": -0.305588,
+          "transverse": 0.280655,
+          "diagonal": -0.146569
+        },
+        "S08": {
+          "longitudinal": -0.069471,
+          "transverse": -0.310687,
+          "diagonal": -0.121227
+        }
+      },
+      "displacement_shape": {
+        "P00": {
+          "longitudinal": -0.049729,
+          "transverse": 0.170757,
+          "diagonal": 0.045757
+        },
+        "P01": {
+          "longitudinal": -0.162172,
+          "transverse": 0.136261,
+          "diagonal": 0.213988
+        },
+        "P02": {
+          "longitudinal": -0.130052,
+          "transverse": 0.010407,
+          "diagonal": -0.019012
+        },
+        "P03": {
+          "longitudinal": -0.154693,
+          "transverse": -0.243519,
+          "diagonal": -0.234553
+        },
+        "P04": {
+          "longitudinal": 0.308608,
+          "transverse": 0.023785,
+          "diagonal": 0.082243
+        },
+        "P05": {
+          "longitudinal": 0.110355,
+          "transverse": -0.032951,
+          "diagonal": -0.189505
+        },
+        "P06": {
+          "longitudinal": 0.171181,
+          "transverse": -0.127596,
+          "diagonal": -0.125783
+        },
+        "P07": {
+          "longitudinal": 0.146806,
+          "transverse": 0.061221,
+          "diagonal": 0.103864
+        },
+        "P08": {
+          "longitudinal": -0.449049,
+          "transverse": -0.003551,
+          "diagonal": -0.024836
+        },
+        "P09": {
+          "longitudinal": -0.344146,
+          "transverse": -0.061014,
+          "diagonal": -0.016281
+        },
+        "P10": {
+          "longitudinal": -0.260984,
+          "transverse": -0.163144,
+          "diagonal": 0.071862
+        },
+        "P11": {
+          "longitudinal": 0.137053,
+          "transverse": -0.156704,
+          "diagonal": 0.053101
+        }
+      }
+    },
+    {
+      "mode_id": "M5",
+      "frequency_hz": 5.2,
+      "energy_contribution": 0.05,
+      "strain_shape": {
+        "S01": {
+          "longitudinal": -0.116259,
+          "transverse": 0.4327,
+          "diagonal": 0.229689
+        },
+        "S02": {
+          "longitudinal": -0.327598,
+          "transverse": 0.055775,
+          "diagonal": -0.43592
+        },
+        "S03": {
+          "longitudinal": 0.231265,
+          "transverse": -0.124068,
+          "diagonal": 0.07833
+        },
+        "S04": {
+          "longitudinal": -0.014929,
+          "transverse": -0.061151,
+          "diagonal": 0.173312
+        },
+        "S05": {
+          "longitudinal": 0.329684,
+          "transverse": 0.232704,
+          "diagonal": 0.216318
+        },
+        "S06": {
+          "longitudinal": -0.159609,
+          "transverse": 0.084607,
+          "diagonal": -0.107861
+        },
+        "S07": {
+          "longitudinal": 0.014739,
+          "transverse": -0.158559,
+          "diagonal": 0.110404
+        },
+        "S08": {
+          "longitudinal": 0.039,
+          "transverse": 0.036649,
+          "diagonal": 0.206675
+        }
+      },
+      "displacement_shape": {
+        "P00": {
+          "longitudinal": 0.030828,
+          "transverse": 0.320338,
+          "diagonal": 0.002626
+        },
+        "P01": {
+          "longitudinal": -0.031856,
+          "transverse": -0.158135,
+          "diagonal": 0.185602
+        },
+        "P02": {
+          "longitudinal": -0.014569,
+          "transverse": 0.098404,
+          "diagonal": 0.037403
+        },
+        "P03": {
+          "longitudinal": -0.00107,
+          "transverse": -0.011466,
+          "diagonal": -0.013155
+        },
+        "P04": {
+          "longitudinal": -0.149497,
+          "transverse": -0.081377,
+          "diagonal": 0.045684
+        },
+        "P05": {
+          "longitudinal": 0.10042,
+          "transverse": 0.113357,
+          "diagonal": 0.033928
+        },
+        "P06": {
+          "longitudinal": 0.171514,
+          "transverse": 0.025438,
+          "diagonal": 0.15003
+        },
+        "P07": {
+          "longitudinal": -0.16305,
+          "transverse": -0.347823,
+          "diagonal": -0.353324
+        },
+        "P08": {
+          "longitudinal": -0.095998,
+          "transverse": -0.237236,
+          "diagonal": 0.098072
+        },
+        "P09": {
+          "longitudinal": 0.094309,
+          "transverse": 0.118505,
+          "diagonal": -0.095864
+        },
+        "P10": {
+          "longitudinal": -0.224545,
+          "transverse": 0.027599,
+          "diagonal": -0.297251
+        },
+        "P11": {
+          "longitudinal": 0.17977,
+          "transverse": 0.2767,
+          "diagonal": 0.297612
+        }
+      }
+    }
+  ]
+}

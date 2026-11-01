@@ -85,6 +85,8 @@ bridge-digital-twin-platform/
 ├── data/
 │   ├── samples/                 # 示例导入数据
 │   ├── validation/              # 可提交的验证数据
+│   ├── calibration/             # 版本化仿真-实测标定夹具
+│   ├── modal/                   # 版本化模态与全场测点数据
 │   └── external/                # 外部原始数据，默认不提交
 ├── assets/
 │   ├── design/                  # BIM/Revit 源文件
@@ -148,6 +150,11 @@ py -3.13 -m venv .venv
 | `BRIDGE_LIVE_INTERVAL_SECONDS` | `1.0` | Live Tick 周期 |
 | `BRIDGE_AI_CONFIDENCE_THRESHOLD` / `BRIDGE_AI_MIN_VOTES` | `0.7` / `2` | AI 投票门槛 |
 | `BRIDGE_FEATURE_MEAN_SHIFT_THRESHOLD` / `BRIDGE_FEATURE_VARIANCE_THRESHOLD` / `BRIDGE_FEATURE_TREND_THRESHOLD` | `2.0` / `2.0` / `2.0` | 第三层仲裁门槛 |
+| `BRIDGE_GAN_SUBMODELS` | `8` | GAN-AE 重构子模型数量（不得少于 8） |
+| `BRIDGE_COGNITION_THRESHOLD` / `BRIDGE_UNCERTAINTY_THRESHOLD` | `0.35` / `0.45` | 认知度门控阈值 |
+| `BRIDGE_SPATIAL_RESIDUAL_THRESHOLD` | `3.0` | 跨传感器标准化残差阈值 |
+| `BRIDGE_SPATIAL_MIN_TRAINING_SNAPSHOTS` / `BRIDGE_SPATIAL_MIN_SENSORS` / `BRIDGE_SPATIAL_MIN_COHERENT_SENSORS` | `30` / `3` / `2` | 空间模型训练与协同判定 |
+| `BRIDGE_SPATIAL_ALPHA` / `BRIDGE_SPATIAL_WEIGHTS` | `0.001` / `{}` | 空间岭回归正则化与传感器权重 JSON |
 | `BRIDGE_{TYPE}_{LEVEL}` | 见代码默认值 | 物理阈值，例如 `BRIDGE_STRAIN_YELLOW=300` |
 
 请求日志只记录方法、路径、状态、耗时和请求 ID，响应通过 `X-Request-ID` 返回同一标识。未处理异常返回稳定的 `INTERNAL_ERROR` 结构，不向客户端暴露堆栈。
@@ -171,6 +178,19 @@ py -3.13 -m venv .venv
 该入口持续记录工作集内存、WebSocket 连接数、实时帧吞吐、告警数、错误数和最终存活状态，报告写入 `benchmarks/stability/runs/`。无参数默认就是 24 小时；短时烟雾测试可传 `--hours 0.01`。
 
 验证数据集清单为 `benchmarks/validation/manifest.json`，锁定生成脚本、随机种子、SHA-256、标签口径和门槛。报告明确标注数据为合成夹具；真实工程精度必须使用有限元模态与现场标定数据另行验收。
+
+### VBA 融合验收
+
+```powershell
+.\.venv\Scripts\python.exe -m benchmarks.vba.evaluate --mode enhanced
+```
+
+冻结基线位于 `benchmarks/vba/baseline-v1.json`，增强报告写入 `benchmarks/vba/enhanced-v1.json` 与同名 Markdown。报告同时给出原始告警链路指标、融合分类指标、逐录音/逐折/逐工况结果、认知度与空间残差校准、门控与孤立残差抑制计数、推理耗时、内存变化、组件检查和失败回退。合成补偿/全场反演证据与真实 VBA 结果分栏，不混为一个精度结论。
+
+### 响应与全场变形 API
+
+- `POST /api/analysis/response-estimate`：仿真基础预测 + 实测补偿，返回预测、方差、可靠性、越域标记和物理阈值回退原因。
+- `POST /api/analysis/deformation-inversion`：按能量选模、方向置信度加权和正则化求解模态坐标，返回全场变形、重建应变、残差与反演可信度；传入 `timestamp` 时关联当前或历史传感器快照。
 
 ### 容器部署
 
