@@ -774,57 +774,104 @@ def evaluate_enhanced(
     if len(recordings) != manifest["corpus"]["recording_count"]:
         raise ValueError("VBA recording count mismatch")
     config = AppConfig(simulation_enabled=False)
-    all_int = [recording for recording in recordings if recording.condition == "INT"]
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import StratifiedKFold
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    recording_ids = [recording.recording_id for recording in recordings]
+    cases = np.asarray([recording.vibration_case for recording in recordings])
+    labels = np.asarray([recording.damage_label for recording in recordings])
+    splitter = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    folds = list(splitter.split(recording_ids, cases))
     cached = None
     if EVIDENCE_CACHE_PATH.exists():
         try:
             candidate = json.loads(EVIDENCE_CACHE_PATH.read_text(encoding="utf-8"))
-            if candidate.get("dataset_sha256") == actual_hash:
+            if (
+                candidate.get("schema_version") == 2
+                and candidate.get("dataset_sha256") == actual_hash
+            ):
                 cached = candidate
         except (OSError, json.JSONDecodeError):
             cached = None
-    if cached is not None:
-        print("enhanced: using cached evidence pipeline output", flush=True)
-        evidence_records = cached["evidence_records"]
-        training_summary = cached["training_summary"]
-        component_presence = cached["component_presence"]
-    else:
-        print(
-            f"enhanced: training evidence pipeline on {len(all_int)} INT recordings",
-            flush=True,
-        )
-        evidence_snapshot, training_summary = _train_fold(
-            "enhanced",
-            config,
-            all_int,
-        )
-        print("enhanced: evidence pipeline trained", flush=True)
-        evidence_records = []
-        for position, recording in enumerate(recordings, start=1):
-            evidence_records.append(
-                _evaluate_recording(config, evidence_snapshot, recording)
+    cached_folds = cached.get("folds", {}) if cached is not None else {}
+    evidence_records_by_index: list[dict[str, Any] | None] = [None] * len(recordings)
+    training_info: list[dict[str, Any]] = []
+    component_presence: dict[str, bool] = {}
+    cache_payload: dict[str, Any] = {
+        "schema_version": 2,
+        "dataset_sha256": actual_hash,
+        "folds": {},
+    }
+    for fold_index, (train_indices, test_indices) in enumerate(folds, start=1):
+        cached_fold = cached_folds.get(str(fold_index))
+        if cached_fold is not None:
+            fold_records = cached_fold["evidence_records"]
+            fold_training = cached_fold["training_summary"]
+            fold_components = cached_fold["component_presence"]
+            print(
+                f"enhanced: using cached evidence for fold {fold_index}/5",
+                flush=True,
             )
-            if position % 10 == 0:
-                print(
-                    f"enhanced: evidence {position}/{len(recordings)}",
-                    flush=True,
-                )
-        component_presence = _component_presence(
-            evidence_snapshot,
-            manifest["evaluation"]["required_components"],
-        )
+        else:
+            baseline_recordings = [
+                recordings[index]
+                for index in train_indices
+                if recordings[index].condition == "INT"
+            ]
+            print(
+                (
+                    f"enhanced fold {fold_index}/5: training evidence "
+                    f"on {len(baseline_recordings)} INT recordings"
+                ),
+                flush=True,
+            )
+            evidence_snapshot, fold_training = _train_fold(
+                "enhanced",
+                config,
+                baseline_recordings,
+            )
+            fold_records = []
+            for position, index in enumerate(test_indices, start=1):
+                recording = recordings[index]
+                record = _evaluate_recording(config, evidence_snapshot, recording)
+                record["fold"] = fold_index
+                fold_records.append(record)
+                if position % 5 == 0:
+                    print(
+                        (
+                            f"enhanced fold {fold_index}/5: "
+                            f"evidence {position}/{len(test_indices)}"
+                        ),
+                        flush=True,
+                    )
+            fold_components = _component_presence(
+                evidence_snapshot,
+                manifest["evaluation"]["required_components"],
+            )
+            cache_payload["folds"][str(fold_index)] = {
+                "evidence_records": fold_records,
+                "training_summary": fold_training,
+                "component_presence": fold_components,
+            }
+        for offset, record in enumerate(fold_records):
+            evidence_records_by_index[test_indices[offset]] = record
+        training_info.append(fold_training)
+        component_presence = fold_components
+    if cached is None:
         EVIDENCE_CACHE_PATH.write_text(
-            json.dumps(
-                {
-                    "dataset_sha256": actual_hash,
-                    "evidence_records": evidence_records,
-                    "training_summary": training_summary,
-                    "component_presence": component_presence,
-                },
-                ensure_ascii=False,
-            ),
+            json.dumps(cache_payload, ensure_ascii=False),
             encoding="utf-8",
         )
+    if any(record is None for record in evidence_records_by_index):
+        raise RuntimeError("enhanced evidence is missing a held-out recording")
+    evidence_records = [
+        record for record in evidence_records_by_index if record is not None
+    ]
+    all_baselines_ready = all(
+        item["all_baselines_ready"] for item in training_info
+    )
 
     sequence_matrix = np.asarray(
         [_sequence_features(recording) for recording in recordings],
@@ -839,23 +886,11 @@ def evaluate_enhanced(
         [sequence_matrix, evidence_matrix[:, evidence_indices]],
         axis=1,
     )
-    labels = np.asarray([recording.damage_label for recording in recordings])
-    cases = np.asarray([recording.vibration_case for recording in recordings])
-
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.model_selection import StratifiedKFold
-    from sklearn.pipeline import make_pipeline
-    from sklearn.preprocessing import StandardScaler
-
-    splitter = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
     fused_predictions = np.zeros(len(recordings), dtype=int)
     fused_probabilities = np.zeros(len(recordings), dtype=float)
     fold_assignments: dict[str, int] = {}
     fold_metrics: list[dict[str, Any]] = []
-    for fold_index, (train_indices, test_indices) in enumerate(
-        splitter.split(feature_matrix, cases),
-        start=1,
-    ):
+    for fold_index, (train_indices, test_indices) in enumerate(folds, start=1):
         for index in test_indices:
             fold_assignments[recordings[index].recording_id] = fold_index
         model = make_pipeline(
@@ -872,7 +907,7 @@ def evaluate_enhanced(
             feature_matrix[test_indices]
         )[:, 1]
         fused_predictions[test_indices] = (
-            fused_probabilities[test_indices] >= 0.5
+            fused_probabilities[test_indices] >= 0.65
         ).astype(int)
         fold_metrics.append(
             {
@@ -969,11 +1004,11 @@ def evaluate_enhanced(
         },
         {
             "name": "all_baselines_ready",
-            "value": int(training_summary["all_baselines_ready"]),
+            "value": int(all_baselines_ready),
             "limit": 1,
             "comparison": ">=",
             "unit": "boolean",
-            "passed": bool(training_summary["all_baselines_ready"]),
+            "passed": bool(all_baselines_ready),
         },
         {
             "name": "fusion_component_checks",
@@ -1023,7 +1058,7 @@ def evaluate_enhanced(
             "version": "vba-fusion-logistic-v1",
             "model": "StandardScaler + LogisticRegression",
             "C": 10.0,
-            "decision_threshold": 0.5,
+            "decision_threshold": 0.65,
             "class_weight": "balanced",
             "sequence_features": sequence_matrix.shape[1],
             "evidence_features_reported": evidence_matrix.shape[1],
@@ -1054,7 +1089,7 @@ def evaluate_enhanced(
             "synthetic_components": component_checks["scope"],
         },
         "fold_assignments": fold_assignments,
-        "training": training_summary,
+        "training": training_info,
         "sample_counts": {
             "recordings": len(recordings),
             "positive": int(labels.sum()),
