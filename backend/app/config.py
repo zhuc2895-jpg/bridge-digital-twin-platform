@@ -8,8 +8,13 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from app.persistence import DEFAULT_CHECKPOINT_PATH
+from app.threshold_provenance import (
+    ThresholdProvenance,
+    provisional_threshold_provenance,
+)
 
 _LOG_LEVELS = {
     "CRITICAL": 50,
@@ -51,6 +56,9 @@ class AppConfig:
     thresholds: Mapping[str, Mapping[str, float]] = field(
         default_factory=default_thresholds
     )
+    threshold_provenance: ThresholdProvenance = field(
+        default_factory=provisional_threshold_provenance
+    )
     ai_confidence_threshold: float = 0.7
     ai_min_votes: int = 2
     gan_submodels: int = 8
@@ -84,6 +92,7 @@ class AppConfig:
 
         origins = _validate_cors_origins(self.cors_origins)
         thresholds = _validate_thresholds(self.thresholds)
+        provenance = _validate_threshold_provenance(self.threshold_provenance)
         confidence = _finite_float(
             self.ai_confidence_threshold,
             "ai_confidence_threshold",
@@ -142,6 +151,7 @@ class AppConfig:
         object.__setattr__(self, "log_level", normalized_level)
         object.__setattr__(self, "cors_origins", origins)
         object.__setattr__(self, "thresholds", thresholds)
+        object.__setattr__(self, "threshold_provenance", provenance)
         object.__setattr__(self, "ai_confidence_threshold", confidence)
         object.__setattr__(self, "ai_min_votes", int(self.ai_min_votes))
         object.__setattr__(self, "gan_submodels", int(self.gan_submodels))
@@ -201,6 +211,9 @@ class AppConfig:
                 "BRIDGE_LIVE_INTERVAL_SECONDS",
             ),
             thresholds=thresholds,
+            threshold_provenance=_parse_threshold_provenance(
+                source.get("BRIDGE_THRESHOLD_PROVENANCE_JSON")
+            ),
             ai_confidence_threshold=_finite_float(
                 source.get("BRIDGE_AI_CONFIDENCE_THRESHOLD", "0.7"),
                 "BRIDGE_AI_CONFIDENCE_THRESHOLD",
@@ -324,6 +337,32 @@ def _parse_spatial_weights(value: object) -> dict[str, float]:
     if not isinstance(decoded, dict):
         raise ValueError("BRIDGE_SPATIAL_WEIGHTS must be a JSON object")
     return _validate_spatial_weights(decoded)
+
+
+def _validate_threshold_provenance(
+    value: ThresholdProvenance | Mapping[str, Any],
+) -> ThresholdProvenance:
+    if isinstance(value, ThresholdProvenance):
+        return value
+    if not isinstance(value, Mapping):
+        raise ValueError("threshold_provenance must be a mapping")
+    return ThresholdProvenance.from_dict(value)
+
+
+def _parse_threshold_provenance(value: object) -> ThresholdProvenance:
+    if value is None or not str(value).strip():
+        return provisional_threshold_provenance()
+    try:
+        decoded = json.loads(str(value))
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            "BRIDGE_THRESHOLD_PROVENANCE_JSON must be valid JSON"
+        ) from exc
+    if not isinstance(decoded, dict):
+        raise ValueError(
+            "BRIDGE_THRESHOLD_PROVENANCE_JSON must be a JSON object"
+        )
+    return ThresholdProvenance.from_dict(decoded)
 
 
 def _finite_float(value: object, field: str) -> float:

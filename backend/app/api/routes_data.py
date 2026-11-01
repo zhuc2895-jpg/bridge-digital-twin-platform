@@ -206,3 +206,12 @@ async def update_thresholds(
 async def get_thresholds(services: AppServices = Depends(get_services)):
     """View the threshold configuration for the current app instance."""
     return services.engine.thresholds
+
+
+@router.get("/config/threshold-profile")
+async def get_threshold_profile(services: AppServices = Depends(get_services)):
+    """Return current threshold values with provenance and unit metadata."""
+    return {
+        "thresholds": services.engine.thresholds,
+        "provenance": services.config.threshold_provenance.to_dict(),
+    }

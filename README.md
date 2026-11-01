@@ -155,9 +155,12 @@ py -3.13 -m venv .venv
 | `BRIDGE_SPATIAL_RESIDUAL_THRESHOLD` | `3.0` | 跨传感器标准化残差阈值 |
 | `BRIDGE_SPATIAL_MIN_TRAINING_SNAPSHOTS` / `BRIDGE_SPATIAL_MIN_SENSORS` / `BRIDGE_SPATIAL_MIN_COHERENT_SENSORS` | `30` / `3` / `2` | 空间模型训练与协同判定 |
 | `BRIDGE_SPATIAL_ALPHA` / `BRIDGE_SPATIAL_WEIGHTS` | `0.001` / `{}` | 空间岭回归正则化与传感器权重 JSON |
+| `BRIDGE_THRESHOLD_PROVENANCE_JSON` | 空（临时默认值） | 阈值来源 JSON；权威来源必须含文档、版本、章节、生效日期和批准人 |
 | `BRIDGE_{TYPE}_{LEVEL}` | 见代码默认值 | 物理阈值，例如 `BRIDGE_STRAIN_YELLOW=300` |
 
 请求日志只记录方法、路径、状态、耗时和请求 ID，响应通过 `X-Request-ID` 返回同一标识。未处理异常返回稳定的 `INTERNAL_ERROR` 结构，不向客户端暴露堆栈。
+
+物理阈值默认标记为 `provisional-default-v1`，不会被宣称为正式限值。`GET /api/data/config/threshold-profile` 返回当前阈值、来源状态、文档/版本/章节、生效日期、批准人、适用范围和单位；只有完整权威元数据才能标记为 `authoritative`。
 
 ### 系统验收入口
 

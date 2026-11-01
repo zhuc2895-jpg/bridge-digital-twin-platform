@@ -9,7 +9,7 @@
 - [ ] 提供权威 SRS、桥梁设计规范或经工程负责人签字的阈值表。
 - [ ] 确认四类传感器阈值对应的单位和适用边界。
 - [ ] 用权威值替换当前临时默认值，并更新配置、测试与文档。
-- [ ] 记录阈值来源、版本和生效日期，不把临时默认值宣称为正式限值。
+- [x] 记录阈值来源、版本和生效日期，不把临时默认值宣称为正式限值。
 
 ## Information needed
 
@@ -20,3 +20,4 @@
 ## Comments
 
 - 2026-11-01: Audited the project plan and repository records. They describe the intended threshold policy and provisional defaults but contain no authoritative SRS table, bridge-design clause, signed engineering threshold sheet, version, or effective date. The ticket remains `needs-info`; replacing the numeric defaults would fabricate provenance and is intentionally not done.
+- 2026-11-01: Added the threshold provenance contract and API. Defaults are explicitly `provisional-default-v1` with no source/approver/effective date; `authoritative` requires document, version, section, ISO effective date, approving owner, scope, and all four unit labels. `GET /api/data/config/threshold-profile` and health expose the metadata, and runtime overrides cannot upgrade provenance. The remaining blocked items are still the external authoritative values, their confirmed units/scope, and replacing the provisional defaults. See ADR-0011.
