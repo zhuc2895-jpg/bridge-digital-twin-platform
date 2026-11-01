@@ -5,6 +5,7 @@ JSON and CSV batches are validated completely before the engine is mutated, so a
 malformed batch never leaves partial state behind.
 """
 
+import logging
 from typing import Any, Optional
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
@@ -19,6 +20,7 @@ from app.sensor_batch import LiveEligibility, SensorBatch
 from app.sensor_reading import SensorReadingRecord
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _process_records(
@@ -42,7 +44,10 @@ def _process_records(
 @router.post("/upload/csv")
 async def upload_csv(
     file: UploadFile = File(...),
-    push_live: bool = Query(default=True, description="Live Eligibility: 是否允许该批数据进入后续 1Hz Live Frame"),
+    push_live: bool = Query(
+        default=True,
+        description="Live Eligibility: 是否允许该批数据进入后续 1Hz Live Frame",
+    ),
     services: AppServices = Depends(get_services),
 ):
     """Upload a UTF-8 CSV file with the five required sensor fields."""
@@ -50,6 +55,11 @@ async def upload_csv(
     try:
         records = validate_csv_batch(content, live_eligible=push_live)
     except IngestionValidationError as exc:
+        logger.warning(
+            "Rejected CSV upload error_type=%s error=%s",
+            exc.__class__.__name__,
+            exc,
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     result = _process_records(services, records, live_eligible=push_live)
@@ -75,6 +85,11 @@ async def upload_json(
     try:
         records = validate_json_batch(data, live_eligible=push_live)
     except IngestionValidationError as exc:
+        logger.warning(
+            "Rejected JSON upload error_type=%s error=%s",
+            exc.__class__.__name__,
+            exc,
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     result = _process_records(services, records, live_eligible=push_live)
@@ -115,6 +130,12 @@ async def push_single(
             live_eligible=push_live,
         )
     except IngestionValidationError as exc:
+        logger.warning(
+            "Rejected single reading sensor_id=%s error_type=%s error=%s",
+            sensor_id,
+            exc.__class__.__name__,
+            exc,
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     _process_records(services, records, live_eligible=push_live)

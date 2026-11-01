@@ -72,7 +72,12 @@ class MonitoringEngine:
     ALERT_LEVELS = CANONICAL_ALERT_LEVELS
     ALERT_SOURCES = CANONICAL_ALERT_SOURCES
 
-    def __init__(self, window_size: int = 500, top_k: int = 10):
+    def __init__(
+        self,
+        window_size: int = 500,
+        top_k: int = 10,
+        thresholds: Mapping[str, Mapping[str, float]] | None = None,
+    ):
         self.window_size = window_size
         self.top_k = top_k
 
@@ -116,6 +121,8 @@ class MonitoringEngine:
             "acceleration": {"yellow": 2.0, "orange": 3.5, "red": 5.0},
             "temperature": {"yellow": 45, "orange": 55, "red": 65},
         }
+        if thresholds is not None:
+            self.thresholds = self._decode_thresholds(thresholds)
 
     def ingest(self, batch: SensorBatch):
         """摄入一批传感器数据，并应用该批次的实时可见性策略。"""

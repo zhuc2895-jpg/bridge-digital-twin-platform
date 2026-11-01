@@ -9,15 +9,15 @@ from pathlib import Path
 from fastapi import Depends
 from starlette.requests import HTTPConnection
 
+from app.config import AppConfig
 from app.engine.data_engine import MonitoringEngine
 from app.engine.simulator import DataSimulator
 from app.live_stream import LiveStreamRunner, LiveTickPipeline
 from app.ml.contracts import ReadingPredicate
-from app.ml.feature_arbitration import FeatureArbitrationDetector
+from app.ml.feature_arbitration import FeatureArbitrationDetector, FeatureArbitrator
 from app.ml.registry import DetectorManager, DetectorRegistry
 from app.ml.voting import VotingDetector
 from app.persistence import (
-    DEFAULT_CHECKPOINT_PATH,
     CheckpointManager,
     CheckpointStore,
     JsonCheckpointStore,
@@ -35,6 +35,7 @@ class AppServices:
     detectors: DetectorManager
     processor: SensorDataProcessor
     ws_manager: WebSocketManager
+    config: AppConfig
     persistence: CheckpointManager | None = None
     live_stream_interval_seconds: float = 1.0
     live_stream_autostart: bool = True
@@ -57,12 +58,24 @@ class AppServices:
 
 def build_detector_registry(
     normal_predicate: ReadingPredicate | None = None,
+    *,
+    config: AppConfig,
 ) -> DetectorRegistry:
     """Assemble the detector plugins enabled at application startup."""
     return DetectorRegistry(
         [
             FeatureArbitrationDetector(
-                VotingDetector(),
+                VotingDetector(
+                    confidence_threshold=config.ai_confidence_threshold,
+                    min_votes=config.ai_min_votes,
+                ),
+                arbitrator=FeatureArbitrator(
+                    mean_shift_threshold=config.feature_mean_shift_threshold,
+                    variance_change_threshold=(
+                        config.feature_variance_change_threshold
+                    ),
+                    trend_slope_threshold=config.feature_trend_slope_threshold,
+                ),
                 normal_predicate=normal_predicate,
             )
         ]
@@ -74,18 +87,28 @@ def create_services(
     checkpoint_path: str | Path | None = None,
     checkpoint_store: CheckpointStore | None = None,
     persistence_enabled: bool = False,
+    config: AppConfig | None = None,
 ) -> AppServices:
     """Create a fresh, isolated set of services for an application instance."""
-    engine = MonitoringEngine()
+    resolved_config = config or AppConfig.from_env()
+    engine = MonitoringEngine(thresholds=resolved_config.thresholds)
     persistence = None
-    if checkpoint_store is not None or checkpoint_path is not None or persistence_enabled:
+    persistence_requested = (
+        checkpoint_store is not None
+        or checkpoint_path is not None
+        or persistence_enabled
+    )
+    if persistence_requested:
         store = checkpoint_store or JsonCheckpointStore(
-            checkpoint_path or DEFAULT_CHECKPOINT_PATH
+            checkpoint_path or resolved_config.checkpoint_path
         )
         persistence = CheckpointManager(engine, store)
         persistence.restore()
     detectors = DetectorManager(
-        build_detector_registry(normal_predicate=engine.is_normal_reading)
+        build_detector_registry(
+            normal_predicate=engine.is_normal_reading,
+            config=resolved_config,
+        )
     )
     return AppServices(
         engine=engine,
@@ -93,7 +116,10 @@ def create_services(
         detectors=detectors,
         processor=SensorDataProcessor(engine, detectors, persistence=persistence),
         ws_manager=WebSocketManager(),
+        config=resolved_config,
         persistence=persistence,
+        live_stream_interval_seconds=resolved_config.live_interval_seconds,
+        live_stream_autostart=resolved_config.simulation_enabled,
     )
 
 

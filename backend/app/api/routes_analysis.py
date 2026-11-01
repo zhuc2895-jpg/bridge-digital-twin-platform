@@ -56,7 +56,9 @@ async def get_overview(services: AppServices = Depends(get_services)):
     return {
         "engine": engine.get_stats(),
         "detector": detector.get_stats(),
-        "simulator_running": simulator.is_running,
+        "simulator_running": (
+            simulator.is_running if services.config.simulation_enabled else False
+        ),
         "top_spikes": engine.get_top_spikes()
     }
 
@@ -99,6 +101,11 @@ async def inject_anomaly(
     services: AppServices = Depends(get_services),
 ):
     """Generate and process one injected reading for the requested sensor."""
+    if not services.config.simulation_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Simulation is disabled by configuration",
+        )
     target = _resolve_anomaly_target(payload, sensor_id)
     simulator = services.simulator
     try:

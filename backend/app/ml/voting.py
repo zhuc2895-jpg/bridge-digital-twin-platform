@@ -7,8 +7,8 @@ import time
 from typing import Any, Mapping, Sequence
 
 from app.ml.contracts import (
-    BaselineStatus,
     BaseDetector,
+    BaselineStatus,
     DetectionResult,
     ReadingPredicate,
 )
@@ -33,6 +33,9 @@ class VotingDetector(BaseDetector):
     def __init__(
         self,
         detectors: Sequence[BaseDetector] | None = None,
+        *,
+        confidence_threshold: float = CONFIDENCE_THRESHOLD,
+        min_votes: int = MIN_VOTES,
     ) -> None:
         self.detectors = list(
             detectors
@@ -49,7 +52,10 @@ class VotingDetector(BaseDetector):
         if len(set(detector_ids)) != len(detector_ids):
             raise ValueError("model detector ids must be unique")
 
-        self.policy = MajorityVotePolicy()
+        self.policy = MajorityVotePolicy(
+            confidence_threshold=confidence_threshold,
+            min_votes=min_votes,
+        )
         self._total_detections = 0
         self._alerts_triggered = 0
         self._model_failures: dict[str, str] = {}
@@ -57,8 +63,8 @@ class VotingDetector(BaseDetector):
     @property
     def parameters(self) -> dict[str, float | int | list[str]]:
         return {
-            "confidence_threshold": CONFIDENCE_THRESHOLD,
-            "min_votes": MIN_VOTES,
+            "confidence_threshold": self.policy.confidence_threshold,
+            "min_votes": self.policy.min_votes,
             "models": [detector.detector_id for detector in self.detectors],
         }
 

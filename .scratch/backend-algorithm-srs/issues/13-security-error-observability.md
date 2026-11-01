@@ -6,9 +6,13 @@
 
 **Status:** ready-for-agent
 
-- [ ] CORS 从配置读取允许来源，不再使用与凭据模式冲突的任意来源通配符；允许配置多个开发或生产来源。
-- [ ] 服务端口、存储位置、日志级别、CORS 来源、仿真开关和关键算法阈值均通过统一配置提供合理默认值。
-- [ ] 上传请求中的非法记录返回明确 400，不产生部分写入；实时循环中的坏记录被跳过并记录，不影响后续记录。
-- [ ] 日志包含请求或运行上下文、错误类型和传感器标识，但不输出敏感信息、完整大数据载荷或凭据。
-- [ ] 未处理异常统一返回稳定错误格式，不泄漏堆栈；健康检查在依赖局部故障时能反映降级状态。
-- [ ] 覆盖 CORS 允许/拒绝、配置覆盖、批量非法输入、坏记录隔离、敏感字段脱敏和统一错误格式测试。
+- [x] CORS 从配置读取允许来源，不再使用与凭据模式冲突的任意来源通配符；允许配置多个开发或生产来源。
+- [x] 服务端口、存储位置、日志级别、CORS 来源、仿真开关和关键算法阈值均通过统一配置提供合理默认值。
+- [x] 上传请求中的非法记录返回明确 400，不产生部分写入；实时循环中的坏记录被跳过并记录，不影响后续记录。
+- [x] 日志包含请求或运行上下文、错误类型和传感器标识，但不输出敏感信息、完整大数据载荷或凭据。
+- [x] 未处理异常统一返回稳定错误格式，不泄漏堆栈；健康检查在依赖局部故障时能反映降级状态。
+- [x] 覆盖 CORS 允许/拒绝、配置覆盖、批量非法输入、坏记录隔离、敏感字段脱敏和统一错误格式测试。
+
+## Comments
+
+- 2026-11-01: Added `AppConfig` with environment overrides for host/port, checkpoint location, logging, CORS, simulation, live interval, physical thresholds, voting thresholds, and feature-arbitration thresholds. Added explicit CORS origins, request IDs, log redaction/truncation, upload rejection logging, stable internal-error responses, simulator gating, and degraded health checks. Added ADR-0008 and 18 automated tests. Verification: full backend suite 280 passed; mypy and targeted Ruff passed.

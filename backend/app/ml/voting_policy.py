@@ -41,6 +41,7 @@ class VoteTally:
     """Immutable result of collecting all model votes for one reading."""
 
     votes: tuple[ModelVote, ...]
+    min_votes: int = MIN_VOTES
 
     @property
     def participating_models(self) -> list[str]:
@@ -52,12 +53,13 @@ class VoteTally:
 
     @property
     def confirmed(self) -> bool:
-        return len(self.participating_models) >= MIN_VOTES
+        return len(self.participating_models) >= self.min_votes
 
     def to_details(
         self,
         *,
         inference_elapsed_ms: float | None = None,
+        confidence_threshold: float = CONFIDENCE_THRESHOLD,
     ) -> dict[str, Any]:
         participating = self.participating_models
         details = {
@@ -70,11 +72,11 @@ class VoteTally:
             "ready_models": self.ready_models,
             "model_ready": bool(self.ready_models),
             "model_results": {vote.model_id: vote.to_dict() for vote in self.votes},
-            "confidence_threshold": CONFIDENCE_THRESHOLD,
-            "min_votes": MIN_VOTES,
+            "confidence_threshold": confidence_threshold,
+            "min_votes": self.min_votes,
             "voting_parameters": {
-                "confidence_threshold": CONFIDENCE_THRESHOLD,
-                "min_votes": MIN_VOTES,
+                "confidence_threshold": confidence_threshold,
+                "min_votes": self.min_votes,
                 "models": [vote.model_id for vote in self.votes],
             },
         }
@@ -85,6 +87,19 @@ class VoteTally:
 
 class MajorityVotePolicy:
     """Convert model outputs into one confirmed or non-confirmed detection."""
+
+    def __init__(
+        self,
+        *,
+        confidence_threshold: float = CONFIDENCE_THRESHOLD,
+        min_votes: int = MIN_VOTES,
+    ) -> None:
+        if not 0 <= confidence_threshold <= 1:
+            raise ValueError("confidence_threshold must be between zero and one")
+        if not 2 <= min_votes <= 3:
+            raise ValueError("min_votes must be between two and three")
+        self.confidence_threshold = float(confidence_threshold)
+        self.min_votes = int(min_votes)
 
     def tally(
         self,
@@ -107,7 +122,7 @@ class MajorityVotePolicy:
                         ready
                         and result is not None
                         and result.anomalous
-                        and confidence >= CONFIDENCE_THRESHOLD
+                        and confidence >= self.confidence_threshold
                     ),
                     raw_anomalous=(result.anomalous if result is not None else False),
                     confidence=confidence,
@@ -115,7 +130,7 @@ class MajorityVotePolicy:
                     reason=(result.reason if result is not None else "model_failed"),
                 )
             )
-        return VoteTally(tuple(votes))
+        return VoteTally(tuple(votes), min_votes=self.min_votes)
 
     def known_normal(
         self,
@@ -134,7 +149,8 @@ class MajorityVotePolicy:
                     reason="known normal batch",
                 )
                 for detector in detectors
-            )
+            ),
+            min_votes=self.min_votes,
         )
 
     def result(
@@ -148,6 +164,7 @@ class MajorityVotePolicy:
         sensor_id = str(reading["sensor_id"])
         details = tally.to_details(
             inference_elapsed_ms=inference_elapsed_ms,
+            confidence_threshold=self.confidence_threshold,
         )
         participating = tally.participating_models
         if tally.confirmed:
@@ -156,7 +173,7 @@ class MajorityVotePolicy:
             details["level_reason"] = (
                 "all three confident models confirmed"
                 if len(participating) >= 3
-                else "two independent models confirmed"
+                else f"{self.min_votes} independent models confirmed"
             )
             return DetectionResult(
                 sensor_id=sensor_id,
@@ -167,7 +184,9 @@ class MajorityVotePolicy:
                 anomalous=True,
                 score=score,
                 confidence=confidence,
-                reason="at least two confident detectors voted anomaly",
+                reason=(
+                    f"at least {self.min_votes} confident detectors voted anomaly"
+                ),
                 level="red" if len(participating) >= 3 else "orange",
                 source="ai_dual_confirm",
                 message=(

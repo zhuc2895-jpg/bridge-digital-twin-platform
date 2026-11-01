@@ -134,6 +134,24 @@ py -3.13 -m venv .venv
 
 运行状态默认持久化到 `data/state/monitoring.json`。批次处理、阈值修改和正常停止都会提交原子检查点；进程重启后自动恢复最近一次完整检查点。损坏或不完整的检查点只会记录告警并被忽略，不阻止服务启动。存储通过 `CheckpointStore` 适配接口替换。
 
+### 运行配置
+
+所有运行参数通过统一 `AppConfig` 读取，默认值安全可用；部署时使用环境变量覆盖：
+
+| 环境变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `BRIDGE_HOST` / `BRIDGE_PORT` | `0.0.0.0` / `8000` | 直接运行入口的监听地址 |
+| `BRIDGE_CHECKPOINT_PATH` | `data/state/monitoring.json` | 原子检查点位置 |
+| `BRIDGE_LOG_LEVEL` | `INFO` | `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL` |
+| `BRIDGE_CORS_ORIGINS` | 本地 Vite 地址 | 逗号分隔的来源白名单，禁止 `*` |
+| `BRIDGE_SIMULATION_ENABLED` | `true` | 关闭后不自动启动仿真或接受手动注入 |
+| `BRIDGE_LIVE_INTERVAL_SECONDS` | `1.0` | Live Tick 周期 |
+| `BRIDGE_AI_CONFIDENCE_THRESHOLD` / `BRIDGE_AI_MIN_VOTES` | `0.7` / `2` | AI 投票门槛 |
+| `BRIDGE_FEATURE_MEAN_SHIFT_THRESHOLD` / `BRIDGE_FEATURE_VARIANCE_THRESHOLD` / `BRIDGE_FEATURE_TREND_THRESHOLD` | `2.0` / `2.0` / `2.0` | 第三层仲裁门槛 |
+| `BRIDGE_{TYPE}_{LEVEL}` | 见代码默认值 | 物理阈值，例如 `BRIDGE_STRAIN_YELLOW=300` |
+
+请求日志只记录方法、路径、状态、耗时和请求 ID，响应通过 `X-Request-ID` 返回同一标识。未处理异常返回稳定的 `INTERNAL_ERROR` 结构，不向客户端暴露堆栈。
+
 ---
 
 ## 🚀 快速启动
