@@ -37,6 +37,9 @@ from app.engine.data_engine import MonitoringEngine  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.sensor_batch import LiveEligibility, SensorBatch  # noqa: E402
 from app.sensor_reading import SensorReadingRecord  # noqa: E402
+from app.threshold_provenance import (  # noqa: E402
+    DEFAULT_SENSOR_THRESHOLD_TYPES,
+)
 
 VALIDATION_MANIFEST = ROOT / "benchmarks" / "validation" / "manifest.json"
 DEFAULT_RUNS_DIR = ROOT / "benchmarks" / "runs"
@@ -491,7 +494,10 @@ def run_rule_algorithm_acceptance() -> dict[str, Any]:
         grouped[_window_key(row["timestamp"])].append(row)
 
     configuration = AppConfig(simulation_enabled=False)
-    engine = MonitoringEngine(thresholds=configuration.thresholds)
+    engine = MonitoringEngine(
+        thresholds=configuration.thresholds,
+        sensor_thresholds=configuration.sensor_thresholds,
+    )
     labels: list[bool] = []
     raw_predictions: list[bool] = []
     alert_counts: list[int] = []
@@ -564,6 +570,18 @@ def run_rule_algorithm_acceptance() -> dict[str, Any]:
         "dataset": manifest,
         "dataset_sha256": actual_hash,
         "runtime_seconds": elapsed,
+        "threshold_profile": {
+            "thresholds": {
+                sensor_type: dict(levels)
+                for sensor_type, levels in configuration.thresholds.items()
+            },
+            "sensor_thresholds": {
+                sensor_id: dict(levels)
+                for sensor_id, levels in configuration.sensor_thresholds.items()
+            },
+            "sensor_threshold_types": dict(DEFAULT_SENSOR_THRESHOLD_TYPES),
+            "provenance": configuration.threshold_provenance.to_dict(),
+        },
         "confirmed_metrics": confirmed_metrics,
         "raw_metrics": raw_metrics,
         "event_recall": event_recall,
@@ -696,12 +714,26 @@ def _artifact_payload(
             }
         )
     failed = [gate["name"] for gate in gates if not gate["passed"]]
+    threshold_profile = (
+        algorithm_result.get("threshold_profile") if algorithm_result else None
+    )
+    if threshold_profile is None:
+        configuration = AppConfig(simulation_enabled=False)
+        threshold_profile = {
+            "thresholds": configuration.thresholds,
+            "sensor_thresholds": configuration.sensor_thresholds,
+            "sensor_threshold_types": dict(DEFAULT_SENSOR_THRESHOLD_TYPES),
+            "provenance": configuration.threshold_provenance.to_dict(),
+        }
     return {
         "schema_version": 1,
         "generated_at": datetime.now(UTC).isoformat(),
         "reproduction_command": REPRODUCTION_COMMAND,
         "environment": environment_info(),
-        "threshold_profile_version": "provisional-default-v1",
+        "threshold_profile_version": threshold_profile["provenance"][
+            "profile_version"
+        ],
+        "threshold_profile": threshold_profile,
         "source_identity": {
             "validation_dataset": (
                 algorithm_result["dataset_sha256"] if algorithm_result else None
@@ -741,11 +773,41 @@ def write_artifacts(payload: Mapping[str, Any], output_dir: Path) -> tuple[Path,
         f"- Git commit: `{payload['environment']['git_commit']}`",
         f"- Python: `{payload['environment']['python'].splitlines()[0]}`",
         "",
-        "## Gates",
-        "",
-        "| Gate | Value | Limit | Result |",
-        "| --- | ---: | ---: | --- |",
     ]
+    profile = payload.get("threshold_profile")
+    if isinstance(profile, Mapping):
+        provenance = profile.get("provenance", {})
+        lines.extend(
+            [
+                "## Threshold Profile",
+                "",
+                f"- Version: `{provenance.get('profile_version')}`",
+                f"- Status: `{provenance.get('status')}`",
+                "",
+                "| Measurement | Type | Yellow | Orange | Red |",
+                "| --- | --- | ---: | ---: | ---: |",
+            ]
+        )
+        sensor_types = profile.get("sensor_threshold_types", {})
+        for sensor_id, levels in sorted(profile.get("sensor_thresholds", {}).items()):
+            lines.append(
+                f"| {sensor_id} | {sensor_types.get(sensor_id, 'override')} "
+                f"| {levels['yellow']} | {levels['orange']} | {levels['red']} |"
+            )
+        for sensor_type, levels in sorted(profile.get("thresholds", {}).items()):
+            lines.append(
+                f"| type fallback | {sensor_type} "
+                f"| {levels['yellow']} | {levels['orange']} | {levels['red']} |"
+            )
+        lines.append("")
+    lines.extend(
+        [
+            "## Gates",
+            "",
+            "| Gate | Value | Limit | Result |",
+            "| --- | ---: | ---: | --- |",
+        ]
+    )
     for gate in payload["gates"]:
         lines.append(
             f"| {gate['name']} | {gate['value']} | {gate['limit']} "

@@ -16,3 +16,4 @@
 ## Comments
 
 - 2026-11-01: Implemented `CheckpointStore`, the atomic JSON adapter, engine state export/restore, per-batch and threshold-change commits, shutdown flushing, and persistence health status. Added ADR-0007 and 12 automated tests covering empty startup, first write, normal restart, interrupted-process recovery, four damaged/incomplete payloads, rolling-window reconstruction, cooldown continuity, adapter replacement, and interrupted atomic replacement. Verification: targeted 79 tests passed; mypy passed.
+- 2026-11-01: Extended checkpoint round-trip to the effective threshold provenance and sensor-type map, so restored values keep the profile version and source metadata they were written with. Added a restart test that restores authoritative provenance and confirms both `/api/data/config/threshold-profile` and health report it.

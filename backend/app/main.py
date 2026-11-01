@@ -209,7 +209,7 @@ def create_app(
                 "connection_count",
                 0,
             ),
-            "threshold_profile": services.config.threshold_provenance.to_dict(),
+            "threshold_profile": services.engine.threshold_provenance.to_dict(),
             "state_scope": "process",
             "persistence": persistence_status,
             "checks": {

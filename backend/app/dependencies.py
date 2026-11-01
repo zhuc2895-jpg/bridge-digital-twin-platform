@@ -115,6 +115,7 @@ def create_services(
     engine = MonitoringEngine(
         thresholds=resolved_config.thresholds,
         sensor_thresholds=resolved_config.sensor_thresholds,
+        threshold_provenance=resolved_config.threshold_provenance,
     )
     persistence = None
     persistence_requested = (

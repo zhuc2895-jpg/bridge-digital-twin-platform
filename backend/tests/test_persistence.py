@@ -10,6 +10,7 @@ from typing import Any, Mapping
 import pytest
 from fastapi.testclient import TestClient
 
+from app.config import AppConfig
 from app.dependencies import create_services
 from app.engine.data_engine import MonitoringEngine
 from app.main import create_app
@@ -20,6 +21,11 @@ from app.persistence import (
 )
 from app.sensor_batch import LiveEligibility, SensorBatch
 from app.sensor_reading import SensorReadingRecord
+from app.threshold_provenance import (
+    THRESHOLD_UNITS,
+    ThresholdProvenance,
+    default_threshold_profile_document,
+)
 
 from tests.factories import reading
 from tests.helpers import ingest_records
@@ -94,7 +100,7 @@ def test_first_write_persists_and_restores_queries_alerts_and_thresholds(
     path = tmp_path / "monitoring.json"
     services = _persistent_services(path)
     records = _records(3)
-    records[-1]["value"] = 700.0
+    records[-1]["value"] = 1000.0
 
     with TestClient(create_app(services)) as client:
         response = client.post(
@@ -140,7 +146,7 @@ def test_abnormal_exit_keeps_last_committed_batch(tmp_path: Path) -> None:
     path = tmp_path / "monitoring.json"
     services = _persistent_services(path)
     records = _records(4)
-    records[-1]["value"] = 700.0
+    records[-1]["value"] = 1000.0
 
     _process(services, records)
 
@@ -155,10 +161,54 @@ def test_abnormal_exit_keeps_last_committed_batch(tmp_path: Path) -> None:
             "sensor_id": "S01",
             "name": "Main span strain",
             "type": "strain",
-            "value": 700.0,
+            "value": 1000.0,
             "timestamp": 1003.0,
         }
     }
+
+
+def test_restart_restores_threshold_provenance_with_its_values(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "monitoring.json"
+    provenance = ThresholdProvenance.from_dict(
+        {
+            "status": "authoritative",
+            "profile_version": "bridge-srs-2026.1",
+            "source_document": "Bridge Structural Monitoring SRS",
+            "source_version": "2026.1",
+            "source_section": "5.3 Threshold table",
+            "effective_date": "2026-12-01",
+            "approved_by": "Chief Bridge Engineer",
+            "scope": "S01-S08",
+            "units": dict(THRESHOLD_UNITS),
+        }
+    )
+    thresholds = {
+        sensor_type: dict(levels)
+        for sensor_type, levels in default_threshold_profile_document().thresholds.items()
+    }
+    thresholds["strain"]["yellow"] = 310.0
+    services = create_services(
+        checkpoint_path=path,
+        config=AppConfig(
+            thresholds=thresholds,
+            sensor_thresholds={},
+            threshold_provenance=provenance,
+        ),
+    )
+    services.live_stream_autostart = False
+    _process(services, _records(1))
+
+    restarted = _persistent_services(path)
+    assert restarted.engine.thresholds["strain"]["yellow"] == 310.0
+    assert restarted.engine.threshold_provenance == provenance
+    with TestClient(create_app(restarted)) as client:
+        profile = client.get("/api/data/config/threshold-profile").json()
+        health = client.get("/api/health").json()
+
+    assert profile["provenance"]["profile_version"] == "bridge-srs-2026.1"
+    assert health["threshold_profile"]["profile_version"] == "bridge-srs-2026.1"
 
 
 @pytest.mark.parametrize(

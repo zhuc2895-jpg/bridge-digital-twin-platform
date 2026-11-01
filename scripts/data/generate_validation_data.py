@@ -48,9 +48,9 @@ SENSORS = [
         "id": "S04",
         "name": "拉索L01-加速度",
         "type": "acceleration",
-        "base": 0.5,
-        "noise": 0.25,
-        "daily_amp": 0.1,
+        "base": 0.10,
+        "noise": 0.02,
+        "daily_amp": 0.01,
     },
     {
         "id": "S05",
@@ -72,9 +72,9 @@ SENSORS = [
         "id": "S07",
         "name": "拉索L02-加速度",
         "type": "acceleration",
-        "base": 0.4,
-        "noise": 0.2,
-        "daily_amp": 0.08,
+        "base": 0.08,
+        "noise": 0.015,
+        "daily_amp": 0.008,
     },
     {
         "id": "S08",
@@ -100,7 +100,7 @@ DAMAGE_EVENTS = [
         "duration_min": 30,
         "sensor": "S01",
         "factor": 1.8,
-        "offset": 100,
+        "offset": 800,
         "desc": "跨中应变异常",
     },
     # 第二次：第12小时，S03位移持续偏移（中损伤，橙色预警）
@@ -118,7 +118,7 @@ DAMAGE_EVENTS = [
         "duration_min": 45,
         "sensor": "S01",
         "factor": 3.2,
-        "offset": 250,
+        "offset": 900,
         "desc": "跨中严重应变",
     },
     {
@@ -126,7 +126,7 @@ DAMAGE_EVENTS = [
         "duration_min": 45,
         "sensor": "S04",
         "factor": 4.0,
-        "offset": 2.0,
+        "offset": 4.5,
         "desc": "拉索异常振动",
     },
     {
@@ -134,7 +134,7 @@ DAMAGE_EVENTS = [
         "duration_min": 45,
         "sensor": "S05",
         "factor": 2.8,
-        "offset": 40,
+        "offset": 300,
         "desc": "跨中挠度超标",
     },
 ]

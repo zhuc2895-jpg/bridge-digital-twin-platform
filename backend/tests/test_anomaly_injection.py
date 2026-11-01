@@ -16,6 +16,7 @@ from app.ml.feature_arbitration import FeatureArbitrationDetector
 from app.ml.voting import VotingDetector
 from app.sensor_ids import SensorIdentifier
 from tests.factories import reading
+from tests.helpers import legacy_test_config
 
 
 S01 = SensorIdentifier("S01")
@@ -540,7 +541,7 @@ def test_concurrent_injections_are_generated_atomically(monkeypatch):
 def test_injection_update_reaches_connected_websocket(monkeypatch):
     _set_normal_values(monkeypatch)
     _set_uniform_sequence(monkeypatch, 2.5, 50.0)
-    services = create_services()
+    services = create_services(config=legacy_test_config())
     services.live_stream_autostart = False
     services.live_stream_interval_seconds = 0.05
     app = create_app(services)
@@ -574,7 +575,7 @@ def test_api_injection_runs_full_processing_and_is_queryable(monkeypatch):
     _set_normal_values(monkeypatch)
     _set_uniform_sequence(monkeypatch, 2.5, 50.0)
     base = 1_700_000_000.0
-    services = create_services()
+    services = create_services(config=legacy_test_config())
     services.live_stream_autostart = False
     services.detectors.replace_detector(
         _single_vote_arbitration_detector(

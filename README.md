@@ -155,15 +155,17 @@ py -3.13 -m venv .venv
 | `BRIDGE_SPATIAL_RESIDUAL_THRESHOLD` | `3.0` | 跨传感器标准化残差阈值 |
 | `BRIDGE_SPATIAL_MIN_TRAINING_SNAPSHOTS` / `BRIDGE_SPATIAL_MIN_SENSORS` / `BRIDGE_SPATIAL_MIN_COHERENT_SENSORS` | `30` / `3` / `2` | 空间模型训练与协同判定 |
 | `BRIDGE_SPATIAL_ALPHA` / `BRIDGE_SPATIAL_WEIGHTS` | `0.001` / `{}` | 空间岭回归正则化与传感器权重 JSON |
-| `BRIDGE_THRESHOLD_PROVENANCE_JSON` | 空（临时默认值） | 阈值来源 JSON；权威来源必须含文档、版本、章节、生效日期和批准人 |
+| `BRIDGE_THRESHOLD_PROVENANCE_JSON` | 空（代码推导的待签值） | 阈值来源 JSON；权威来源必须含文档、版本、章节、生效日期和批准人 |
 | `BRIDGE_THRESHOLD_PROFILE_PATH` | 空 | 单一权威阈值文档 JSON；含 `thresholds`、可选 `sensor_thresholds` 和 `provenance`，不可与单值阈值或独立来源 JSON 同时使用 |
-| `BRIDGE_{TYPE}_{LEVEL}` | 见代码默认值 | 物理阈值，例如 `BRIDGE_STRAIN_YELLOW=300` |
+| `BRIDGE_{TYPE}_{LEVEL}` | 见代码默认值 | 类型级物理阈值，例如 `BRIDGE_STRAIN_YELLOW=960` |
 
 请求日志只记录方法、路径、状态、耗时和请求 ID，响应通过 `X-Request-ID` 返回同一标识。未处理异常返回稳定的 `INTERNAL_ERROR` 结构，不向客户端暴露堆栈。
 
-物理阈值默认标记为 `provisional-default-v1`，不会被宣称为正式限值。`GET /api/data/config/threshold-profile` 返回当前阈值、来源状态、文档/版本/章节、生效日期、批准人、适用范围和单位；只有完整权威元数据才能标记为 `authoritative`。
+物理阈值默认实现为代码中的 S01–S08 映射，版本 `code-derived-v1-pending-signoff`（`provisional`），不会被宣称为正式限值；`config/bridge-threshold-profile.json` 是同一组值的版本化镜像，由测试保证内容一致。`GET /api/data/config/threshold-profile` 返回当前阈值、来源状态、文档/版本/章节、生效日期、批准人、适用范围和单位；只有完整权威元数据才能标记为 `authoritative`。
 
-权威规范依据与公式整理见 `docs/thresholds/authoritative-threshold-sources.md`。规范给出的是设计值倍数、历史最大值和结构容许值等相对基准；绝对阈值仍需本桥设计文件及工程负责人签字后，才能写入 `BRIDGE_THRESHOLD_PROFILE_PATH` 对应文档。
+权威规范依据与公式整理见 `docs/thresholds/authoritative-threshold-sources.md`，本桥设计基准与 S01–S08 推导见 `docs/thresholds/sensor-baseline-and-mapping.md`。规范给出的是设计值倍数、历史最大值和结构容许值等相对基准；`config/bridge-threshold-profile.json` 当前是可运行的待签版本，只有工程负责人补齐 `approved_by` 和 `effective_date` 后，才可通过 `BRIDGE_THRESHOLD_PROFILE_PATH` 作为正式限值加载。
+
+设置任一 `BRIDGE_{TYPE}_{LEVEL}` 或调用 `POST /api/data/config/thresholds` 会切换到类型级整定模式，清除默认的逐测点覆盖并把 provenance 降级为 `provisional-default-v1`，避免 S01–S08 的映射把该调整静默屏蔽或把整定值伪装成设计基准。S08 当前只表达高温上限；低温与梯度温度报警需在设计基准补齐后增加。
 
 ### 系统验收入口
 

@@ -2,38 +2,38 @@
 
 - Mode: enhanced
 - Status: **passed**
-- Generated: 2026-11-01T07:53:38.905526+00:00
+- Generated: 2026-11-01T12:01:18.696259+00:00
 - Reproduction: `python -m benchmarks.vba.evaluate --mode enhanced`
-- Git commit: `88a2d53d02ba40805bf33c996cea0de82ddd971b`
+- Git commit: `394061ab9f48edd478d8ecf917d48f8776896f3f`
 - Dataset SHA-256: `BE13A4CAE46E877C6613FABA9ABF164449CFC58EAA73AC86599473EF078FF7A3`
 
 ## Overall Metrics
 
-- Accuracy: 0.9706
-- False-positive rate: 0.0556
-- Recall: 1.0000
-- Precision: 0.9412
-- F1: 0.9697
-- Confusion matrix: {'tp': 32, 'tn': 34, 'fp': 2, 'fn': 0}
+- Accuracy: 0.9412
+- False-positive rate: 0.0833
+- Recall: 0.9688
+- Precision: 0.9118
+- F1: 0.9394
+- Confusion matrix: {'tp': 31, 'tn': 33, 'fp': 3, 'fn': 1}
 
 ## Gates
 
 | Gate | Value | Limit | Result |
 | --- | ---: | ---: | --- |
-| vba_accuracy | 0.9705882352941176 | 0.9 | PASS |
-| vba_false_positive_rate | 0.05555555555555555 | 0.1 | PASS |
-| single_chain_p95_ms | 8.782300000348187 | 200.0 | PASS |
+| vba_accuracy | 0.9411764705882353 | 0.9 | PASS |
+| vba_false_positive_rate | 0.08333333333333333 | 0.1 | PASS |
+| single_chain_p95_ms | 6.3072499997360865 | 200.0 | PASS |
 | all_components_present | 6 | 6 | PASS |
 | all_baselines_ready | 1 | 1 | PASS |
 | fusion_component_checks | 1 | 1 | PASS |
-| false_positive_rate_not_above_baseline | 0.05555555555555555 | 1.0 | PASS |
-| recall_not_unexplained_drop | 1.0 | 0.95 | PASS |
+| false_positive_rate_not_above_baseline | 0.08333333333333333 | 1.0 | PASS |
+| recall_not_unexplained_drop | 0.96875 | 0.95 | PASS |
 
 ## Traceability
 
-- Gated AI alerts: 31
+- Gated AI alerts: 358
 - Isolated spatial suppressions: 0
 - Detector failures: 0
-- Processing p95: 8.782 ms
+- Processing p95: 6.307 ms
 
 synthetic fixtures, not real VBA structural-response accuracy

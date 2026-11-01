@@ -214,5 +214,5 @@ async def get_threshold_profile(services: AppServices = Depends(get_services)):
     return {
         "thresholds": services.engine.thresholds,
         "sensor_thresholds": services.engine.sensor_thresholds,
-        "provenance": services.config.threshold_provenance.to_dict(),
+        "provenance": services.engine.threshold_provenance.to_dict(),
     }

@@ -26,7 +26,14 @@ from app.sensor_metrics import (
     is_online,
 )
 from app.sensor_types import SensorType
-from app.threshold_provenance import validate_sensor_thresholds
+from app.threshold_provenance import (
+    DEFAULT_SENSOR_THRESHOLD_TYPES,
+    ThresholdProvenance,
+    default_threshold_profile_document,
+    default_threshold_provenance,
+    provisional_threshold_provenance,
+    validate_sensor_thresholds,
+)
 
 # Keep enough timestamps to answer the maximum supported 168-hour report.
 _READING_TIMESTAMP_RETENTION_SECONDS = (168 + 1) * 3600.0
@@ -79,6 +86,8 @@ class MonitoringEngine:
         top_k: int = 10,
         thresholds: Mapping[str, Mapping[str, float]] | None = None,
         sensor_thresholds: Mapping[str, Mapping[str, float]] | None = None,
+        sensor_threshold_types: Mapping[str, str] | None = None,
+        threshold_provenance: ThresholdProvenance | Mapping[str, Any] | None = None,
     ):
         self.window_size = window_size
         self.top_k = top_k
@@ -117,16 +126,31 @@ class MonitoringEngine:
         self._start_time = time.time()
 
         # 物理阈值配置（可动态调整）
+        default_profile = default_threshold_profile_document()
         self.thresholds: Dict[str, Dict[str, float]] = {
-            "strain": {"yellow": 300, "orange": 450, "red": 600},
-            "displacement": {"yellow": 30, "orange": 50, "red": 80},
-            "acceleration": {"yellow": 2.0, "orange": 3.5, "red": 5.0},
-            "temperature": {"yellow": 45, "orange": 55, "red": 65},
+            sensor_type: dict(levels)
+            for sensor_type, levels in default_profile.thresholds.items()
         }
         if thresholds is not None:
             self.thresholds = self._decode_thresholds(thresholds)
-        self.sensor_thresholds: Dict[str, Dict[str, float]] = (
-            validate_sensor_thresholds(sensor_thresholds)
+        if thresholds is None:
+            merged_sensor_thresholds = {
+                sensor_id: dict(levels)
+                for sensor_id, levels in default_profile.sensor_thresholds.items()
+            }
+            if sensor_thresholds is not None:
+                merged_sensor_thresholds.update(
+                    validate_sensor_thresholds(sensor_thresholds)
+                )
+            self.sensor_thresholds = merged_sensor_thresholds
+        else:
+            self.sensor_thresholds = validate_sensor_thresholds(sensor_thresholds)
+        self.sensor_threshold_types = self._decode_sensor_threshold_types(
+            sensor_threshold_types,
+            default=DEFAULT_SENSOR_THRESHOLD_TYPES,
+        )
+        self.threshold_provenance = self._decode_threshold_provenance(
+            threshold_provenance
         )
 
     def ingest(self, batch: SensorBatch):
@@ -297,7 +321,8 @@ class MonitoringEngine:
     ) -> Mapping[str, float]:
         """Return sensor-specific thresholds when configured, else type defaults."""
         sensor_specific = self.sensor_thresholds.get(str(sensor_id))
-        if sensor_specific is not None:
+        expected_type = self.sensor_threshold_types.get(str(sensor_id))
+        if sensor_specific is not None and expected_type in {None, str(sensor_type)}:
             return sensor_specific
         return self.thresholds.get(str(sensor_type), {})
 
@@ -440,6 +465,9 @@ class MonitoringEngine:
             if levels != self.thresholds[sensor_type]
         }
         self.thresholds = candidate
+        if changed_types:
+            self.sensor_thresholds = {}
+            self.threshold_provenance = provisional_threshold_provenance()
         self._clear_cooldowns_for_sensor_types(changed_types)
         return candidate
 
@@ -847,6 +875,8 @@ class MonitoringEngine:
                 sensor_id: dict(levels)
                 for sensor_id, levels in self.sensor_thresholds.items()
             },
+            "sensor_threshold_types": dict(self.sensor_threshold_types),
+            "threshold_provenance": self.threshold_provenance.to_dict(),
         }
 
     def restore_state(self, state: Mapping[str, Any]) -> None:
@@ -927,6 +957,16 @@ class MonitoringEngine:
         sensor_thresholds = validate_sensor_thresholds(
             state.get("sensor_thresholds", {})
         )
+        sensor_threshold_types = self._decode_sensor_threshold_types(
+            state.get("sensor_threshold_types"),
+            default=self.sensor_threshold_types,
+        )
+        provenance_state = state.get("threshold_provenance")
+        threshold_provenance = (
+            self.threshold_provenance
+            if provenance_state is None
+            else self._decode_threshold_provenance(provenance_state)
+        )
         top_spikes = self._decode_top_spikes(state.get("top_spikes", []))
         pending_external_versions = state.get("pending_external_versions", {})
         if not isinstance(pending_external_versions, Mapping):
@@ -971,6 +1011,8 @@ class MonitoringEngine:
         self._alert_cooldown_seconds = cooldown_seconds
         self.thresholds = thresholds
         self.sensor_thresholds = sensor_thresholds
+        self.sensor_threshold_types = sensor_threshold_types
+        self.threshold_provenance = threshold_provenance
 
     def _decode_reading_list(self, value: Any, field: str) -> List[SensorReading]:
         if value is None:
@@ -1091,6 +1133,30 @@ class MonitoringEngine:
         if set(decoded) != set(self.thresholds):
             raise ValueError("threshold profiles must match the sensor types")
         return decoded
+
+    @staticmethod
+    def _decode_threshold_provenance(
+        value: ThresholdProvenance | Mapping[str, Any] | None,
+    ) -> ThresholdProvenance:
+        if value is None:
+            return default_threshold_provenance()
+        if isinstance(value, ThresholdProvenance):
+            return value
+        if isinstance(value, Mapping):
+            return ThresholdProvenance.from_dict(value)
+        raise ValueError("threshold_provenance must be a mapping")
+
+    @staticmethod
+    def _decode_sensor_threshold_types(
+        value: Mapping[str, str] | None,
+        *,
+        default: Mapping[str, str],
+    ) -> Dict[str, str]:
+        if value is None:
+            return {str(key): str(item) for key, item in default.items()}
+        if not isinstance(value, Mapping):
+            raise ValueError("sensor_threshold_types must be a mapping")
+        return {str(key): str(item) for key, item in value.items()}
 
     @staticmethod
     def _decode_top_spikes(value: Any) -> List[tuple]:

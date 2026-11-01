@@ -53,8 +53,12 @@ A positive limit assigned to one sensor type and one alert level.
 _Avoid_: alarm limit, cutoff
 
 **Threshold Profile**:
-The yellow, orange, and red physical thresholds shared by every sensor of one type.
-_Avoid_: per-sensor threshold set
+The yellow, orange, and red physical thresholds shared by every sensor of one type unless that sensor has a Sensor Threshold Override.
+_Avoid_: one universal threshold set
+
+**Sensor Threshold Override**:
+A yellow, orange, and red physical threshold set for one specific sensor, taking precedence over its type's Threshold Profile when an engineering allowable value differs per measurement, such as cable acceleration versus deck acceleration.
+_Avoid_: type-wide profile, runtime alert cooldown
 
 **Threshold Units**:
 Strain uses microstrain (µε), displacement uses millimetres (mm), acceleration uses metres per second squared (m/s²), and temperature uses degrees Celsius (°C).

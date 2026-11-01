@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Self, cast
 
+from app.config import AppConfig
 from app.dependencies import AppServices, create_services
 from app.engine.data_engine import MonitoringEngine
 from app.live_contract import SensorUpdateWire
@@ -16,6 +17,7 @@ from app.live_stream import LiveFrameSink
 from app.main import create_app
 from app.sensor_batch import LiveEligibility, SensorBatch
 from app.sensor_reading import SensorReadingRecord
+from app.threshold_provenance import provisional_threshold_provenance
 from fastapi import FastAPI
 
 from tests.factories import reading
@@ -41,13 +43,30 @@ class TrackingLock:
         self._lock.release()
 
 
+_LEGACY_TEST_THRESHOLDS = {
+    "strain": {"yellow": 300.0, "orange": 450.0, "red": 600.0},
+    "displacement": {"yellow": 30.0, "orange": 50.0, "red": 80.0},
+    "acceleration": {"yellow": 2.0, "orange": 3.5, "red": 5.0},
+    "temperature": {"yellow": 45.0, "orange": 55.0, "red": 65.0},
+}
+
+
+def legacy_test_config() -> AppConfig:
+    """Keep lifecycle tests independent from production threshold tuning."""
+    return AppConfig(
+        thresholds=_LEGACY_TEST_THRESHOLDS,
+        sensor_thresholds={},
+        threshold_provenance=provisional_threshold_provenance(),
+    )
+
+
 def create_live_app(
     *,
     simulator: Any | None = None,
     interval_seconds: float | None = None,
     autostart: bool = False,
 ) -> tuple[AppServices, FastAPI]:
-    services = create_services()
+    services = create_services(config=legacy_test_config())
     services.live_stream_autostart = autostart
     if simulator is not None:
         services.simulator = simulator

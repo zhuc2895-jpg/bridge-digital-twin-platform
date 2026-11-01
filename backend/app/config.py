@@ -14,6 +14,8 @@ from app.persistence import DEFAULT_CHECKPOINT_PATH
 from app.threshold_provenance import (
     ThresholdProfileDocument,
     ThresholdProvenance,
+    default_threshold_profile_document,
+    default_threshold_provenance,
     provisional_threshold_provenance,
     validate_sensor_thresholds,
 )
@@ -35,12 +37,20 @@ DEFAULT_CORS_ORIGINS = (
 
 
 def default_thresholds() -> dict[str, dict[str, float]]:
-    """Return a fresh copy of the provisional physical threshold profiles."""
+    """Return a fresh copy of the code-derived type-level threshold profiles."""
+    profile = default_threshold_profile_document()
     return {
-        "strain": {"yellow": 300.0, "orange": 450.0, "red": 600.0},
-        "displacement": {"yellow": 30.0, "orange": 50.0, "red": 80.0},
-        "acceleration": {"yellow": 2.0, "orange": 3.5, "red": 5.0},
-        "temperature": {"yellow": 45.0, "orange": 55.0, "red": 65.0},
+        sensor_type: dict(levels)
+        for sensor_type, levels in profile.thresholds.items()
+    }
+
+
+def default_sensor_thresholds() -> dict[str, dict[str, float]]:
+    """Return the code-derived S01-S08 measurement-specific profiles."""
+    profile = default_threshold_profile_document()
+    return {
+        sensor_id: dict(levels)
+        for sensor_id, levels in profile.sensor_thresholds.items()
     }
 
 
@@ -59,10 +69,10 @@ class AppConfig:
         default_factory=default_thresholds
     )
     threshold_provenance: ThresholdProvenance = field(
-        default_factory=provisional_threshold_provenance
+        default_factory=default_threshold_provenance
     )
     sensor_thresholds: Mapping[str, Mapping[str, float]] = field(
-        default_factory=dict
+        default_factory=default_sensor_thresholds
     )
     ai_confidence_threshold: float = 0.7
     ai_min_votes: int = 2
@@ -214,17 +224,32 @@ class AppConfig:
             provenance = profile.provenance
             sensor_thresholds = profile.sensor_thresholds
         else:
-            thresholds = default_thresholds()
+            profile = default_threshold_profile_document()
+            thresholds = {
+                sensor_type: dict(levels)
+                for sensor_type, levels in profile.thresholds.items()
+            }
+            sensor_thresholds = {
+                sensor_id: dict(levels)
+                for sensor_id, levels in profile.sensor_thresholds.items()
+            }
+            overridden = False
             for sensor_type in _SENSOR_TYPES:
                 for level in _ALERT_LEVELS:
                     variable = f"BRIDGE_{sensor_type.upper()}_{level.upper()}"
                     raw = source.get(variable)
                     if raw is not None:
                         thresholds[sensor_type][level] = _finite_float(raw, variable)
-            provenance = _parse_threshold_provenance(
-                source.get("BRIDGE_THRESHOLD_PROVENANCE_JSON")
-            )
-            sensor_thresholds = {}
+                        overridden = True
+            if overridden:
+                sensor_thresholds = {}
+            provenance_raw = source.get("BRIDGE_THRESHOLD_PROVENANCE_JSON")
+            if provenance_raw is not None:
+                provenance = _parse_threshold_provenance(provenance_raw)
+            elif overridden:
+                provenance = provisional_threshold_provenance()
+            else:
+                provenance = profile.provenance
 
         origins_raw = source.get("BRIDGE_CORS_ORIGINS")
         origins = (

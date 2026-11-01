@@ -660,7 +660,7 @@ def evaluate_alert_pipeline(
             )
         ),
         "environment": environment_info(),
-        "threshold_profile_version": "provisional-default-v1",
+        "threshold_profile_version": config.threshold_provenance.profile_version,
         "source_identity": {
             "dataset": manifest["normalized_csv"]["path"],
             "sha256": actual_hash,
@@ -791,6 +791,8 @@ def evaluate_enhanced(
             if (
                 candidate.get("schema_version") == 2
                 and candidate.get("dataset_sha256") == actual_hash
+                and candidate.get("threshold_profile_version")
+                == config.threshold_provenance.profile_version
             ):
                 cached = candidate
         except (OSError, json.JSONDecodeError):
@@ -802,6 +804,7 @@ def evaluate_enhanced(
     cache_payload: dict[str, Any] = {
         "schema_version": 2,
         "dataset_sha256": actual_hash,
+        "threshold_profile_version": config.threshold_provenance.profile_version,
         "folds": {},
     }
     for fold_index, (train_indices, test_indices) in enumerate(folds, start=1):
@@ -1053,7 +1056,7 @@ def evaluate_enhanced(
         "generated_at": datetime.now(UTC).isoformat(),
         "reproduction_command": REPRODUCTION_COMMAND,
         "environment": environment_info(),
-        "threshold_profile_version": "provisional-default-v1",
+        "threshold_profile_version": config.threshold_provenance.profile_version,
         "fusion_model": {
             "version": "vba-fusion-logistic-v1",
             "model": "StandardScaler + LogisticRegression",

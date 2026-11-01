@@ -10,6 +10,7 @@ The current numeric values are provisional engineering defaults because no autho
 
 ## Consequences
 
-- Future per-sensor overrides require a separate decision and must define how they compose with type-wide defaults.
+- Per-sensor overrides were accepted by ADR-0011 and the ticket-15 design basis: a Sensor Threshold Override applies only to its declared sensor type and takes precedence over the type profile; other sensors keep the type profile.
+- A type-level runtime override (`BRIDGE_{TYPE}_{LEVEL}` or `POST /api/data/config/thresholds`) switches that running instance to type-wide tuning and clears the default sensor-specific overrides, so the update is never silently masked.
 - Equal or reversed threshold levels are rejected because they would make one or more alert levels unreachable.
 - Obtaining authoritative values can change defaults and tests without changing the alert lifecycle contract.

@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "dataset_id": "bridge-validation-24h-v2",
+  "dataset_id": "bridge-validation-24h-v3",
   "title": "Synthetic bridge monitoring validation dataset",
   "path": "data/validation/bridge_validation_data.csv",
-  "sha256": "3EB745496A32141896DA0AB926B00B083CD6214A7E43CE4C56A4615214297A0C",
+  "sha256": "9393CD09A4129FFA26DE3394AE8CAF1B6981BF3A94A9EA6DB1094C3305C55C8E",
   "generator": "scripts/data/generate_validation_data.py",
   "generator_seed": 42,
   "source_kind": "synthetic",

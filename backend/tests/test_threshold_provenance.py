@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from app.config import AppConfig
@@ -11,37 +12,50 @@ from app.engine.data_engine import MonitoringEngine
 from app.main import create_app
 from app.sensor_batch import SensorBatch
 from app.threshold_provenance import THRESHOLD_UNITS, ThresholdProvenance
+from app.threshold_provenance import (
+    ThresholdProfileDocument,
+    default_threshold_profile_document,
+)
 from fastapi.testclient import TestClient
 
 
-def test_defaults_are_explicitly_provisional_and_not_authoritative() -> None:
+def test_defaults_are_the_code_derived_design_basis_profile() -> None:
     config = AppConfig()
     provenance = config.threshold_provenance
 
     assert provenance.status == "provisional"
     assert provenance.authoritative is False
-    assert provenance.profile_version == "provisional-default-v1"
-    assert provenance.source_document is None
+    assert provenance.profile_version == "code-derived-v1-pending-signoff"
+    assert "JT/T 1037-2022" in str(provenance.source_document)
     assert provenance.effective_date is None
-    assert "not an authoritative" in provenance.notes
+    assert provenance.approved_by is None
+    assert config.sensor_thresholds["S01"]["yellow"] == 960.0
+    assert config.sensor_thresholds["S08"]["red"] == 60.0
+    assert config.thresholds["strain"]["orange"] == 1200.0
     assert dict(provenance.units) == THRESHOLD_UNITS
 
 
-def test_threshold_profile_endpoint_and_health_expose_provenance(client) -> None:
-    profile = client.get("/api/data/config/threshold-profile")
-    health = client.get("/api/health")
+def test_threshold_profile_endpoint_and_health_expose_provenance() -> None:
+    config = AppConfig()
+    services = create_services(config=config)
+    services.live_stream_autostart = False
+    application = create_app(services, config=config)
+    with TestClient(application) as client:
+        profile = client.get("/api/data/config/threshold-profile")
+        health = client.get("/api/health")
 
     assert profile.status_code == 200
     payload = profile.json()
     assert payload["provenance"]["status"] == "provisional"
     assert payload["provenance"]["authoritative"] is False
     assert payload["provenance"]["units"]["strain"] == "microstrain (µε)"
-    assert payload["thresholds"]["strain"]["yellow"] == 300.0
+    assert payload["thresholds"]["strain"]["yellow"] == 960.0
+    assert payload["sensor_thresholds"]["S01"]["yellow"] == 960.0
 
     assert health.status_code == 200
     assert health.json()["threshold_profile"]["status"] == "provisional"
     assert health.json()["threshold_profile"]["profile_version"] == (
-        "provisional-default-v1"
+        "code-derived-v1-pending-signoff"
     )
 
 
@@ -76,6 +90,8 @@ def test_authoritative_provenance_is_accepted_with_complete_metadata() -> None:
         {"effective_date": "2026/12/01"},
         {"status": "approved"},
         {"units": {"strain": "ue"}},
+        {"scope": None},
+        {"scope": ""},
     ],
 )
 def test_authoritative_provenance_rejects_incomplete_or_invalid_metadata(
@@ -89,6 +105,7 @@ def test_authoritative_provenance_rejects_incomplete_or_invalid_metadata(
         "source_section": "5.3 Threshold table",
         "effective_date": "2026-12-01",
         "approved_by": "Chief Bridge Engineer",
+        "scope": "all strain and displacement sensors",
         "units": dict(THRESHOLD_UNITS),
     }
     value.update(overrides)
@@ -100,6 +117,14 @@ def test_authoritative_provenance_rejects_incomplete_or_invalid_metadata(
 def test_invalid_provenance_environment_json_is_rejected() -> None:
     with pytest.raises(ValueError):
         AppConfig.from_env({"BRIDGE_THRESHOLD_PROVENANCE_JSON": "not-json"})
+
+
+def test_type_level_environment_override_disables_default_sensor_overrides() -> None:
+    config = AppConfig.from_env({"BRIDGE_STRAIN_YELLOW": "1000"})
+
+    assert config.thresholds["strain"]["yellow"] == 1000.0
+    assert config.sensor_thresholds == {}
+    assert config.threshold_provenance.profile_version == "provisional-default-v1"
 
 
 def test_authoritative_profile_document_replaces_values_and_provenance(
@@ -123,6 +148,7 @@ def test_authoritative_profile_document_replaces_values_and_provenance(
                     "source_section": "5.3 Threshold table",
                     "effective_date": "2026-12-01",
                     "approved_by": "Chief Bridge Engineer",
+                    "scope": "S01-S08",
                     "units": dict(THRESHOLD_UNITS),
                 },
             }
@@ -165,6 +191,7 @@ def test_threshold_profile_document_rejects_individual_value_overrides(
                     "source_section": "5.3 Threshold table",
                     "effective_date": "2026-12-01",
                     "approved_by": "Chief Bridge Engineer",
+                    "scope": "S01-S08",
                 },
             }
         ),
@@ -201,6 +228,7 @@ def test_threshold_profile_document_rejects_separate_provenance_json(
                     "source_section": "5.3 Threshold table",
                     "effective_date": "2026-12-01",
                     "approved_by": "Chief Bridge Engineer",
+                    "scope": "S01-S08",
                 },
             }
         ),
@@ -241,6 +269,7 @@ def test_threshold_profile_document_supports_sensor_specific_overrides(
                     "source_section": "5.3 Threshold table",
                     "effective_date": "2026-12-01",
                     "approved_by": "Chief Bridge Engineer",
+                    "scope": "S01-S08",
                 },
             }
         ),
@@ -278,7 +307,7 @@ def test_engine_prefers_sensor_specific_thresholds_over_type_profile() -> None:
                 "sensor_id": "S07",
                 "name": "Other cable acceleration",
                 "type": "acceleration",
-                "value": 1.0,
+                "value": 0.5,
                 "timestamp": 1_700_000_000.0,
             },
         ]
@@ -287,6 +316,29 @@ def test_engine_prefers_sensor_specific_thresholds_over_type_profile() -> None:
     alerts = engine.check_thresholds(batch)
 
     assert [(alert.sensor_id, alert.level) for alert in alerts] == [("S04", "yellow")]
+
+
+def test_sensor_specific_thresholds_do_not_apply_to_a_different_sensor_type() -> None:
+    engine = MonitoringEngine(
+        sensor_thresholds={
+            "S01": {"yellow": 960.0, "orange": 1200.0, "red": 1440.0}
+        }
+    )
+    batch = SensorBatch(
+        records=[
+            {
+                "sensor_id": "S01",
+                "name": "Mislabeled acceleration channel",
+                "type": "acceleration",
+                "value": 1.0,
+                "timestamp": 1_700_000_000.0,
+            }
+        ]
+    )
+
+    alerts = engine.check_thresholds(batch)
+
+    assert [(alert.sensor_id, alert.level) for alert in alerts] == [("S01", "red")]
 
 
 def test_engine_round_trip_preserves_sensor_specific_thresholds() -> None:
@@ -300,7 +352,34 @@ def test_engine_round_trip_preserves_sensor_specific_thresholds() -> None:
     restored.restore_state(engine.export_state())
 
     assert restored.sensor_thresholds == engine.sensor_thresholds
+    assert restored.sensor_threshold_types == engine.sensor_threshold_types
     assert restored.thresholds_for("S04", "acceleration")["red"] == 30.0
+
+
+def test_engine_round_trip_preserves_threshold_provenance() -> None:
+    provenance = ThresholdProvenance.from_dict(
+        {
+            "status": "authoritative",
+            "profile_version": "bridge-srs-2026.1",
+            "source_document": "Bridge Structural Monitoring SRS",
+            "source_version": "2026.1",
+            "source_section": "5.3 Threshold table",
+            "effective_date": "2026-12-01",
+            "approved_by": "Chief Bridge Engineer",
+            "scope": "S01-S08",
+            "units": dict(THRESHOLD_UNITS),
+        }
+    )
+    engine = MonitoringEngine(
+        thresholds=default_threshold_profile_document().thresholds,
+        sensor_thresholds={},
+        threshold_provenance=provenance,
+    )
+    restored = MonitoringEngine()
+
+    restored.restore_state(engine.export_state())
+
+    assert restored.threshold_provenance == provenance
 
 
 def test_sensor_thresholds_are_wired_into_services_and_profile_api() -> None:
@@ -315,3 +394,34 @@ def test_sensor_thresholds_are_wired_into_services_and_profile_api() -> None:
         profile = client.get("/api/data/config/threshold-profile").json()
 
     assert profile["sensor_thresholds"] == overrides
+
+
+def test_runtime_type_threshold_update_disables_sensor_overrides() -> None:
+    config = AppConfig()
+    services = create_services(config=config)
+    services.live_stream_autostart = False
+    application = create_app(services, config=config)
+
+    with TestClient(application) as client:
+        response = client.post(
+            "/api/data/config/thresholds",
+            params={"strain_yellow": 1000.0},
+        )
+
+    assert response.status_code == 200
+    assert services.engine.sensor_thresholds == {}
+    assert services.engine.thresholds_for("S01", "strain")["yellow"] == 1000.0
+    assert services.engine.threshold_provenance.profile_version == (
+        "provisional-default-v1"
+    )
+
+
+def test_versioned_default_profile_file_matches_code_defaults() -> None:
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "config"
+        / "bridge-threshold-profile.json"
+    )
+    document = ThresholdProfileDocument.load(path)
+
+    assert document.to_dict() == default_threshold_profile_document().to_dict()

@@ -72,6 +72,10 @@ def test_rule_algorithm_acceptance_passes_versioned_gates() -> None:
     assert result["event_recall"] == 1.0
     assert result["sample_stats"]["readings"] == 69_120
     assert result["sample_stats"]["windows"] == 1_440
+    assert result["threshold_profile"]["provenance"]["profile_version"] == (
+        "code-derived-v1-pending-signoff"
+    )
+    assert result["threshold_profile"]["sensor_thresholds"]["S04"]["red"] == 4.41
 
 
 def test_acceptance_artifacts_include_reproduction_and_environment(
