@@ -17,6 +17,18 @@
 - 应变、位移、加速度、温度各自的黄/橙/红阈值及单位。
 - 阈值是否适用于所有同类型传感器，或需要按传感器进一步区分。
 
+## Remaining project-specific design basis
+
+The source catalogue is recorded, but the following bridge-specific values and sign-off are still required before an authoritative profile can be written:
+
+- `S01`/`S02`/`S06` strain: historical maximum strain `ε_hist` and design worst-case strain `ε_d` for each measurement; confirm whether red is `1.2 ε_d` and obtain sign-off.
+- `S05` main-span deflection: design deflection `d_d` (JTG 3362 uses `L/600` for a simply supported main span; the current visualization uses `L = 120 m`, but this must be confirmed). Then yellow=`0.8 d_d`, orange=`1.0 d_d`, red=`1.2 d_d`.
+- `S03` tower-top displacement: its own allowable/design displacement, which is not the same as main-span deflection.
+- `S04`/`S07` cable acceleration: SJG 148 gives 100 mg≈0.98 m/s² and 300 mg≈2.94 m/s² for cable vibration, but the three-level yellow/orange/red mapping and any red value need engineering confirmation.
+- `S08` deck temperature: design maximum/minimum/gradient temperature from JTG D60; orange=`1.2×` design; the red extrapolation and the >60 °C/<-20 °C paving rule need confirmation.
+- Confirm whether deck/main-beam vibration thresholds `0.315/0.50/0.80 m/s²` apply to any current sensor. The current `S04`/`S07` are cable accelerometers, not deck accelerometers.
+- Provide approver name, effective date, profile version, and confirm the final sensor-to-profile mapping.
+
 ## Comments
 
 - 2026-11-01: Audited the project plan and repository records. They describe the intended threshold policy and provisional defaults but contain no authoritative SRS table, bridge-design clause, signed engineering threshold sheet, version, or effective date. The ticket remains `needs-info`; replacing the numeric defaults would fabricate provenance and is intentionally not done.
