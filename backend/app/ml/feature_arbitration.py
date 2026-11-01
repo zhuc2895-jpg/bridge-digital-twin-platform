@@ -652,7 +652,10 @@ class FeatureArbitrationDetector(BaseDetector):
         candidate_positions = [
             index
             for index, result in enumerate(results)
-            if not result.anomalous
+            if (
+                not result.anomalous
+                or bool(result.details.get("uncertainty_gate"))
+            )
             and bool(self._triggered_models(result))
         ]
         decisions_by_index = self.arbitrator.observe_selected(

@@ -198,6 +198,7 @@ def _evaluate_recording(
     processor = SensorDataProcessor(engine, detectors)
     alerts: list[Any] = []
     processing_ms: list[float] = []
+    detection_inference_ms: list[float] = []
     for batch in _batch_rows(recording):
         started = time.perf_counter()
         result = processor.process(
@@ -208,6 +209,10 @@ def _evaluate_recording(
         )
         alerts.extend(result.rule_alerts)
         alerts.extend(result.ai_alerts)
+        for detection in result.detections:
+            elapsed = detection.details.get("inference_elapsed_ms")
+            if isinstance(elapsed, (int, float)):
+                detection_inference_ms.append(float(elapsed))
     sources = Counter(alert.source for alert in alerts)
     levels = Counter(alert.level for alert in alerts)
     sensors = Counter(alert.sensor_id for alert in alerts)
@@ -230,7 +235,9 @@ def _evaluate_recording(
             residual = spatial.get("standardized_residual")
             if isinstance(residual, (int, float)):
                 spatial_residuals.append(abs(float(residual)))
-        if details.get("level_reason") == "uncertainty gate caps severity at yellow":
+        if details.get(
+            "level_reason"
+        ) == "uncertainty gate caps alert level at yellow":
             gated_alerts += 1
         if details.get("spatial_action") == "capped_isolated_outlier":
             isolated_suppressions += 1
@@ -259,6 +266,7 @@ def _evaluate_recording(
         "isolated_suppressions": isolated_suppressions,
         "detector_failure_count": failure_count,
         "processing_ms_per_reading": processing_ms,
+        "detection_inference_ms": detection_inference_ms,
     }
 
 
@@ -294,12 +302,17 @@ def _summarize_counts(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _calibration_analysis(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
+def _calibration_analysis(
+    records: Sequence[dict[str, Any]],
+    *,
+    cognition_threshold: float = 0.35,
+    uncertainty_threshold: float = 0.45,
+) -> dict[str, Any]:
     bins = {
         "low_cognition": lambda item: item["min_cognition"] is not None
-        and item["min_cognition"] < 0.35,
+        and item["min_cognition"] < cognition_threshold,
         "high_uncertainty": lambda item: item["max_uncertainty"] is not None
-        and item["max_uncertainty"] >= 0.45,
+        and item["max_uncertainty"] >= uncertainty_threshold,
         "isolated_spatial": lambda item: item["spatial_status_counts"].get(
             "isolated_outlier", 0
         )
@@ -519,7 +532,11 @@ def evaluate_alert_pipeline(
     processing_p95 = percentile(processing_latencies, 0.95)
     detector_failures = sum(item["detector_failure_count"] for item in run_records)
     component_checks = _component_checks()
-    calibration = _calibration_analysis(run_records)
+    calibration = _calibration_analysis(
+        run_records,
+        cognition_threshold=config.cognition_threshold,
+        uncertainty_threshold=config.uncertainty_threshold,
+    )
     counts = _summarize_counts(run_records)
 
     baseline_metrics = None
@@ -798,7 +815,11 @@ def evaluate_enhanced(
         [_evidence_features(record) for record in evidence_records],
         dtype=float,
     )
-    feature_matrix = sequence_matrix
+    evidence_indices = (4, 5, 8, 9, 10)
+    feature_matrix = np.concatenate(
+        [sequence_matrix, evidence_matrix[:, evidence_indices]],
+        axis=1,
+    )
     labels = np.asarray([recording.damage_label for recording in recordings])
     cases = np.asarray([recording.vibration_case for recording in recordings])
 
@@ -871,7 +892,11 @@ def evaluate_enhanced(
         record["detector_failure_count"] for record in evidence_records
     )
     component_checks = _component_checks()
-    calibration = _calibration_analysis(evidence_records)
+    calibration = _calibration_analysis(
+        evidence_records,
+        cognition_threshold=config.cognition_threshold,
+        uncertainty_threshold=config.uncertainty_threshold,
+    )
     counts = _summarize_counts(evidence_records)
     baseline_metrics = None
     baseline_comparison: dict[str, Any] = {}
@@ -960,6 +985,12 @@ def evaluate_enhanced(
             ]
         )
     failed = [gate["name"] for gate in gates if not gate["passed"]]
+    memory_end = process_memory_bytes()
+    component_inference = [
+        value
+        for record in evidence_records
+        for value in record.get("detection_inference_ms", [])
+    ]
     return {
         "schema_version": 1,
         "benchmark_id": manifest["benchmark_id"],
@@ -977,7 +1008,15 @@ def evaluate_enhanced(
             "class_weight": "balanced",
             "sequence_features": sequence_matrix.shape[1],
             "evidence_features_reported": evidence_matrix.shape[1],
-            "evidence_feature_scope": "traceability and calibration analysis",
+            "evidence_feature_indices": list(evidence_indices),
+            "evidence_feature_names": [
+                "gated_alerts",
+                "isolated_suppressions",
+                "max_abs_spatial_residual",
+                "isolated_spatial_count",
+                "coherent_spatial_count",
+            ],
+            "evidence_feature_scope": "classifier evidence plus traceability",
         },
         "source_identity": {
             "dataset": manifest["normalized_csv"]["path"],
@@ -1010,10 +1049,20 @@ def evaluate_enhanced(
             "detector_failure_count": detector_failures,
             "total_runtime_seconds": time.perf_counter() - evaluate_started,
         },
+        "component_performance": {
+            "detector_inference_ms_p95": percentile(component_inference, 0.95),
+            "detector_failure_count": detector_failures,
+            "compensation_fallback_count": component_checks["compensation"][
+                "fallback_count"
+            ],
+            "gated_alert_count": counts["gated_alerts"],
+            "isolated_suppression_count": counts["isolated_suppressions"],
+            "memory_change_bytes": memory_end - memory_start,
+        },
         "memory": {
             "start_bytes": memory_start,
-            "end_bytes": process_memory_bytes(),
-            "change_bytes": process_memory_bytes() - memory_start,
+            "end_bytes": memory_end,
+            "change_bytes": memory_end - memory_start,
         },
         "gates": gates,
         "exit_reason": (

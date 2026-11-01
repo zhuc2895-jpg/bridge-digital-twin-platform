@@ -10,6 +10,7 @@ from app.ml.contracts import BaseDetector, BaselineStatus, DetectionResult
 from app.ml.feature_arbitration import (
     ArbitrationDecision,
     FeatureArbitrationDetector,
+    FeatureArbitrator,
 )
 from app.ml.gan_ae import GanAEDetector
 from app.ml.registry import DetectorManager, DetectorRegistry
@@ -338,3 +339,31 @@ def test_detector_manager_snapshot_isolates_baseline_state() -> None:
     restored = snapshot.registry.get("model0")
     result = restored.detect_one(reading())
     assert result.anomalous is True
+
+
+def test_gated_anomalous_result_enters_feature_arbitration() -> None:
+    class RecordingArbitrator(FeatureArbitrator):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls: list[list[int]] = []
+
+        def observe_selected(self, readings, evaluation_indices):
+            self.calls.append(list(evaluation_indices))
+            return {}
+
+    arbitrator = RecordingArbitrator()
+    inner = ConfiguredDetector(
+        "model0",
+        "ai_dual_confirm",
+        anomalous=True,
+        details={
+            "uncertainty_gate": True,
+            "triggered_models": ["model0"],
+            "votes": {"model0": True},
+        },
+    )
+    detector = FeatureArbitrationDetector(inner, arbitrator=arbitrator)
+
+    detector.detect_batch([reading()])
+
+    assert arbitrator.calls == [[0]]

@@ -283,7 +283,9 @@ class MajorityVotePolicy:
         if tally.confirmed:
             confidence = max(vote.confidence for vote in tally.votes if vote.vote)
             score = max(vote.score for vote in tally.votes if vote.vote)
-            details["level_reason"] = "uncertainty gate caps severity at yellow"
+            details["level_reason"] = (
+                "uncertainty gate caps alert level at yellow"
+            )
             return DetectionResult(
                 sensor_id=sensor_id,
                 name=str(reading.get("name", sensor_id)),

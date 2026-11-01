@@ -246,6 +246,10 @@ class ModalInversionModel:
             "max_modes": self.max_modes,
         }
 
+    @property
+    def primary_direction(self) -> str:
+        return self.dataset.directions[0]
+
     def select_modes(self) -> ModeSelection:
         ordered = sorted(
             self.dataset.modes,

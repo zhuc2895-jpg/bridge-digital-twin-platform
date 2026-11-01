@@ -218,7 +218,7 @@ async def invert_full_field_deformation(
                 status_code=400,
                 detail="No sensor snapshot exists at the requested timestamp",
             )
-        primary_direction = services.modal_model.dataset.directions[0]
+        primary_direction = services.modal_model.primary_direction
         measurements = {
             sensor_id: {primary_direction: float(reading["value"])}
             for sensor_id, reading in snapshot.items()
