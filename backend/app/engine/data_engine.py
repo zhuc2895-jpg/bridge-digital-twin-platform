@@ -555,7 +555,7 @@ class MonitoringEngine:
             ) - 1
             if index >= 0:
                 consider(readings[index])
-        for sensor_id, future_readings in list(self._future_readings.items()):
+        for future_readings in self._future_readings.values():
             index = bisect.bisect_right(
                 future_readings,
                 cutoff,
@@ -563,14 +563,7 @@ class MonitoringEngine:
             ) - 1
             if index < 0:
                 continue
-            candidate = future_readings[index]
-            current = self._latest_time_valid.get(sensor_id)
-            if current is None or candidate.timestamp >= current.timestamp:
-                self._latest_time_valid[sensor_id] = candidate
-            consider(candidate)
-            del future_readings[: index + 1]
-            if not future_readings:
-                del self._future_readings[sensor_id]
+            consider(future_readings[index])
         return {
             sensor_id: self._reading_to_dict(reading)
             for sensor_id, reading in candidates.items()

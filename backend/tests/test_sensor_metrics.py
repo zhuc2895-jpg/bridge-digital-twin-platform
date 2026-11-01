@@ -104,6 +104,23 @@ def test_future_reading_becomes_time_valid_as_reference_advances():
     assert engine.get_latest_time_valid(reference + 1.0)["S01"]["value"] == 600.0
 
 
+def test_time_valid_query_stays_correct_after_reference_moves_backward():
+    engine = MonitoringEngine()
+    engine._max_full_history = 1
+    reference = time.time()
+    _ingest(
+        engine,
+        [reading(sensor_id="S01", value=100.0, timestamp=reference - 20.0)],
+    )
+    _ingest(
+        engine,
+        [reading(sensor_id="S01", value=600.0, timestamp=reference + 61.0)],
+    )
+
+    assert engine.get_latest_time_valid(reference + 2.0)["S01"]["value"] == 600.0
+    assert engine.get_latest_time_valid(reference)["S01"]["value"] == 100.0
+
+
 def test_period_reading_count_includes_all_paths_and_inclusive_bounds():
     engine = MonitoringEngine()
     base = 1_000_000.0
