@@ -12,6 +12,7 @@ from typing import Any
 
 from app.persistence import DEFAULT_CHECKPOINT_PATH
 from app.threshold_provenance import (
+    ThresholdProfileDocument,
     ThresholdProvenance,
     provisional_threshold_provenance,
 )
@@ -177,13 +178,40 @@ class AppConfig:
     def from_env(cls, environ: Mapping[str, str] | None = None) -> AppConfig:
         """Build configuration from process environment values."""
         source = os.environ if environ is None else environ
-        thresholds = default_thresholds()
-        for sensor_type in _SENSOR_TYPES:
-            for level in _ALERT_LEVELS:
-                variable = f"BRIDGE_{sensor_type.upper()}_{level.upper()}"
-                raw = source.get(variable)
-                if raw is not None:
-                    thresholds[sensor_type][level] = _finite_float(raw, variable)
+        profile_path = source.get("BRIDGE_THRESHOLD_PROFILE_PATH")
+        if profile_path is not None and profile_path.strip():
+            conflicting_variables = [
+                f"BRIDGE_{sensor_type.upper()}_{level.upper()}"
+                for sensor_type in _SENSOR_TYPES
+                for level in _ALERT_LEVELS
+                if source.get(
+                    f"BRIDGE_{sensor_type.upper()}_{level.upper()}"
+                )
+                is not None
+            ]
+            if conflicting_variables:
+                raise ValueError(
+                    "BRIDGE_THRESHOLD_PROFILE_PATH cannot be combined with "
+                    "individual threshold overrides: "
+                    + ", ".join(conflicting_variables)
+                )
+            profile = ThresholdProfileDocument.load(profile_path)
+            thresholds = {
+                sensor_type: dict(levels)
+                for sensor_type, levels in profile.thresholds.items()
+            }
+            provenance = profile.provenance
+        else:
+            thresholds = default_thresholds()
+            for sensor_type in _SENSOR_TYPES:
+                for level in _ALERT_LEVELS:
+                    variable = f"BRIDGE_{sensor_type.upper()}_{level.upper()}"
+                    raw = source.get(variable)
+                    if raw is not None:
+                        thresholds[sensor_type][level] = _finite_float(raw, variable)
+            provenance = _parse_threshold_provenance(
+                source.get("BRIDGE_THRESHOLD_PROVENANCE_JSON")
+            )
 
         origins_raw = source.get("BRIDGE_CORS_ORIGINS")
         origins = (
@@ -211,9 +239,7 @@ class AppConfig:
                 "BRIDGE_LIVE_INTERVAL_SECONDS",
             ),
             thresholds=thresholds,
-            threshold_provenance=_parse_threshold_provenance(
-                source.get("BRIDGE_THRESHOLD_PROVENANCE_JSON")
-            ),
+            threshold_provenance=provenance,
             ai_confidence_threshold=_finite_float(
                 source.get("BRIDGE_AI_CONFIDENCE_THRESHOLD", "0.7"),
                 "BRIDGE_AI_CONFIDENCE_THRESHOLD",

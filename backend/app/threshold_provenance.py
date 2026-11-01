@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import math
 from dataclasses import dataclass, field
 from datetime import date
+from pathlib import Path
 from typing import Any, Mapping
 
 THRESHOLD_UNITS = {
@@ -127,6 +130,85 @@ class ThresholdProvenance:
 
 def provisional_threshold_provenance() -> ThresholdProvenance:
     return ThresholdProvenance()
+
+
+@dataclass(frozen=True, slots=True)
+class ThresholdProfileDocument:
+    """One file containing both physical values and their provenance."""
+
+    thresholds: dict[str, dict[str, float]]
+    provenance: ThresholdProvenance
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "thresholds",
+            _validate_profile_thresholds(self.thresholds),
+        )
+        if not isinstance(self.provenance, ThresholdProvenance):
+            raise ValueError("threshold profile provenance is invalid")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "thresholds": {
+                sensor_type: dict(levels)
+                for sensor_type, levels in self.thresholds.items()
+            },
+            "provenance": self.provenance.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> ThresholdProfileDocument:
+        if not isinstance(value, Mapping):
+            raise ValueError("threshold profile document must be an object")
+        thresholds = value.get("thresholds")
+        provenance = value.get("provenance")
+        if not isinstance(thresholds, Mapping):
+            raise ValueError("threshold profile document is missing thresholds")
+        if not isinstance(provenance, Mapping):
+            raise ValueError("threshold profile document is missing provenance")
+        return cls(
+            thresholds=_validate_profile_thresholds(thresholds),
+            provenance=ThresholdProvenance.from_dict(provenance),
+        )
+
+    @classmethod
+    def load(cls, path: str | Path) -> ThresholdProfileDocument:
+        try:
+            payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"cannot load threshold profile document: {exc}") from exc
+        if not isinstance(payload, Mapping):
+            raise ValueError("threshold profile document must be an object")
+        return cls.from_dict(payload)
+
+
+def _validate_profile_thresholds(
+    value: Mapping[str, Any],
+) -> dict[str, dict[str, float]]:
+    if not isinstance(value, Mapping):
+        raise ValueError("threshold profile values must be a mapping")
+    result: dict[str, dict[str, float]] = {}
+    for sensor_type, levels in value.items():
+        if str(sensor_type) not in THRESHOLD_UNITS or not isinstance(levels, Mapping):
+            raise ValueError("threshold profile has an invalid sensor type")
+        profile: dict[str, float] = {}
+        for level in ("yellow", "orange", "red"):
+            try:
+                threshold = float(levels[level])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"threshold profile is missing {sensor_type}.{level}"
+                ) from exc
+            if not math.isfinite(threshold) or threshold <= 0:
+                raise ValueError("threshold profile values must be positive and finite")
+            profile[level] = threshold
+        if not profile["yellow"] < profile["orange"] < profile["red"]:
+            raise ValueError("threshold profile levels must be strictly ordered")
+        result[str(sensor_type)] = profile
+    if set(result) != set(THRESHOLD_UNITS):
+        raise ValueError("threshold profile must cover all sensor types")
+    return result
 
 
 def _optional_text(value: object) -> str | None:
