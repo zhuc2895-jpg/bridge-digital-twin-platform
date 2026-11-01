@@ -213,5 +213,6 @@ async def get_threshold_profile(services: AppServices = Depends(get_services)):
     """Return current threshold values with provenance and unit metadata."""
     return {
         "thresholds": services.engine.thresholds,
+        "sensor_thresholds": services.engine.sensor_thresholds,
         "provenance": services.config.threshold_provenance.to_dict(),
     }

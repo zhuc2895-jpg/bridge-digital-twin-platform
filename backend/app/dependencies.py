@@ -112,7 +112,10 @@ def create_services(
 ) -> AppServices:
     """Create a fresh, isolated set of services for an application instance."""
     resolved_config = config or AppConfig.from_env()
-    engine = MonitoringEngine(thresholds=resolved_config.thresholds)
+    engine = MonitoringEngine(
+        thresholds=resolved_config.thresholds,
+        sensor_thresholds=resolved_config.sensor_thresholds,
+    )
     persistence = None
     persistence_requested = (
         checkpoint_store is not None

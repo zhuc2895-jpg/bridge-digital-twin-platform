@@ -15,6 +15,7 @@ from app.threshold_provenance import (
     ThresholdProfileDocument,
     ThresholdProvenance,
     provisional_threshold_provenance,
+    validate_sensor_thresholds,
 )
 
 _LOG_LEVELS = {
@@ -60,6 +61,9 @@ class AppConfig:
     threshold_provenance: ThresholdProvenance = field(
         default_factory=provisional_threshold_provenance
     )
+    sensor_thresholds: Mapping[str, Mapping[str, float]] = field(
+        default_factory=dict
+    )
     ai_confidence_threshold: float = 0.7
     ai_min_votes: int = 2
     gan_submodels: int = 8
@@ -94,6 +98,7 @@ class AppConfig:
         origins = _validate_cors_origins(self.cors_origins)
         thresholds = _validate_thresholds(self.thresholds)
         provenance = _validate_threshold_provenance(self.threshold_provenance)
+        sensor_thresholds = validate_sensor_thresholds(self.sensor_thresholds)
         confidence = _finite_float(
             self.ai_confidence_threshold,
             "ai_confidence_threshold",
@@ -153,6 +158,7 @@ class AppConfig:
         object.__setattr__(self, "cors_origins", origins)
         object.__setattr__(self, "thresholds", thresholds)
         object.__setattr__(self, "threshold_provenance", provenance)
+        object.__setattr__(self, "sensor_thresholds", sensor_thresholds)
         object.__setattr__(self, "ai_confidence_threshold", confidence)
         object.__setattr__(self, "ai_min_votes", int(self.ai_min_votes))
         object.__setattr__(self, "gan_submodels", int(self.gan_submodels))
@@ -206,6 +212,7 @@ class AppConfig:
                 for sensor_type, levels in profile.thresholds.items()
             }
             provenance = profile.provenance
+            sensor_thresholds = profile.sensor_thresholds
         else:
             thresholds = default_thresholds()
             for sensor_type in _SENSOR_TYPES:
@@ -217,6 +224,7 @@ class AppConfig:
             provenance = _parse_threshold_provenance(
                 source.get("BRIDGE_THRESHOLD_PROVENANCE_JSON")
             )
+            sensor_thresholds = {}
 
         origins_raw = source.get("BRIDGE_CORS_ORIGINS")
         origins = (
@@ -245,6 +253,7 @@ class AppConfig:
             ),
             thresholds=thresholds,
             threshold_provenance=provenance,
+            sensor_thresholds=sensor_thresholds,
             ai_confidence_threshold=_finite_float(
                 source.get("BRIDGE_AI_CONFIDENCE_THRESHOLD", "0.7"),
                 "BRIDGE_AI_CONFIDENCE_THRESHOLD",

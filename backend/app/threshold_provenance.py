@@ -138,6 +138,7 @@ class ThresholdProfileDocument:
 
     thresholds: dict[str, dict[str, float]]
     provenance: ThresholdProvenance
+    sensor_thresholds: dict[str, dict[str, float]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -147,6 +148,11 @@ class ThresholdProfileDocument:
         )
         if not isinstance(self.provenance, ThresholdProvenance):
             raise ValueError("threshold profile provenance is invalid")
+        object.__setattr__(
+            self,
+            "sensor_thresholds",
+            validate_sensor_thresholds(self.sensor_thresholds),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -155,6 +161,10 @@ class ThresholdProfileDocument:
                 for sensor_type, levels in self.thresholds.items()
             },
             "provenance": self.provenance.to_dict(),
+            "sensor_thresholds": {
+                sensor_id: dict(levels)
+                for sensor_id, levels in self.sensor_thresholds.items()
+            },
         }
 
     @classmethod
@@ -163,13 +173,17 @@ class ThresholdProfileDocument:
             raise ValueError("threshold profile document must be an object")
         thresholds = value.get("thresholds")
         provenance = value.get("provenance")
+        sensor_thresholds = value.get("sensor_thresholds", {})
         if not isinstance(thresholds, Mapping):
             raise ValueError("threshold profile document is missing thresholds")
         if not isinstance(provenance, Mapping):
             raise ValueError("threshold profile document is missing provenance")
+        if not isinstance(sensor_thresholds, Mapping):
+            raise ValueError("sensor_thresholds must be an object")
         return cls(
             thresholds=_validate_profile_thresholds(thresholds),
             provenance=ThresholdProvenance.from_dict(provenance),
+            sensor_thresholds=validate_sensor_thresholds(sensor_thresholds),
         )
 
     @classmethod
@@ -208,6 +222,35 @@ def _validate_profile_thresholds(
         result[str(sensor_type)] = profile
     if set(result) != set(THRESHOLD_UNITS):
         raise ValueError("threshold profile must cover all sensor types")
+    return result
+
+
+def validate_sensor_thresholds(
+    value: Mapping[str, Any] | None,
+) -> dict[str, dict[str, float]]:
+    if not value:
+        return {}
+    if not isinstance(value, Mapping):
+        raise ValueError("sensor_thresholds must be a mapping")
+    result: dict[str, dict[str, float]] = {}
+    for raw_sensor_id, levels in value.items():
+        sensor_id = str(raw_sensor_id).strip()
+        if not sensor_id or not isinstance(levels, Mapping):
+            raise ValueError("sensor_thresholds has an invalid sensor entry")
+        profile: dict[str, float] = {}
+        for level in ("yellow", "orange", "red"):
+            try:
+                threshold = float(levels[level])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"sensor threshold is missing {sensor_id}.{level}"
+                ) from exc
+            if not math.isfinite(threshold) or threshold <= 0:
+                raise ValueError("sensor thresholds must be positive and finite")
+            profile[level] = threshold
+        if not profile["yellow"] < profile["orange"] < profile["red"]:
+            raise ValueError("sensor threshold levels must be strictly ordered")
+        result[sensor_id] = profile
     return result
 
 

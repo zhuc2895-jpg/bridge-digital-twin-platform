@@ -26,6 +26,7 @@ from app.sensor_metrics import (
     is_online,
 )
 from app.sensor_types import SensorType
+from app.threshold_provenance import validate_sensor_thresholds
 
 # Keep enough timestamps to answer the maximum supported 168-hour report.
 _READING_TIMESTAMP_RETENTION_SECONDS = (168 + 1) * 3600.0
@@ -77,6 +78,7 @@ class MonitoringEngine:
         window_size: int = 500,
         top_k: int = 10,
         thresholds: Mapping[str, Mapping[str, float]] | None = None,
+        sensor_thresholds: Mapping[str, Mapping[str, float]] | None = None,
     ):
         self.window_size = window_size
         self.top_k = top_k
@@ -123,6 +125,9 @@ class MonitoringEngine:
         }
         if thresholds is not None:
             self.thresholds = self._decode_thresholds(thresholds)
+        self.sensor_thresholds: Dict[str, Dict[str, float]] = (
+            validate_sensor_thresholds(sensor_thresholds)
+        )
 
     def ingest(self, batch: SensorBatch):
         """摄入一批传感器数据，并应用该批次的实时可见性策略。"""
@@ -209,7 +214,10 @@ class MonitoringEngine:
                 self._max_ts = ts
 
             # 维护 Top-K 峰值
-            heapq.heappush(self._top_spikes, (-reading.value, reading.sensor_id, reading.timestamp))
+            heapq.heappush(
+                self._top_spikes,
+                (-reading.value, reading.sensor_id, reading.timestamp),
+            )
             if len(self._top_spikes) > self.top_k:
                 heapq.heappop(self._top_spikes)
 
@@ -240,7 +248,7 @@ class MonitoringEngine:
         for item in batch.records:
             sensor_type = item.get("type", "unknown")
             value = item["value"]
-            thresholds = self.thresholds.get(sensor_type, {})
+            thresholds = self.thresholds_for(item["sensor_id"], sensor_type)
             level = next(
                 (
                     candidate
@@ -274,10 +282,24 @@ class MonitoringEngine:
 
     def is_normal_reading(self, item: Mapping[str, Any]) -> bool:
         """Return whether a reading is below its type's yellow threshold."""
-        thresholds = self.thresholds.get(item.get("type", "unknown"))
+        thresholds = self.thresholds_for(
+            item.get("sensor_id", ""),
+            item.get("type", "unknown"),
+        )
         if not thresholds:
             return True
         return abs(float(item["value"])) < thresholds["yellow"]
+
+    def thresholds_for(
+        self,
+        sensor_id: object,
+        sensor_type: object,
+    ) -> Mapping[str, float]:
+        """Return sensor-specific thresholds when configured, else type defaults."""
+        sensor_specific = self.sensor_thresholds.get(str(sensor_id))
+        if sensor_specific is not None:
+            return sensor_specific
+        return self.thresholds.get(str(sensor_type), {})
 
     def submit_alert(
         self,
@@ -401,7 +423,11 @@ class MonitoringEngine:
                 )
             if any(
                 lower >= higher
-                for lower, higher in zip(ordered_values, ordered_values[1:])
+                for lower, higher in zip(
+                    ordered_values,
+                    ordered_values[1:],
+                    strict=False,
+                )
             ):
                 raise ValueError(
                     f"{sensor_type} thresholds must be strictly ordered "
@@ -633,7 +659,13 @@ class MonitoringEngine:
             "latest": latest.value,
         }
 
-    def get_history_range(self, sensor_id: str, start_ts: float, end_ts: float, max_points: int = 500) -> List[dict]:
+    def get_history_range(
+        self,
+        sensor_id: str,
+        start_ts: float,
+        end_ts: float,
+        max_points: int = 500,
+    ) -> List[dict]:
         """获取指定时间范围的历史数据，支持降采样"""
         if sensor_id not in self._full_history:
             return []
@@ -734,7 +766,9 @@ class MonitoringEngine:
             "sensor_count": len(self._latest),
             "online_sensor_count": self.get_online_sensor_count(reference_time),
             "retained_alerts": len(self._alerts),
-            "throughput": round(self._total_readings / elapsed, 1) if elapsed > 0 else 0,
+            "throughput": (
+                round(self._total_readings / elapsed, 1) if elapsed > 0 else 0
+            ),
             "uptime_seconds": round(elapsed, 1)
         }
 
@@ -808,6 +842,10 @@ class MonitoringEngine:
             "thresholds": {
                 sensor_type: dict(levels)
                 for sensor_type, levels in self.thresholds.items()
+            },
+            "sensor_thresholds": {
+                sensor_id: dict(levels)
+                for sensor_id, levels in self.sensor_thresholds.items()
             },
         }
 
@@ -886,6 +924,9 @@ class MonitoringEngine:
 
         cooldowns, cooldown_events = self._decode_cooldowns(state)
         thresholds = self._decode_thresholds(state.get("thresholds"))
+        sensor_thresholds = validate_sensor_thresholds(
+            state.get("sensor_thresholds", {})
+        )
         top_spikes = self._decode_top_spikes(state.get("top_spikes", []))
         pending_external_versions = state.get("pending_external_versions", {})
         if not isinstance(pending_external_versions, Mapping):
@@ -929,6 +970,7 @@ class MonitoringEngine:
         self._alert_cooldown_events = deque(cooldown_events)
         self._alert_cooldown_seconds = cooldown_seconds
         self.thresholds = thresholds
+        self.sensor_thresholds = sensor_thresholds
 
     def _decode_reading_list(self, value: Any, field: str) -> List[SensorReading]:
         if value is None:
@@ -937,7 +979,11 @@ class MonitoringEngine:
             raise ValueError(f"{field} must be a list")
         return [self._decode_reading(item, field) for item in value]
 
-    def _decode_reading_map(self, value: Any, field: str) -> Dict[str, List[SensorReading]]:
+    def _decode_reading_map(
+        self,
+        value: Any,
+        field: str,
+    ) -> Dict[str, List[SensorReading]]:
         if value is None:
             return {}
         if not isinstance(value, Mapping):

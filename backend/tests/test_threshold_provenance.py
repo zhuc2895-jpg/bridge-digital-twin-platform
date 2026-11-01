@@ -6,7 +6,12 @@ import json
 
 import pytest
 from app.config import AppConfig
+from app.dependencies import create_services
+from app.engine.data_engine import MonitoringEngine
+from app.main import create_app
+from app.sensor_batch import SensorBatch
 from app.threshold_provenance import THRESHOLD_UNITS, ThresholdProvenance
+from fastapi.testclient import TestClient
 
 
 def test_defaults_are_explicitly_provisional_and_not_authoritative() -> None:
@@ -209,3 +214,104 @@ def test_threshold_profile_document_rejects_separate_provenance_json(
                 "BRIDGE_THRESHOLD_PROVENANCE_JSON": "{}",
             }
         )
+
+
+def test_threshold_profile_document_supports_sensor_specific_overrides(
+    tmp_path,
+) -> None:
+    profile_path = tmp_path / "authoritative-thresholds.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "thresholds": {
+                    "strain": {"yellow": 310, "orange": 470, "red": 640},
+                    "displacement": {"yellow": 31, "orange": 51, "red": 81},
+                    "acceleration": {"yellow": 2.1, "orange": 3.6, "red": 5.1},
+                    "temperature": {"yellow": 46, "orange": 56, "red": 66},
+                },
+                "sensor_thresholds": {
+                    "S04": {"yellow": 1.0, "orange": 2.0, "red": 3.0},
+                    "S05": {"yellow": 160.0, "orange": 200.0, "red": 240.0},
+                },
+                "provenance": {
+                    "status": "authoritative",
+                    "profile_version": "bridge-srs-2026.1",
+                    "source_document": "Bridge Structural Monitoring SRS",
+                    "source_version": "2026.1",
+                    "source_section": "5.3 Threshold table",
+                    "effective_date": "2026-12-01",
+                    "approved_by": "Chief Bridge Engineer",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = AppConfig.from_env(
+        {"BRIDGE_THRESHOLD_PROFILE_PATH": str(profile_path)}
+    )
+
+    assert config.sensor_thresholds["S04"] == {
+        "yellow": 1.0,
+        "orange": 2.0,
+        "red": 3.0,
+    }
+    assert config.sensor_thresholds["S05"]["red"] == 240.0
+
+
+def test_engine_prefers_sensor_specific_thresholds_over_type_profile() -> None:
+    engine = MonitoringEngine(
+        sensor_thresholds={
+            "S04": {"yellow": 10.0, "orange": 20.0, "red": 30.0}
+        }
+    )
+    batch = SensorBatch(
+        records=[
+            {
+                "sensor_id": "S04",
+                "name": "Cable acceleration",
+                "type": "acceleration",
+                "value": 15.0,
+                "timestamp": 1_700_000_000.0,
+            },
+            {
+                "sensor_id": "S07",
+                "name": "Other cable acceleration",
+                "type": "acceleration",
+                "value": 1.0,
+                "timestamp": 1_700_000_000.0,
+            },
+        ]
+    )
+
+    alerts = engine.check_thresholds(batch)
+
+    assert [(alert.sensor_id, alert.level) for alert in alerts] == [("S04", "yellow")]
+
+
+def test_engine_round_trip_preserves_sensor_specific_thresholds() -> None:
+    engine = MonitoringEngine(
+        sensor_thresholds={
+            "S04": {"yellow": 10.0, "orange": 20.0, "red": 30.0}
+        }
+    )
+    restored = MonitoringEngine()
+
+    restored.restore_state(engine.export_state())
+
+    assert restored.sensor_thresholds == engine.sensor_thresholds
+    assert restored.thresholds_for("S04", "acceleration")["red"] == 30.0
+
+
+def test_sensor_thresholds_are_wired_into_services_and_profile_api() -> None:
+    overrides = {"S04": {"yellow": 10.0, "orange": 20.0, "red": 30.0}}
+    config = AppConfig(sensor_thresholds=overrides)
+    services = create_services(config=config)
+    services.live_stream_autostart = False
+    application = create_app(services, config=config)
+
+    assert services.engine.sensor_thresholds == overrides
+    with TestClient(application) as client:
+        profile = client.get("/api/data/config/threshold-profile").json()
+
+    assert profile["sensor_thresholds"] == overrides
