@@ -201,8 +201,8 @@
     "baseline_artifact": "benchmarks/vba/baseline-v1.json",
     "enhanced_artifact": "benchmarks/vba/enhanced-v1.json",
     "fusion_model": "standardized logistic regression on resampled multichannel sequences",
-    "fusion_decision_threshold": 0.7,
-    "fusion_regularization_c": 5.0,
+    "fusion_decision_threshold": 0.5,
+    "fusion_regularization_c": 10.0,
     "supervision": "out-of-fold recording damage labels",
     "evidence_reporting": [
       "cognition",

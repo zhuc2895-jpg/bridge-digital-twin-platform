@@ -366,6 +366,7 @@ def _component_presence(
 
 
 def _component_checks() -> dict[str, Any]:
+    compensation_started = time.perf_counter()
     cases = synthetic_calibration_cases(500, random_state=7)
     train = cases[:450]
     test = [case for case in cases[450:] if case.source == "measurement"]
@@ -395,6 +396,8 @@ def _component_checks() -> dict[str, Any]:
         )
         reliability_bins[bucket].append(abs(estimate.prediction - case.target))
 
+    compensation_elapsed_ms = (time.perf_counter() - compensation_started) * 1000
+    modal_started = time.perf_counter()
     modal_model = ModalInversionModel(default_modal_dataset(), target_energy=0.85)
     selected = modal_model.select_modes().selected_modes
     coordinates = {
@@ -413,6 +416,7 @@ def _component_checks() -> dict[str, Any]:
         for sensor_id in modal_model.dataset.sensors
     }
     modal_result = modal_model.invert(measurements)
+    modal_elapsed_ms = (time.perf_counter() - modal_started) * 1000
     compensation_improved = statistics.mean(compensated_errors) < statistics.mean(
         base_errors
     )
@@ -423,6 +427,7 @@ def _component_checks() -> dict[str, Any]:
             "compensated_mae": statistics.mean(compensated_errors),
             "improved": compensation_improved,
             "fallback_count": fallback_count,
+            "elapsed_ms": compensation_elapsed_ms,
             "reliability_bins": {
                 name: {
                     "samples": len(values),
@@ -436,6 +441,7 @@ def _component_checks() -> dict[str, Any]:
             "rrmse": modal_result.rrmse,
             "available": modal_result.available,
             "reliability": modal_result.reliability,
+            "elapsed_ms": modal_elapsed_ms,
         },
         "passed": bool(
             compensation_improved
@@ -828,7 +834,7 @@ def evaluate_enhanced(
         [_evidence_features(record) for record in evidence_records],
         dtype=float,
     )
-    evidence_indices = (4, 5, 8, 9, 10)
+    evidence_indices = tuple(range(evidence_matrix.shape[1]))
     feature_matrix = np.concatenate(
         [sequence_matrix, evidence_matrix[:, evidence_indices]],
         axis=1,
@@ -855,7 +861,7 @@ def evaluate_enhanced(
         model = make_pipeline(
             StandardScaler(),
             LogisticRegression(
-                C=5.0,
+                C=10.0,
                 max_iter=5000,
                 class_weight="balanced",
                 random_state=42,
@@ -866,7 +872,7 @@ def evaluate_enhanced(
             feature_matrix[test_indices]
         )[:, 1]
         fused_predictions[test_indices] = (
-            fused_probabilities[test_indices] >= 0.7
+            fused_probabilities[test_indices] >= 0.5
         ).astype(int)
         fold_metrics.append(
             {
@@ -1016,18 +1022,25 @@ def evaluate_enhanced(
         "fusion_model": {
             "version": "vba-fusion-logistic-v1",
             "model": "StandardScaler + LogisticRegression",
-            "C": 5.0,
-            "decision_threshold": 0.7,
+            "C": 10.0,
+            "decision_threshold": 0.5,
             "class_weight": "balanced",
             "sequence_features": sequence_matrix.shape[1],
             "evidence_features_reported": evidence_matrix.shape[1],
             "evidence_feature_indices": list(evidence_indices),
             "evidence_feature_names": [
+                "alert_count",
+                "rule_alert_count",
+                "ai_dual_confirm_count",
+                "ai_feature_arbitration_count",
                 "gated_alerts",
                 "isolated_suppressions",
+                "min_cognition",
+                "max_uncertainty",
                 "max_abs_spatial_residual",
                 "isolated_spatial_count",
                 "coherent_spatial_count",
+                "processing_ms_p95",
             ],
             "evidence_feature_scope": "classifier evidence plus traceability",
         },
@@ -1063,11 +1076,22 @@ def evaluate_enhanced(
             "total_runtime_seconds": time.perf_counter() - evaluate_started,
         },
         "component_performance": {
-            "detector_inference_ms_p95": percentile(component_inference, 0.95),
+            "detector_inference_ms_p95": (
+                percentile(component_inference, 0.95)
+                if component_inference
+                else None
+            ),
             "detector_failure_count": detector_failures,
             "compensation_fallback_count": component_checks["compensation"][
                 "fallback_count"
             ],
+            "compensation_elapsed_ms": component_checks["compensation"][
+                "elapsed_ms"
+            ],
+            "modal_inversion_elapsed_ms": component_checks["modal_inversion"][
+                "elapsed_ms"
+            ],
+            "whole_chain_p95_ms": processing_p95,
             "gated_alert_count": counts["gated_alerts"],
             "isolated_suppression_count": counts["isolated_suppressions"],
             "memory_change_bytes": memory_end - memory_start,
