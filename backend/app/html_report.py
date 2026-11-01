@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import math
 import time
 from collections.abc import Mapping
 from html import escape
 from typing import TYPE_CHECKING, Any
+
+from app.sensor_metrics import finite_float, is_online, is_time_valid
 
 if TYPE_CHECKING:
     from app.dependencies import AppServices
@@ -46,23 +47,13 @@ def _escape(value: object) -> str:
     return escape(str(value), quote=True)
 
 
-def _finite_float(value: Any) -> float | None:
-    if value is None or isinstance(value, bool):
-        return None
-    try:
-        number = float(value)
-    except (OverflowError, TypeError, ValueError):
-        return None
-    return number if math.isfinite(number) else None
-
-
 def _format_measurement(value: object) -> str:
-    number = _finite_float(value)
+    number = finite_float(value)
     return "—" if number is None else f"{number:.2f}"
 
 
 def _format_timestamp(value: object) -> str:
-    timestamp = _finite_float(value)
+    timestamp = finite_float(value)
     if timestamp is None:
         return "—"
     try:
@@ -71,18 +62,31 @@ def _format_timestamp(value: object) -> str:
         return "—"
 
 
-def _sensor_status(reading: Mapping[str, Any], thresholds: Mapping[str, Any]) -> str:
+def _sensor_status(
+    reading: Mapping[str, Any] | None,
+    thresholds: Mapping[str, Any],
+) -> str | None:
+    if reading is None:
+        return None
     sensor_type = str(reading.get("type", ""))
-    value = _finite_float(reading.get("value"))
+    value = finite_float(reading.get("value"))
     sensor_thresholds = thresholds.get(sensor_type)
     if value is None or not isinstance(sensor_thresholds, Mapping):
         return "green"
     absolute_value = abs(value)
     for level in ("red", "orange", "yellow"):
-        threshold = _finite_float(sensor_thresholds.get(level))
+        threshold = finite_float(sensor_thresholds.get(level))
         if threshold is not None and absolute_value >= threshold:
             return level
     return "green"
+
+
+def _connection_label(timestamp: Any, reference_time: float) -> tuple[str, str, bool]:
+    if not is_time_valid(timestamp, reference_time):
+        return "离线（时间异常）", "#cf1322", False
+    if is_online(timestamp, reference_time):
+        return "在线", "#389e0d", True
+    return "离线", "#8c8c8c", True
 
 
 def _level_counts(alerts: list[dict]) -> dict[str, int]:
@@ -124,11 +128,13 @@ def _detector_summary(detector_stats: Mapping[str, Any]) -> str:
 
 def _render_sensor_rows(
     latest: Mapping[str, Mapping[str, Any]],
+    time_valid_latest: Mapping[str, Mapping[str, Any]],
     thresholds: Mapping[str, Any],
     alerts: list[dict],
+    reference_time: float,
 ) -> str:
     if not latest:
-        return '<tr class="empty-state"><td colspan="7">暂无传感器数据</td></tr>'
+        return '<tr class="empty-state"><td colspan="8">暂无传感器数据</td></tr>'
 
     alert_counts: dict[str, int] = {}
     for alert in alerts:
@@ -137,17 +143,36 @@ def _render_sensor_rows(
 
     rows: list[str] = []
     for sensor_id, reading in sorted(latest.items(), key=lambda item: str(item[0])):
-        status = _sensor_status(reading, thresholds)
+        physical_source = time_valid_latest.get(sensor_id)
+        status = _sensor_status(physical_source, thresholds)
+        connection_label, connection_color, latest_time_valid = _connection_label(
+            reading.get("timestamp"),
+            reference_time,
+        )
         sensor_type = str(reading.get("type", ""))
         type_label = SENSOR_TYPE_LABELS.get(sensor_type, _escape(sensor_type))
+        latest_note = ""
+        if not latest_time_valid:
+            latest_note = '<br><span class="muted">时间异常</span>'
+        if status is None or physical_source is None:
+            physical_cell = '<span class="muted">未知</span>'
+        else:
+            physical_cell = (
+                f'<span class="status" style="color:{STATUS_COLORS[status]}">'
+                f"{STATUS_LABELS[status]}</span>"
+                f'<br><span class="muted">'
+                f"{_format_measurement(physical_source.get('value'))} · "
+                f"{_format_timestamp(physical_source.get('timestamp'))}</span>"
+            )
         rows.append(
             f'<tr class="sensor-row" data-sensor-id="{_escape(sensor_id)}">'
             f"<td>{_escape(sensor_id)}</td>"
             f"<td>{_escape(reading.get('name', ''))}</td>"
             f"<td>{type_label}</td>"
-            f"<td>{_format_measurement(reading.get('value'))}</td>"
-            f'<td class="status" style="color:{STATUS_COLORS[status]}">'
-            f"{STATUS_LABELS[status]}</td>"
+            f"<td>{_format_measurement(reading.get('value'))}{latest_note}</td>"
+            f'<td class="status" style="color:{connection_color}">'
+            f"{connection_label}</td>"
+            f"<td>{physical_cell}</td>"
             f"<td>{alert_counts.get(str(sensor_id), 0)}</td>"
             f"<td>{_format_timestamp(reading.get('timestamp'))}</td>"
             "</tr>"
@@ -196,7 +221,9 @@ def render_monitoring_report(
         start_ts = end_ts - hours * 3600
         alerts = engine.get_alerts_range(start_ts, end_ts)
         latest = engine.get_latest() or {}
-        stats = engine.get_stats()
+        time_valid_latest = engine.get_latest_time_valid(end_ts)
+        period_reading_count = engine.get_period_reading_count(start_ts, end_ts)
+        stats = engine.get_stats(reference_time=end_ts)
         detector_stats = services.detectors.get_stats()
         thresholds = {
             sensor_type: dict(levels)
@@ -206,10 +233,16 @@ def render_monitoring_report(
 
     recent_alerts = alerts[:REPORT_ALERT_LIMIT]
     level_counts = _level_counts(alerts)
-    sensor_rows = _render_sensor_rows(latest, thresholds, alerts)
+    sensor_rows = _render_sensor_rows(
+        latest,
+        time_valid_latest,
+        thresholds,
+        alerts,
+        end_ts,
+    )
     alert_rows = _render_alert_rows(recent_alerts)
-    uptime_seconds = max(0.0, _finite_float(stats.get("uptime_seconds")) or 0.0)
-    throughput = max(0.0, _finite_float(stats.get("throughput")) or 0.0)
+    uptime_seconds = max(0.0, finite_float(stats.get("uptime_seconds")) or 0.0)
+    throughput = max(0.0, finite_float(stats.get("throughput")) or 0.0)
     period_start = _format_timestamp(start_ts)
     period_end = _format_timestamp(end_ts)
     generated_at_label = _format_timestamp(generated_at)
@@ -239,7 +272,7 @@ def render_monitoring_report(
         .section {{ margin-bottom: 28px; }}
         .section h2 {{ margin: 0 0 14px; padding-left: 10px; color: #0958d9;
                        border-left: 4px solid #1677ff; font-size: 18px; }}
-        .summary {{ display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+        .summary {{ display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
                     gap: 14px; }}
         .summary-card {{ padding: 16px 10px; border-radius: 8px; color: #ffffff;
                          text-align: center; }}
@@ -264,7 +297,7 @@ def render_monitoring_report(
             @page {{ size: A4; margin: 12mm; }}
             body {{ padding: 0; font-size: 11px; }}
             .no-print {{ display: none !important; }}
-            .summary {{ grid-template-columns: repeat(5, 1fr); }}
+            .summary {{ grid-template-columns: repeat(6, 1fr); }}
             .section {{ break-inside: avoid; }}
             thead {{ display: table-header-group; }}
             tr {{ break-inside: avoid; }}
@@ -292,12 +325,16 @@ def render_monitoring_report(
         <h2>一、监测概况</h2>
         <div class="summary">
             <div class="summary-card bg-blue">
-                <div class="num" id="online-sensors">{len(latest)}</div>
+                <div class="num" id="online-sensors">{int(stats.get("online_sensor_count", 0) or 0)}</div>
                 <div class="label">在线传感器</div>
             </div>
             <div class="summary-card bg-green">
                 <div class="num" id="total-readings">{int(stats.get("total_readings", 0) or 0)}</div>
                 <div class="label">累计读数</div>
+            </div>
+            <div class="summary-card bg-blue">
+                <div class="num" id="period-readings">{period_reading_count}</div>
+                <div class="label">时段读数</div>
             </div>
             <div class="summary-card bg-red">
                 <div class="num" id="red-alerts">{level_counts["red"]}</div>
@@ -320,7 +357,7 @@ def render_monitoring_report(
             <thead>
                 <tr>
                     <th>传感器 ID</th><th>名称</th><th>类型</th><th>最新读数</th>
-                    <th>状态</th><th>时段告警数</th><th>最新数据时间</th>
+                    <th>连接状态</th><th>物理状态</th><th>时段告警数</th><th>最新数据时间</th>
                 </tr>
             </thead>
             <tbody>{sensor_rows}</tbody>
@@ -346,6 +383,7 @@ def render_monitoring_report(
             <tbody>
                 <tr><td>系统运行时长</td><td>{uptime_seconds / 3600:.1f} 小时</td></tr>
                 <tr><td>数据吞吐量</td><td>{throughput:.1f} 条/秒</td></tr>
+                <tr><td>已知传感器总数</td><td>{int(stats.get("sensor_count", 0) or 0)}</td></tr>
                 <tr><td>仿真器状态</td><td>{'运行中' if simulator_running else '已停止'}</td></tr>
                 <tr><td>保留告警总数</td><td>{int(stats.get("retained_alerts", 0) or 0)}</td></tr>
                 <tr><td>检测器状态</td><td>{_detector_summary(detector_stats)}</td></tr>

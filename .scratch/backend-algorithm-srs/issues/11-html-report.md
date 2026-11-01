@@ -16,3 +16,4 @@
 ## Comments
 
 - 2026-11-01: Implemented the report as a dedicated renderer in `app/html_report.py`. The endpoint now uses the exact requested trailing period, reports current latest-reading thresholds as sensor status, truncates the alert table to the newest 50 while retaining full period counts, escapes all dynamic text, and returns 400 for invalid `hours`. Verification: targeted report suite 13 passed; full backend suite 237 passed; mypy and targeted Ruff passed.
+- 2026-11-01: Review follow-up moved to issue 21. The report's Cumulative Reading Count and Online Sensor Count are now governed by ADR-0006 rather than being implicitly redefined here.

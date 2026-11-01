@@ -8,6 +8,38 @@ Context for a bridge structural health monitoring platform that turns timestampe
 A timestamped measurement from one bridge sensor.
 _Avoid_: sample, data point
 
+**Known Sensor**:
+A sensor with at least one Sensor Reading in the current process's monitoring store.
+_Avoid_: online sensor when its latest reading is stale, configured sensor
+
+**Online Sensor**:
+A Known Sensor whose latest Sensor Reading is within the Online Sensor Freshness interval of the observing surface's reference time, whether shortly before or shortly after it; reports use their statistical end time, while live health and dashboards use the current time. A later future timestamp makes the sensor offline and time-invalid.
+_Avoid_: any known sensor, active sensor
+
+**Online Sensor Freshness**:
+The provisional 60-second interval within which a Known Sensor's latest reading keeps it online around the observing surface's reference time; a reading exactly 60 seconds old or 60 seconds in the future is still online.
+_Avoid_: alert cooldown, live frame staleness
+
+**Time-Valid Sensor Reading**:
+A Sensor Reading whose timestamp is no more than the Online Sensor Freshness interval after the reference time; later future timestamps are time-invalid.
+_Avoid_: online reading, valid sample
+
+**Sensor Connection State**:
+Whether a Known Sensor is currently online or offline.
+_Avoid_: physical state, alert level
+
+**Sensor Physical State**:
+The normal, yellow, orange, or red condition derived from a sensor's latest Time-Valid Sensor Reading and its Threshold Profile, or unknown when no time-valid reading exists; it is independent of connection state.
+_Avoid_: connection state, alert state
+
+**Cumulative Reading Count**:
+The number of Sensor Readings ingested since the current process started, across all ingestion paths; a process restart resets it.
+_Avoid_: online sensor count, period reading count
+
+**Period Reading Count**:
+The number of Sensor Readings whose timestamp falls within the report's inclusive statistical period, across all ingestion paths.
+_Avoid_: cumulative reading count, live reading count
+
 **Injected Reading**:
 A Sensor Reading generated immediately for one specified sensor by applying a one-shot anomaly transform while advancing only that sensor's stream position.
 _Avoid_: synthetic reading, queued injection

@@ -9,17 +9,24 @@ import heapq
 import math
 import time
 import uuid
+from array import array
 from dataclasses import dataclass, field
 
 from app.alert_contracts import (
     ALERT_LEVELS as CANONICAL_ALERT_LEVELS,
     ALERT_SOURCES as CANONICAL_ALERT_SOURCES,
 )
-from typing import Any, Dict, List, Mapping, Optional
-
 from app.sensor_batch import SensorBatch
 from app.sensor_ids import SensorIdentifier
+from app.sensor_metrics import (
+    ONLINE_SENSOR_FRESHNESS_SECONDS,
+    is_online,
+)
 from app.sensor_types import SensorType
+from typing import Any, Dict, List, Mapping, Optional
+
+# Keep enough timestamps to answer the maximum supported 168-hour report.
+_READING_TIMESTAMP_RETENTION_SECONDS = (168 + 1) * 3600.0
 
 
 @dataclass
@@ -79,6 +86,10 @@ class MonitoringEngine:
         # 全量历史（用于历史回放，最多保留10万条/传感器）
         self._full_history: Dict[str, List[SensorReading]] = {}
         self._max_full_history = 100000
+        self._reading_timestamps: Dict[str, array] = {}
+        self._reading_retention_anchor: Optional[float] = None
+        self._latest_time_valid: Dict[str, SensorReading] = {}
+        self._future_readings: Dict[str, List[SensorReading]] = {}
         self._min_ts: Optional[float] = None
         self._max_ts: Optional[float] = None
 
@@ -108,6 +119,8 @@ class MonitoringEngine:
         """摄入一批传感器数据，并应用该批次的实时可见性策略。"""
         ingested_sensor_ids = set()
         sensors_needing_sort = set()
+        timestamps_needing_sort = set()
+        ingestion_now = time.time()
         for item in batch.records:
             reading = SensorReading(
                 sensor_id=item["sensor_id"],
@@ -146,6 +159,39 @@ class MonitoringEngine:
             fh.append(reading)
             ingested_sensor_ids.add(reading.sensor_id)
 
+            # 保留独立的读数时间索引，使时段计数不受全量历史淘汰影响。
+            timestamps = self._reading_timestamps.setdefault(
+                reading.sensor_id,
+                array("d"),
+            )
+            if timestamps and reading.timestamp < timestamps[-1]:
+                timestamps_needing_sort.add(reading.sensor_id)
+            timestamps.append(reading.timestamp)
+            if (
+                reading.timestamp
+                <= ingestion_now + ONLINE_SENSOR_FRESHNESS_SECONDS
+                and (
+                    self._reading_retention_anchor is None
+                    or reading.timestamp > self._reading_retention_anchor
+                )
+            ):
+                self._reading_retention_anchor = reading.timestamp
+            if reading.timestamp <= (
+                ingestion_now + ONLINE_SENSOR_FRESHNESS_SECONDS
+            ):
+                current_valid = self._latest_time_valid.get(reading.sensor_id)
+                if (
+                    current_valid is None
+                    or reading.timestamp >= current_valid.timestamp
+                ):
+                    self._latest_time_valid[reading.sensor_id] = reading
+            else:
+                bisect.insort(
+                    self._future_readings.setdefault(reading.sensor_id, []),
+                    reading,
+                    key=lambda candidate: candidate.timestamp,
+                )
+
             # 更新全局时间范围
             ts = reading.timestamp
             if self._min_ts is None or ts < self._min_ts:
@@ -167,6 +213,12 @@ class MonitoringEngine:
             overflow = len(fh) - self._max_full_history
             if overflow > 0:
                 del fh[:overflow]
+            if sensor_id in timestamps_needing_sort:
+                self._reading_timestamps[sensor_id] = array(
+                    "d",
+                    sorted(self._reading_timestamps[sensor_id]),
+                )
+            self._trim_reading_timestamps(sensor_id)
 
         if ingested_sensor_ids:
             histories = [history for history in self._full_history.values() if history]
@@ -465,7 +517,76 @@ class MonitoringEngine:
         }
 
     def get_sensor_count(self) -> int:
+        """Return the number of Known Sensors in this process."""
         return len(self._latest)
+
+    def get_online_sensor_count(self, reference_time: Optional[float] = None) -> int:
+        """Count Known Sensors whose latest reading is currently online."""
+        reference = time.time() if reference_time is None else reference_time
+        return sum(
+            is_online(reading.timestamp, reference)
+            for reading in self._latest.values()
+        )
+
+    def get_latest_time_valid(
+        self,
+        reference_time: float,
+    ) -> Dict[str, dict]:
+        """Return each sensor's latest reading that is not too far in the future."""
+        cutoff = reference_time + ONLINE_SENSOR_FRESHNESS_SECONDS
+        candidates: Dict[str, SensorReading] = {}
+
+        def consider(reading: SensorReading) -> None:
+            if reading.timestamp > cutoff:
+                return
+            current = candidates.get(reading.sensor_id)
+            if current is None or reading.timestamp >= current.timestamp:
+                candidates[reading.sensor_id] = reading
+
+        for reading in self._latest_time_valid.values():
+            consider(reading)
+        for readings in self._full_history.values():
+            if not readings:
+                continue
+            index = bisect.bisect_right(
+                readings,
+                cutoff,
+                key=lambda reading: reading.timestamp,
+            ) - 1
+            if index >= 0:
+                consider(readings[index])
+        for sensor_id, future_readings in list(self._future_readings.items()):
+            index = bisect.bisect_right(
+                future_readings,
+                cutoff,
+                key=lambda reading: reading.timestamp,
+            ) - 1
+            if index < 0:
+                continue
+            candidate = future_readings[index]
+            current = self._latest_time_valid.get(sensor_id)
+            if current is None or candidate.timestamp >= current.timestamp:
+                self._latest_time_valid[sensor_id] = candidate
+            consider(candidate)
+            del future_readings[: index + 1]
+            if not future_readings:
+                del self._future_readings[sensor_id]
+        return {
+            sensor_id: self._reading_to_dict(reading)
+            for sensor_id, reading in candidates.items()
+        }
+
+    def get_period_reading_count(self, start_ts: float, end_ts: float) -> int:
+        """Count readings by timestamp in an inclusive period across all paths."""
+        if start_ts > end_ts:
+            raise ValueError("start_ts must not be after end_ts")
+        count = 0
+        for timestamps in self._reading_timestamps.values():
+            count += bisect.bisect_right(timestamps, end_ts) - bisect.bisect_left(
+                timestamps,
+                start_ts,
+            )
+        return count
 
     def get_alert_count(self) -> int:
         """Return the number of retained alerts, not only the recent page."""
@@ -599,16 +720,27 @@ class MonitoringEngine:
             for s in spikes
         ]
 
-    def get_stats(self) -> dict:
+    def get_stats(self, reference_time: Optional[float] = None) -> dict:
         """获取引擎统计信息"""
         elapsed = time.time() - self._start_time
         return {
             "total_readings": self._total_readings,
             "sensor_count": len(self._latest),
+            "online_sensor_count": self.get_online_sensor_count(reference_time),
             "retained_alerts": len(self._alerts),
             "throughput": round(self._total_readings / elapsed, 1) if elapsed > 0 else 0,
             "uptime_seconds": round(elapsed, 1)
         }
+
+    def _trim_reading_timestamps(self, sensor_id: str) -> None:
+        timestamps = self._reading_timestamps.get(sensor_id)
+        anchor = self._reading_retention_anchor
+        if not timestamps or anchor is None:
+            return
+        cutoff = anchor - _READING_TIMESTAMP_RETENTION_SECONDS
+        first_keep = bisect.bisect_left(timestamps, cutoff)
+        if first_keep:
+            del timestamps[:first_keep]
 
     @staticmethod
     def _alert_to_dict(alert: Alert) -> dict:

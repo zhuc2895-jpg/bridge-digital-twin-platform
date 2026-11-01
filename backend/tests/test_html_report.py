@@ -4,6 +4,7 @@ import re
 import time
 
 import pytest
+from app.sensor_batch import LiveEligibility, SensorBatch
 
 from tests.factories import reading
 
@@ -28,6 +29,17 @@ def _meta_value(html: str, name: str) -> str:
 
 def _row_count(html: str, row_class: str) -> int:
     return len(re.findall(rf'<tr class="{re.escape(row_class)}"', html))
+
+
+def _sensor_row(html: str, sensor_id: str) -> str:
+    match = re.search(
+        rf'<tr class="sensor-row" data-sensor-id="{re.escape(sensor_id)}">'
+        r"(.*?)</tr>",
+        html,
+        re.DOTALL,
+    )
+    assert match is not None, f"missing sensor row {sensor_id}"
+    return match.group(0)
 
 
 def _system_status_value(html: str, label: str) -> str:
@@ -73,6 +85,7 @@ def test_report_has_explicit_empty_states_without_any_data(client):
     assert response.status_code == 200
     assert _card_value(response.text, "online-sensors") == "0"
     assert _card_value(response.text, "total-readings") == "0"
+    assert _card_value(response.text, "period-readings") == "0"
     assert _card_value(response.text, "red-alerts") == "0"
     assert _card_value(response.text, "orange-alerts") == "0"
     assert _card_value(response.text, "yellow-alerts") == "0"
@@ -129,6 +142,7 @@ def test_report_uses_period_alerts_and_current_sensor_state(client, app):
     assert response.status_code == 200
     assert _card_value(response.text, "online-sensors") == "4"
     assert _card_value(response.text, "total-readings") == "4"
+    assert _card_value(response.text, "period-readings") == "4"
     assert _card_value(response.text, "red-alerts") == "1"
     assert _card_value(response.text, "orange-alerts") == "1"
     assert _card_value(response.text, "yellow-alerts") == "1"
@@ -147,6 +161,87 @@ def test_report_uses_period_alerts_and_current_sensor_state(client, app):
     assert "预警" in response.text
     assert "注意" in response.text
     assert "正常" in response.text
+
+
+def test_report_separates_connection_and_physical_state(client, app):
+    now = time.time()
+    engine = app.state.services.engine
+    records = [
+        reading(
+            sensor_id="S-ONLINE",
+            name="Online sensor",
+            value=100.0,
+            timestamp=now - 10,
+        ),
+        reading(
+            sensor_id="S-OFFLINE",
+            name="Stale sensor",
+            value=300.0,
+            timestamp=now - 120,
+        ),
+        reading(
+            sensor_id="S-FUTURE-ONLINE",
+            name="Future within tolerance",
+            value=450.0,
+            timestamp=now + 30,
+        ),
+        reading(
+            sensor_id="S-TIME-INVALID-VALID-HISTORY",
+            name="Invalid future with history",
+            value=100.0,
+            timestamp=now - 30,
+        ),
+        reading(
+            sensor_id="S-TIME-INVALID-VALID-HISTORY",
+            name="Invalid future with history",
+            value=600.0,
+            timestamp=now + 61,
+        ),
+        reading(
+            sensor_id="S-TIME-INVALID-NO-HISTORY",
+            name="Invalid future without history",
+            value=600.0,
+            timestamp=now + 61,
+        ),
+    ]
+    for record in records:
+        engine.ingest(
+            SensorBatch(records=[record], live_eligibility=LiveEligibility.BACKFILL)
+        )
+
+    response = client.get("/api/analysis/report", params={"hours": 1})
+    health = client.get("/api/health")
+
+    assert response.status_code == 200
+    assert health.status_code == 200
+    assert _card_value(response.text, "online-sensors") == "2"
+    assert _card_value(response.text, "total-readings") == "6"
+    assert _card_value(response.text, "period-readings") == "3"
+    assert health.json()["sensor_count"] == 5
+    assert health.json()["online_sensor_count"] == 2
+    assert _row_count(response.text, "sensor-row") == 5
+
+    rows = {
+        sensor_id: _sensor_row(response.text, sensor_id)
+        for sensor_id in (
+            "S-ONLINE",
+            "S-OFFLINE",
+            "S-FUTURE-ONLINE",
+            "S-TIME-INVALID-VALID-HISTORY",
+            "S-TIME-INVALID-NO-HISTORY",
+        )
+    }
+    assert "在线" in rows["S-ONLINE"]
+    assert "正常" in rows["S-ONLINE"]
+    assert "离线" in rows["S-OFFLINE"]
+    assert "注意" in rows["S-OFFLINE"]
+    assert "在线" in rows["S-FUTURE-ONLINE"]
+    assert "预警" in rows["S-FUTURE-ONLINE"]
+    assert "离线（时间异常）" in rows["S-TIME-INVALID-VALID-HISTORY"]
+    assert "正常" in rows["S-TIME-INVALID-VALID-HISTORY"]
+    assert "报警" not in rows["S-TIME-INVALID-VALID-HISTORY"]
+    assert "离线（时间异常）" in rows["S-TIME-INVALID-NO-HISTORY"]
+    assert "未知" in rows["S-TIME-INVALID-NO-HISTORY"]
 
 
 def test_report_limits_alert_rows_to_newest_fifty_but_keeps_counts(client, app):

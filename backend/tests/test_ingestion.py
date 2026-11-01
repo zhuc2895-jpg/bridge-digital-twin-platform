@@ -74,6 +74,7 @@ def test_json_upload_updates_latest_state_and_health(client, app):
     assert health.status_code == 200
     assert health.json()["status"] == "healthy"
     assert health.json()["sensor_count"] == 2
+    assert health.json()["online_sensor_count"] == 0
     assert health.json()["retained_alerts"] == 1
     assert "recent_alerts" not in health.json()
     assert "active_alerts" not in health.json()

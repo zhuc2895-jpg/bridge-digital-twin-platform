@@ -95,10 +95,15 @@ def create_app(services: Optional[AppServices] = None) -> FastAPI:
     @application.get("/api/health")
     async def health_check(services: AppServices = Depends(get_services)):
         engine = services.engine
+        with services.processing_lock:
+            sensor_count = engine.get_sensor_count()
+            online_sensor_count = engine.get_online_sensor_count()
+            retained_alerts = engine.get_alert_count()
         return {
             "status": "healthy",
-            "sensor_count": engine.get_sensor_count(),
-            "retained_alerts": engine.get_alert_count(),
+            "sensor_count": sensor_count,
+            "online_sensor_count": online_sensor_count,
+            "retained_alerts": retained_alerts,
             "simulator_running": services.simulator.is_running,
             "state_scope": "process",
         }

@@ -3,7 +3,7 @@
     <!-- 顶部统计卡片 -->
     <div class="stats-row">
       <div class="stat-card">
-        <div class="stat-value">{{ store.stats?.sensor_count || 0 }}</div>
+        <div class="stat-value">{{ store.stats?.online_sensor_count || 0 }}</div>
         <div class="stat-label">传感器在线</div>
       </div>
       <div class="stat-card">

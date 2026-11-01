@@ -32,6 +32,7 @@ export interface Alert {
 export interface Stats {
   total_readings: number
   sensor_count: number
+  online_sensor_count: number
   retained_alerts: number
   throughput: number
   uptime_seconds: number

@@ -78,7 +78,7 @@
         <!-- 统计卡片 -->
         <div class="stats-row">
           <div class="stat-card">
-            <div class="num">{{ sensors.length }}</div>
+            <div class="num">{{ onlineSensorCount }}</div>
             <div class="lbl">传感器在线</div>
           </div>
           <div class="stat-card">
@@ -183,6 +183,7 @@ const connected = ref(false)
 const sensors = ref<Sensor[]>([])
 const alerts = ref<Alert[]>([])
 const totalReadings = ref(0)
+const onlineSensorCount = ref(0)
 const now = ref('')
 const lastUpdate = ref('')
 const startTime = ref(Date.now())
@@ -260,7 +261,10 @@ function connect() {
         if (replayMode.value) return
         sensors.value = d.sensors || []
         alerts.value = d.alerts || []
-        if (d.stats) totalReadings.value = d.stats.total_readings || 0
+        if (d.stats) {
+          totalReadings.value = d.stats.total_readings || 0
+          onlineSensorCount.value = d.stats.online_sensor_count || 0
+        }
         lastUpdate.value = new Date().toLocaleTimeString()
         updateSensorColors()
         updateChartData(d.sensors || [])
