@@ -180,3 +180,46 @@ def test_feature_arbitration_batch_carries_spatial_evidence() -> None:
     assert target.spatial["status"] == "isolated_outlier"
     assert target.to_details()["spatial"]["sensor_id"] == "S01"
     assert target.spatial["predicted"] is not None
+
+
+def test_arbitrator_trains_spatial_model_only_on_normal_readings() -> None:
+    model = SpatialResidualModel(min_training_snapshots=10, min_sensors=2)
+    arbitrator = FeatureArbitrator(spatial_model=model)
+    readings = [
+        {
+            "sensor_id": "S01",
+            "name": "S01",
+            "type": "strain",
+            "value": 1.0,
+            "timestamp": 1.0,
+        },
+        {
+            "sensor_id": "S02",
+            "name": "S02",
+            "type": "strain",
+            "value": 2.0,
+            "timestamp": 1.0,
+        },
+        {
+            "sensor_id": "S01",
+            "name": "S01",
+            "type": "strain",
+            "value": 100.0,
+            "timestamp": 2.0,
+        },
+        {
+            "sensor_id": "S02",
+            "name": "S02",
+            "type": "strain",
+            "value": 200.0,
+            "timestamp": 2.0,
+        },
+    ]
+
+    arbitrator.observe_selected(
+        readings,
+        {0, 1},
+        normal_predicate=lambda reading: float(reading["value"]) < 10.0,
+    )
+
+    assert model.training_snapshot_count == 1

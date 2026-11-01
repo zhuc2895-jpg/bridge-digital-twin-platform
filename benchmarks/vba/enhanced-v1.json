@@ -3,7 +3,7 @@
   "benchmark_id": "vba-recording-level",
   "mode": "enhanced",
   "status": "passed",
-  "generated_at": "2026-11-01T12:01:18.696259+00:00",
+  "generated_at": "2026-11-01T12:26:55.171436+00:00",
   "reproduction_command": "python -m benchmarks.vba.evaluate --mode enhanced",
   "environment": {
     "python": "3.13.7 (tags/v3.13.7:bcee1c3, Aug 14 2025, 14:15:11) [MSC v.1944 64 bit (AMD64)]",
@@ -18,7 +18,7 @@
       "uvicorn": "0.34.0",
       "pytest": "8.3.4"
     },
-    "git_commit": "394061ab9f48edd478d8ecf917d48f8776896f3f",
+    "git_commit": "31164b96c1086203ebc6851957dfe3fbd1dbc675",
     "git_dirty": true
   },
   "threshold_profile_version": "code-derived-v1-pending-signoff",
@@ -9435,7 +9435,7 @@
       "compensated_mae": 17.848474388527258,
       "improved": true,
       "fallback_count": 2,
-      "elapsed_ms": 13.48850000067614,
+      "elapsed_ms": 40.78019999724347,
       "reliability_bins": {
         "high": {
           "samples": 26,
@@ -9456,7 +9456,7 @@
       "rrmse": 1e-06,
       "available": true,
       "reliability": 0.86,
-      "elapsed_ms": 0.3597000031732023
+      "elapsed_ms": 0.718999988748692
     },
     "passed": true
   },
@@ -9471,23 +9471,23 @@
   "inference_performance": {
     "processing_ms_per_reading_p95": 6.3072499997360865,
     "detector_failure_count": 0,
-    "total_runtime_seconds": 142.21690069999022
+    "total_runtime_seconds": 1.1803109000029508
   },
   "component_performance": {
     "detector_inference_ms_p95": null,
     "detector_failure_count": 0,
     "compensation_fallback_count": 2,
-    "compensation_elapsed_ms": 13.48850000067614,
-    "modal_inversion_elapsed_ms": 0.3597000031732023,
+    "compensation_elapsed_ms": 40.78019999724347,
+    "modal_inversion_elapsed_ms": 0.718999988748692,
     "whole_chain_p95_ms": 6.3072499997360865,
     "gated_alert_count": 358,
     "isolated_suppression_count": 0,
-    "memory_change_bytes": 60354560
+    "memory_change_bytes": 15876096
   },
   "memory": {
-    "start_bytes": 161218560,
-    "end_bytes": 221573120,
-    "change_bytes": 60354560
+    "start_bytes": 161394688,
+    "end_bytes": 177270784,
+    "change_bytes": 15876096
   },
   "gates": [
     {

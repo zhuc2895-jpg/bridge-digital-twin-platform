@@ -175,11 +175,14 @@ class FeatureArbitrator:
         self,
         readings: Sequence[Mapping[str, Any]],
         evaluation_indices: Sequence[int],
+        *,
+        normal_predicate: ReadingPredicate | None = None,
     ) -> dict[int, ArbitrationDecision]:
         """Insert every reading but evaluate only selected batch positions."""
         return self._observe_batch(
             readings,
             evaluation_indices=set(evaluation_indices),
+            normal_predicate=normal_predicate,
         )
 
     def _observe_batch(
@@ -187,12 +190,18 @@ class FeatureArbitrator:
         readings: Sequence[Mapping[str, Any]],
         *,
         evaluation_indices: set[int],
+        normal_predicate: ReadingPredicate | None = None,
     ) -> dict[int, ArbitrationDecision]:
         batch = list(readings)
         if not batch:
             return {}
 
-        self.spatial_model.observe_batch(batch)
+        spatial_training_batch = (
+            batch
+            if normal_predicate is None
+            else [reading for reading in batch if normal_predicate(reading)]
+        )
+        self.spatial_model.observe_batch(spatial_training_batch)
         spatial_evidence = self._spatial_evidence_for_batch(batch)
         prepared: list[tuple[int, str, tuple[float, int, float]]] = []
         touched_sensors: set[str] = set()
@@ -658,10 +667,17 @@ class FeatureArbitrationDetector(BaseDetector):
             )
             and bool(self._triggered_models(result))
         ]
-        decisions_by_index = self.arbitrator.observe_selected(
-            batch,
-            candidate_positions,
-        )
+        if effective_normal_predicate is None:
+            decisions_by_index = self.arbitrator.observe_selected(
+                batch,
+                candidate_positions,
+            )
+        else:
+            decisions_by_index = self.arbitrator.observe_selected(
+                batch,
+                candidate_positions,
+                normal_predicate=effective_normal_predicate,
+            )
         combined_results = [
             self._apply_arbitration(result, decisions_by_index.get(index))
             for index, result in enumerate(results)
