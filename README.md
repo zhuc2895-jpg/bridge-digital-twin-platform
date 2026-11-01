@@ -163,6 +163,8 @@ py -3.13 -m venv .venv
 
 物理阈值默认标记为 `provisional-default-v1`，不会被宣称为正式限值。`GET /api/data/config/threshold-profile` 返回当前阈值、来源状态、文档/版本/章节、生效日期、批准人、适用范围和单位；只有完整权威元数据才能标记为 `authoritative`。
 
+权威规范依据与公式整理见 `docs/thresholds/authoritative-threshold-sources.md`。规范给出的是设计值倍数、历史最大值和结构容许值等相对基准；绝对阈值仍需本桥设计文件及工程负责人签字后，才能写入 `BRIDGE_THRESHOLD_PROFILE_PATH` 对应文档。
+
 ### 系统验收入口
 
 在仓库根目录执行完整验收入口：
