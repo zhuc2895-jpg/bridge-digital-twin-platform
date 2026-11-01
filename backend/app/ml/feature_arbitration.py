@@ -177,12 +177,14 @@ class FeatureArbitrator:
         evaluation_indices: Sequence[int],
         *,
         normal_predicate: ReadingPredicate | None = None,
+        spatial_training_indices: set[int] | None = None,
     ) -> dict[int, ArbitrationDecision]:
         """Insert every reading but evaluate only selected batch positions."""
         return self._observe_batch(
             readings,
             evaluation_indices=set(evaluation_indices),
             normal_predicate=normal_predicate,
+            spatial_training_indices=spatial_training_indices,
         )
 
     def _observe_batch(
@@ -191,16 +193,21 @@ class FeatureArbitrator:
         *,
         evaluation_indices: set[int],
         normal_predicate: ReadingPredicate | None = None,
+        spatial_training_indices: set[int] | None = None,
     ) -> dict[int, ArbitrationDecision]:
         batch = list(readings)
         if not batch:
             return {}
 
-        spatial_training_batch = (
-            batch
-            if normal_predicate is None
-            else [reading for reading in batch if normal_predicate(reading)]
-        )
+        spatial_training_batch = [
+            reading
+            for index, reading in enumerate(batch)
+            if (normal_predicate is None or normal_predicate(reading))
+            and (
+                spatial_training_indices is None
+                or index in spatial_training_indices
+            )
+        ]
         self.spatial_model.observe_batch(spatial_training_batch)
         spatial_evidence = self._spatial_evidence_for_batch(batch)
         prepared: list[tuple[int, str, tuple[float, int, float]]] = []
@@ -671,12 +678,22 @@ class FeatureArbitrationDetector(BaseDetector):
             decisions_by_index = self.arbitrator.observe_selected(
                 batch,
                 candidate_positions,
+                spatial_training_indices={
+                    index
+                    for index, result in enumerate(results)
+                    if not result.anomalous
+                },
             )
         else:
             decisions_by_index = self.arbitrator.observe_selected(
                 batch,
                 candidate_positions,
                 normal_predicate=effective_normal_predicate,
+                spatial_training_indices={
+                    index
+                    for index, result in enumerate(results)
+                    if not result.anomalous
+                },
             )
         combined_results = [
             self._apply_arbitration(result, decisions_by_index.get(index))

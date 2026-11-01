@@ -347,7 +347,7 @@ def test_gated_anomalous_result_enters_feature_arbitration() -> None:
             super().__init__()
             self.calls: list[list[int]] = []
 
-        def observe_selected(self, readings, evaluation_indices):
+        def observe_selected(self, readings, evaluation_indices, **kwargs):
             self.calls.append(list(evaluation_indices))
             return {}
 

@@ -544,9 +544,10 @@ def evaluate_alert_pipeline(
         cognition_threshold=config.cognition_threshold,
         uncertainty_threshold=config.uncertainty_threshold,
     )
-    calibration["compensation_reliability"] = component_checks["compensation"][
-        "reliability_bins"
-    ]
+    calibration["synthetic_compensation_reliability"] = {
+        "scope": component_checks["scope"],
+        "bins": component_checks["compensation"]["reliability_bins"],
+    }
     counts = _summarize_counts(run_records)
 
     baseline_metrics = None
@@ -957,9 +958,10 @@ def evaluate_enhanced(
         cognition_threshold=config.cognition_threshold,
         uncertainty_threshold=config.uncertainty_threshold,
     )
-    calibration["compensation_reliability"] = component_checks["compensation"][
-        "reliability_bins"
-    ]
+    calibration["synthetic_compensation_reliability"] = {
+        "scope": component_checks["scope"],
+        "bins": component_checks["compensation"]["reliability_bins"],
+    }
     counts = _summarize_counts(evidence_records)
     baseline_metrics = None
     baseline_comparison: dict[str, Any] = {}
@@ -1216,6 +1218,54 @@ def write_report(payload: Mapping[str, Any], json_path: Path) -> Path:
             f"| {gate['name']} | {gate['value']} | {gate['limit']} "
             f"| {'PASS' if gate['passed'] else 'FAIL'} |"
         )
+    calibration = payload.get("calibration")
+    if isinstance(calibration, Mapping):
+        lines.extend(
+            [
+                "",
+                "## Calibration",
+                "",
+                "| Bin | Recordings | FPR | Recall |",
+                "| --- | ---: | ---: | ---: |",
+            ]
+        )
+        for name in (
+            "low_cognition",
+            "high_uncertainty",
+            "isolated_spatial",
+            "coherent_spatial",
+        ):
+            item = calibration.get(name)
+            if not isinstance(item, Mapping):
+                continue
+            false_positive_rate = item.get("false_positive_rate")
+            fpr_text = (
+                f"{false_positive_rate:.4f}"
+                if isinstance(false_positive_rate, (int, float))
+                else "n/a"
+            )
+            lines.append(
+                f"| {name} | {item.get('recordings', 0)} | {fpr_text} "
+                f"| {item.get('recall', 0.0):.4f} |"
+            )
+        synthetic = calibration.get("synthetic_compensation_reliability")
+        if isinstance(synthetic, Mapping):
+            lines.extend(
+                [
+                    "",
+                    (
+                        "Synthetic compensation reliability "
+                        f"({synthetic.get('scope')})"
+                    ),
+                    "",
+                    "| Reliability | Samples | MAE |",
+                    "| --- | ---: | ---: |",
+                ]
+            )
+            for name, item in synthetic.get("bins", {}).items():
+                lines.append(
+                    f"| {name} | {item['samples']} | {item['mae']:.3f} |"
+                )
     lines.extend(
         [
             "",

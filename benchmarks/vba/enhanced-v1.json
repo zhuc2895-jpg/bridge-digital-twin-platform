@@ -3,7 +3,7 @@
   "benchmark_id": "vba-recording-level",
   "mode": "enhanced",
   "status": "passed",
-  "generated_at": "2026-11-01T12:35:28.331440+00:00",
+  "generated_at": "2026-11-01T12:45:09.246940+00:00",
   "reproduction_command": "python -m benchmarks.vba.evaluate --mode enhanced",
   "environment": {
     "python": "3.13.7 (tags/v3.13.7:bcee1c3, Aug 14 2025, 14:15:11) [MSC v.1944 64 bit (AMD64)]",
@@ -18,7 +18,7 @@
       "uvicorn": "0.34.0",
       "pytest": "8.3.4"
     },
-    "git_commit": "fa68eced957f1f08ee071ff666d1c8b4af0c4913",
+    "git_commit": "c00ea96d05f99719009553300a2dffdc6c585c11",
     "git_dirty": true
   },
   "threshold_profile_version": "code-derived-v1-pending-signoff",
@@ -9419,18 +9419,21 @@
       "false_positive_rate": null,
       "recall": 0.0
     },
-    "compensation_reliability": {
-      "high": {
-        "samples": 26,
-        "mae": 12.082011646440586
-      },
-      "medium": {
-        "samples": 21,
-        "mae": 22.5416485632264
-      },
-      "low": {
-        "samples": 1,
-        "mae": 48.71829600379688
+    "synthetic_compensation_reliability": {
+      "scope": "synthetic fixtures, not real VBA structural-response accuracy",
+      "bins": {
+        "high": {
+          "samples": 26,
+          "mae": 12.082011646440586
+        },
+        "medium": {
+          "samples": 21,
+          "mae": 22.5416485632264
+        },
+        "low": {
+          "samples": 1,
+          "mae": 48.71829600379688
+        }
       }
     }
   },
@@ -9449,7 +9452,7 @@
       "compensated_mae": 17.848474388527258,
       "improved": true,
       "fallback_count": 2,
-      "elapsed_ms": 14.569599996320903,
+      "elapsed_ms": 14.470399997662753,
       "reliability_bins": {
         "high": {
           "samples": 26,
@@ -9470,7 +9473,7 @@
       "rrmse": 1e-06,
       "available": true,
       "reliability": 0.86,
-      "elapsed_ms": 0.41059999784920365
+      "elapsed_ms": 0.41120000241789967
     },
     "passed": true
   },
@@ -9485,23 +9488,23 @@
   "inference_performance": {
     "processing_ms_per_reading_p95": 6.3072499997360865,
     "detector_failure_count": 0,
-    "total_runtime_seconds": 0.23392969999986235
+    "total_runtime_seconds": 0.2508571999933338
   },
   "component_performance": {
     "detector_inference_ms_p95": null,
     "detector_failure_count": 0,
     "compensation_fallback_count": 2,
-    "compensation_elapsed_ms": 14.569599996320903,
-    "modal_inversion_elapsed_ms": 0.41059999784920365,
+    "compensation_elapsed_ms": 14.470399997662753,
+    "modal_inversion_elapsed_ms": 0.41120000241789967,
     "whole_chain_p95_ms": 6.3072499997360865,
     "gated_alert_count": 358,
     "isolated_suppression_count": 0,
-    "memory_change_bytes": 16605184
+    "memory_change_bytes": 15990784
   },
   "memory": {
-    "start_bytes": 161128448,
-    "end_bytes": 177733632,
-    "change_bytes": 16605184
+    "start_bytes": 161320960,
+    "end_bytes": 177311744,
+    "change_bytes": 15990784
   },
   "gates": [
     {

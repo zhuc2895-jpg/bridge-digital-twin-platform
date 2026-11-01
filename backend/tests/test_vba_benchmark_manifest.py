@@ -144,7 +144,9 @@ def test_enhanced_vba_artifact_reports_compensation_reliability_calibration():
     )
     payload = json.loads(path.read_text(encoding="utf-8"))
 
-    reliability = payload["calibration"]["compensation_reliability"]
-    assert reliability
-    assert set(reliability) <= {"low", "medium", "high"}
-    assert all(bin_payload["samples"] > 0 for bin_payload in reliability.values())
+    calibration = payload["calibration"]["synthetic_compensation_reliability"]
+    assert calibration["scope"].startswith("synthetic fixtures")
+    bins = calibration["bins"]
+    assert bins
+    assert set(bins) <= {"low", "medium", "high"}
+    assert all(bin_payload["samples"] > 0 for bin_payload in bins.values())
