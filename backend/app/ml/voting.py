@@ -56,6 +56,9 @@ class VotingDetector(BaseDetector):
             confidence_threshold=confidence_threshold,
             min_votes=min_votes,
         )
+        self._normal_details = self.policy.known_normal(self.detectors).to_details(
+            confidence_threshold=self.policy.confidence_threshold,
+        )
         self._total_detections = 0
         self._alerts_triggered = 0
         self._model_failures: dict[str, str] = {}
@@ -272,10 +275,18 @@ class VotingDetector(BaseDetector):
         reading: Mapping[str, Any],
     ) -> DetectionResult:
         self._total_detections += 1
-        return self.policy.result(
-            reading,
-            self.policy.known_normal(self.detectors),
+        sensor_id = str(reading["sensor_id"])
+        return DetectionResult(
+            sensor_id=sensor_id,
+            name=str(reading.get("name", sensor_id)),
+            value=float(reading["value"]),
+            timestamp=float(reading["timestamp"]),
             detector_id=self.detector_id,
+            anomalous=False,
+            score=0.0,
+            confidence=0.0,
+            reason="known normal batch",
+            details=self._normal_details,
         )
 
     def get_stats(self) -> dict:

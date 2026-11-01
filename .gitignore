@@ -37,3 +37,7 @@ data/external/
 
 # Runtime monitoring checkpoints
 data/state/
+
+# Generated acceptance reports
+benchmarks/runs/
+benchmarks/stability/runs/

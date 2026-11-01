@@ -1,0 +1,19 @@
+services:
+  backend:
+    build:
+      context: .
+    ports:
+      - "8000:8000"
+    environment:
+      BRIDGE_HOST: "0.0.0.0"
+      BRIDGE_PORT: "8000"
+      BRIDGE_CHECKPOINT_PATH: "/app/data/state/monitoring.json"
+      BRIDGE_CORS_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173"
+      BRIDGE_LOG_LEVEL: "INFO"
+      BRIDGE_SIMULATION_ENABLED: "true"
+    volumes:
+      - bridge-state:/app/data/state
+    restart: unless-stopped
+
+volumes:
+  bridge-state:

@@ -152,6 +152,34 @@ py -3.13 -m venv .venv
 
 请求日志只记录方法、路径、状态、耗时和请求 ID，响应通过 `X-Request-ID` 返回同一标识。未处理异常返回稳定的 `INTERNAL_ERROR` 结构，不向客户端暴露堆栈。
 
+### 系统验收入口
+
+在仓库根目录执行完整验收入口：
+
+```powershell
+.\.venv\Scripts\python.exe -m benchmarks.acceptance
+```
+
+该命令依次运行全量 pytest、10,000 条批量摄入、常规查询、快照、三层 AI 单条检测、50+ QPS API 负载、10 个 WebSocket 客户端的 1Hz 推送，以及版本化验证数据集准确率/误报率门槛。结果写入 `benchmarks/runs/<UTC 时间>/acceptance.json` 与 `acceptance.md`；任一门槛失败时进程返回非零退出码。
+
+24 小时稳定性入口：
+
+```powershell
+.\.venv\Scripts\python.exe -m benchmarks.stability --hours 24 --probe-interval 60 --clients 10
+```
+
+该入口持续记录工作集内存、WebSocket 连接数、实时帧吞吐、告警数、错误数和最终存活状态，报告写入 `benchmarks/stability/runs/`。无参数默认就是 24 小时；短时烟雾测试可传 `--hours 0.01`。
+
+验证数据集清单为 `benchmarks/validation/manifest.json`，锁定生成脚本、随机种子、SHA-256、标签口径和门槛。报告明确标注数据为合成夹具；真实工程精度必须使用有限元模态与现场标定数据另行验收。
+
+### 容器部署
+
+```bash
+docker compose up --build
+```
+
+容器暴露 `http://localhost:8000` 与 `ws://localhost:8000/ws/live`，检查点通过 `bridge-state` 卷持久化到 `/app/data/state/monitoring.json`。CORS 来源、仿真开关、日志级别等均通过环境变量覆盖。
+
 ---
 
 ## 🚀 快速启动

@@ -203,6 +203,12 @@ def create_app(
                 if services.config.simulation_enabled
                 else False
             ),
+            "live_stream_running": services.live_stream.is_running,
+            "websocket_connections": getattr(
+                services.ws_manager,
+                "connection_count",
+                0,
+            ),
             "state_scope": "process",
             "persistence": persistence_status,
             "checks": {

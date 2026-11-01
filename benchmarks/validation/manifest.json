@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "dataset_id": "bridge-validation-24h-v2",
+  "title": "Synthetic bridge monitoring validation dataset",
+  "path": "data/validation/bridge_validation_data.csv",
+  "sha256": "3EB745496A32141896DA0AB926B00B083CD6214A7E43CE4C56A4615214297A0C",
+  "generator": "scripts/data/generate_validation_data.py",
+  "generator_seed": 42,
+  "source_kind": "synthetic",
+  "rows": 69120,
+  "sensors": ["S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08"],
+  "interval_seconds": 10,
+  "duration_hours": 24,
+  "label_column": "damage_label",
+  "event_column": "damage_event",
+  "evaluation": {
+    "unit": "one-minute window",
+    "positive_rule": "at least one reading in the window has damage_label=1",
+    "algorithm_scope": "production physical-threshold rule layer with temporal confirmation",
+    "confirmation_lookback_minutes": 2,
+    "confirmation_min_alerts": 5,
+    "accuracy_min": 0.9,
+    "false_positive_rate_max": 0.1
+  },
+  "limitations": [
+    "Synthetic data validates behavior and reproducibility, not real bridge engineering accuracy.",
+    "The full fusion-enhanced AI acceptance is tracked separately by ticket 20."
+  ]
+}
