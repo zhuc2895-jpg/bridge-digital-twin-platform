@@ -62,6 +62,7 @@ DEFAULT_BASELINE_PATH = BENCHMARK_DIR / "baseline-v1.json"
 DEFAULT_RUNS_DIR = BENCHMARK_DIR / "runs"
 EVIDENCE_CACHE_PATH = BENCHMARK_DIR / "evidence-cache-v1.json"
 REPRODUCTION_COMMAND = "python -m benchmarks.vba.evaluate --mode enhanced"
+PRE_ENHANCEMENT_COMMIT = "16fad09a31f8b16b4ab8cf047cdc309608ad91ce"
 
 
 @dataclass(frozen=True)
@@ -630,6 +631,18 @@ def evaluate_alert_pipeline(
         "schema_version": 1,
         "benchmark_id": manifest["benchmark_id"],
         "mode": mode,
+        "baseline_protocol": {
+            "pre_enhancement_commit": PRE_ENHANCEMENT_COMMIT,
+            "frozen_configuration": (
+                "rule + three-model voting + feature arbitration; cognition "
+                "gate and spatial residual disabled"
+            ),
+            "executed_with_commit": environment_info()["git_commit"],
+            "note": (
+                "Enhancement modules were added after the pre-enhancement commit; "
+                "this artifact freezes the baseline configuration and its metrics."
+            ),
+        },
         "status": "passed" if not failed else "failed",
         "generated_at": datetime.now(UTC).isoformat(),
         "reproduction_command": (
