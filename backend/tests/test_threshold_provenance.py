@@ -173,3 +173,39 @@ def test_threshold_profile_document_rejects_individual_value_overrides(
                 "BRIDGE_STRAIN_YELLOW": "999",
             }
         )
+
+
+def test_threshold_profile_document_rejects_separate_provenance_json(
+    tmp_path,
+) -> None:
+    profile_path = tmp_path / "authoritative-thresholds.json"
+    profile_path.write_text(
+        json.dumps(
+            {
+                "thresholds": {
+                    "strain": {"yellow": 310, "orange": 470, "red": 640},
+                    "displacement": {"yellow": 31, "orange": 51, "red": 81},
+                    "acceleration": {"yellow": 2.1, "orange": 3.6, "red": 5.1},
+                    "temperature": {"yellow": 46, "orange": 56, "red": 66},
+                },
+                "provenance": {
+                    "status": "authoritative",
+                    "profile_version": "bridge-srs-2026.1",
+                    "source_document": "Bridge Structural Monitoring SRS",
+                    "source_version": "2026.1",
+                    "source_section": "5.3 Threshold table",
+                    "effective_date": "2026-12-01",
+                    "approved_by": "Chief Bridge Engineer",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="BRIDGE_THRESHOLD_PROVENANCE_JSON"):
+        AppConfig.from_env(
+            {
+                "BRIDGE_THRESHOLD_PROFILE_PATH": str(profile_path),
+                "BRIDGE_THRESHOLD_PROVENANCE_JSON": "{}",
+            }
+        )

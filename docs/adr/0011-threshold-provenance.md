@@ -8,7 +8,7 @@ A threshold profile is not authoritative merely because it has numeric values. E
 
 The current defaults remain `provisional-default-v1` with no source document, effective date, or approver. They are exposed through `GET /api/data/config/threshold-profile` and health so clients do not mistake runnable engineering defaults for approved limits. Runtime threshold changes remain operational overrides and do not upgrade provenance.
 
-An authoritative rollout can point `BRIDGE_THRESHOLD_PROFILE_PATH` at one JSON document containing both `thresholds` and `provenance`. That document is the single source of truth for values and source metadata; combining it with individual `BRIDGE_{TYPE}_{LEVEL}` overrides is rejected so the recorded provenance cannot silently diverge from the active values.
+An authoritative rollout can point `BRIDGE_THRESHOLD_PROFILE_PATH` at one JSON document containing both `thresholds` and `provenance`. That document is the single source of truth for values and source metadata; combining it with individual `BRIDGE_{TYPE}_{LEVEL}` overrides or a separate `BRIDGE_THRESHOLD_PROVENANCE_JSON` is rejected so the recorded provenance cannot silently diverge from the active values.
 
 ## Consequences
 

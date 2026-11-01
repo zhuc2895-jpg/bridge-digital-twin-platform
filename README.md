@@ -156,7 +156,7 @@ py -3.13 -m venv .venv
 | `BRIDGE_SPATIAL_MIN_TRAINING_SNAPSHOTS` / `BRIDGE_SPATIAL_MIN_SENSORS` / `BRIDGE_SPATIAL_MIN_COHERENT_SENSORS` | `30` / `3` / `2` | 空间模型训练与协同判定 |
 | `BRIDGE_SPATIAL_ALPHA` / `BRIDGE_SPATIAL_WEIGHTS` | `0.001` / `{}` | 空间岭回归正则化与传感器权重 JSON |
 | `BRIDGE_THRESHOLD_PROVENANCE_JSON` | 空（临时默认值） | 阈值来源 JSON；权威来源必须含文档、版本、章节、生效日期和批准人 |
-| `BRIDGE_THRESHOLD_PROFILE_PATH` | 空 | 单一权威阈值文档 JSON；含 `thresholds` 和 `provenance`，不可与单值阈值覆盖同时使用 |
+| `BRIDGE_THRESHOLD_PROFILE_PATH` | 空 | 单一权威阈值文档 JSON；含 `thresholds` 和 `provenance`，不可与单值阈值或独立来源 JSON 同时使用 |
 | `BRIDGE_{TYPE}_{LEVEL}` | 见代码默认值 | 物理阈值，例如 `BRIDGE_STRAIN_YELLOW=300` |
 
 请求日志只记录方法、路径、状态、耗时和请求 ID，响应通过 `X-Request-ID` 返回同一标识。未处理异常返回稳定的 `INTERNAL_ERROR` 结构，不向客户端暴露堆栈。

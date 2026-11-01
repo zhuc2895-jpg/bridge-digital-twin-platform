@@ -195,6 +195,11 @@ class AppConfig:
                     "individual threshold overrides: "
                     + ", ".join(conflicting_variables)
                 )
+            if source.get("BRIDGE_THRESHOLD_PROVENANCE_JSON") is not None:
+                raise ValueError(
+                    "BRIDGE_THRESHOLD_PROFILE_PATH cannot be combined with "
+                    "BRIDGE_THRESHOLD_PROVENANCE_JSON"
+                )
             profile = ThresholdProfileDocument.load(profile_path)
             thresholds = {
                 sensor_type: dict(levels)
