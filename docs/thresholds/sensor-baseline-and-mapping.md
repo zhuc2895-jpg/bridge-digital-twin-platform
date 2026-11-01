@@ -1,6 +1,6 @@
-# S01–S08 测点设计基准与阈值映射（待签字）
+# S01–S08 测点设计基准与阈值映射（竞赛基线，toB 预留审批）
 
-> 本文件给出各测点的设计基准推导。凡标注「拟定」的数值为平台演示整定值，须经工程负责人签字后方可把 `config/bridge-threshold-profile.json` 的 provenance 升级为 authoritative（ADR-0011）。
+> 本文件给出各测点的设计基准推导。凡标注「拟定」的数值为竞赛演示整定值；后续 toB 部署可按第 4 节的审批接口把 `config/bridge-threshold-profile.json` 的 provenance 升级为 authoritative（ADR-0011）。
 
 ## 1. 桥梁基准假定（拟定）
 
@@ -68,8 +68,9 @@
 | S07 | 拉索L02 | 加速度 | m/s² | (45,20,0) | — | 0.98 | 2.94 | 4.41 | 同 S04 |
 | S08 | 桥面 | 温度 | °C | (0,5,-6) | T_d=46 | 46 | 55.2 | 60 | JTG D60-2015 表4.3.12-2；JT/T 1037-2022 表9 |
 
-## 4. 批准人与生效日期（必填，当前空缺）
+## 4. 竞赛基线定位与 toB 审批接口（预留）
 
-- **approved_by：待定** —— 需工程负责人签字（姓名 / 职称 / 签字日期）。
-- **effective_date：待定** —— ISO YYYY-MM-DD，取签字生效日。
-- 在上述两项补齐前，`config/bridge-threshold-profile.json` 保持 `status: provisional`（`code-derived-v1-pending-signoff`），运行时不会把它当作正式限值；签字后仅改 provenance 三个字段即可升级，数值不动。
+- 本项目是大学生竞赛作品，当前没有工程负责人签字流程；本表数值作为**竞赛演示与算法验收基线**使用。
+- `config/bridge-threshold-profile.json` 保持 `status: provisional`（`competition-design-basis-v1`），运行时不会把它宣称为正式限值。
+- 面向后续 toB 部署时，审批接口已预留：在同一 JSON 的 `provenance` 中填写 `approved_by`（姓名/职称）、`effective_date`（ISO `YYYY-MM-DD`），并把 `status` 改为 `authoritative`；数值和代码无需改动。
+- 建议 toB 前端/网关以 `provenance.authoritative == true` 作为“可用于生产决策”的开关；`false` 时明确展示为竞赛/演示基线。

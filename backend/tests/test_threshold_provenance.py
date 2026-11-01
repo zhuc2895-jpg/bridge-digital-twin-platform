@@ -25,7 +25,7 @@ def test_defaults_are_the_code_derived_design_basis_profile() -> None:
 
     assert provenance.status == "provisional"
     assert provenance.authoritative is False
-    assert provenance.profile_version == "code-derived-v1-pending-signoff"
+    assert provenance.profile_version == "competition-design-basis-v1"
     assert "JT/T 1037-2022" in str(provenance.source_document)
     assert provenance.effective_date is None
     assert provenance.approved_by is None
@@ -55,7 +55,7 @@ def test_threshold_profile_endpoint_and_health_expose_provenance() -> None:
     assert health.status_code == 200
     assert health.json()["threshold_profile"]["status"] == "provisional"
     assert health.json()["threshold_profile"]["profile_version"] == (
-        "code-derived-v1-pending-signoff"
+        "competition-design-basis-v1"
     )
 
 

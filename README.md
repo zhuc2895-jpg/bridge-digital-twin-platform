@@ -161,9 +161,9 @@ py -3.13 -m venv .venv
 
 请求日志只记录方法、路径、状态、耗时和请求 ID，响应通过 `X-Request-ID` 返回同一标识。未处理异常返回稳定的 `INTERNAL_ERROR` 结构，不向客户端暴露堆栈。
 
-物理阈值默认实现为代码中的 S01–S08 映射，版本 `code-derived-v1-pending-signoff`（`provisional`），不会被宣称为正式限值；`config/bridge-threshold-profile.json` 是同一组值的版本化镜像，由测试保证内容一致。`GET /api/data/config/threshold-profile` 返回当前阈值、来源状态、文档/版本/章节、生效日期、批准人、适用范围和单位；只有完整权威元数据才能标记为 `authoritative`。
+物理阈值默认实现为代码中的 S01–S08 映射，版本 `competition-design-basis-v1`（`provisional`），定位为竞赛演示与算法验收基线，不会被宣称为正式限值；`config/bridge-threshold-profile.json` 是同一组值的版本化镜像，由测试保证内容一致。`GET /api/data/config/threshold-profile` 返回当前阈值、来源状态、文档/版本/章节、生效日期、批准人、适用范围和单位；只有完整权威元数据才能标记为 `authoritative`。
 
-权威规范依据与公式整理见 `docs/thresholds/authoritative-threshold-sources.md`，本桥设计基准与 S01–S08 推导见 `docs/thresholds/sensor-baseline-and-mapping.md`。规范给出的是设计值倍数、历史最大值和结构容许值等相对基准；`config/bridge-threshold-profile.json` 当前是可运行的待签版本，只有工程负责人补齐 `approved_by` 和 `effective_date` 后，才可通过 `BRIDGE_THRESHOLD_PROFILE_PATH` 作为正式限值加载。
+权威规范依据与公式整理见 `docs/thresholds/authoritative-threshold-sources.md`，本桥设计基准与 S01–S08 推导见 `docs/thresholds/sensor-baseline-and-mapping.md`。当前档案是竞赛可运行基线；面向后续 toB 部署时，只需在同一 JSON 中填写 `approved_by`、`effective_date` 并把 `status` 改为 `authoritative`，即可通过 `BRIDGE_THRESHOLD_PROFILE_PATH` 作为正式限值加载，数值无需改动。
 
 设置任一 `BRIDGE_{TYPE}_{LEVEL}` 或调用 `POST /api/data/config/thresholds` 会切换到类型级整定模式，清除默认的逐测点覆盖并把 provenance 降级为 `provisional-default-v1`，避免 S01–S08 的映射把该调整静默屏蔽或把整定值伪装成设计基准。S08 当前只表达高温上限；低温与梯度温度报警需在设计基准补齐后增加。
 

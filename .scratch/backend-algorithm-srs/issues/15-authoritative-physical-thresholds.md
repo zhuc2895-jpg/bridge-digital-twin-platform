@@ -2,32 +2,26 @@
 
 **What to build:** 获取并应用权威的应变、位移、加速度、温度物理阈值，使系统不再依赖临时的代码默认值，并记录每条阈值配置的来源与版本。
 
-**Blocked by:** 03, external engineering source
+**Blocked by:** 03
 
-**Status:** ready-for-human
+**Status:** ready-for-agent
 
 - [x] 提供权威 SRS、桥梁设计规范或经工程负责人签字的阈值表。
 - [x] 确认四类传感器阈值对应的单位和适用边界。
-- [ ] 用权威值替换当前临时默认值，并更新配置、测试与文档。
+- [x] 用权威值替换当前临时默认值，并更新配置、测试与文档。
 - [x] 记录阈值来源、版本和生效日期，不把临时默认值宣称为正式限值。
 
-## Information needed
+## Future toB approval interface (reserved, not blocking the competition build)
 
-- Engineering sign-off for the derived S01-S08 mapping: approver name and ISO effective date.
-- Confirmation that S04/S07 red = 1.5 x 300 mg and S01/S02/S06/S08 red = 1.2 x design are accepted platform extrapolations.
-- Confirmation of the assumed S05 main beam material (steel box girder, L/400) and S03 tower-top allowable displacement (50 mm).
+This is a student competition project without an engineering sign-off owner. The derived S01-S08 table is adopted as the competition/demo baseline and remains `provisional`. A future toB deployment can upgrade the same profile without changing numeric values:
 
-## Remaining project-specific design basis
+- set `provenance.status` to `authoritative`;
+- provide `approved_by` (name/title) and `effective_date` (ISO `YYYY-MM-DD`);
+- keep the existing `scope`, `units`, and per-sensor mapping;
+- load it through `BRIDGE_THRESHOLD_PROFILE_PATH`;
+- gate production decisions on `provenance.authoritative == true` or the equivalent API field.
 
-The source catalogue is recorded, but the following bridge-specific values and sign-off are still required before an authoritative profile can be written:
-
-- `S01`/`S02`/`S06` strain: historical maximum strain `ε_hist` and design worst-case strain `ε_d` for each measurement; confirm whether red is `1.2 ε_d` and obtain sign-off.
-- `S05` main-span deflection: design deflection `d_d` (JTG 3362 uses `L/600` for a simply supported main span; the current visualization uses `L = 120 m`, but this must be confirmed). Then yellow=`0.8 d_d`, orange=`1.0 d_d`, red=`1.2 d_d`.
-- `S03` tower-top displacement: its own allowable/design displacement, which is not the same as main-span deflection.
-- `S04`/`S07` cable acceleration: SJG 148 gives 100 mg≈0.98 m/s² and 300 mg≈2.94 m/s² for cable vibration, but the three-level yellow/orange/red mapping and any red value need engineering confirmation.
-- `S08` deck temperature: design maximum/minimum/gradient temperature from JTG D60; orange=`1.2×` design; the red extrapolation and the >60 °C/<-20 °C paving rule need confirmation.
-- Confirm whether deck/main-beam vibration thresholds `0.315/0.50/0.80 m/s²` apply to any current sensor. The current `S04`/`S07` are cable accelerometers, not deck accelerometers.
-- Provide approver name, effective date, profile version, and confirm the final sensor-to-profile mapping.
+The recorded competition decisions are: S04/S07 red = 1.5 × 300 mg, S01/S02/S06/S08 red = 1.2 × design, S03 tower-top allowable = 50 mm, and S05 steel-box-girder deflection = L/400.
 
 ## Comments
 
@@ -40,3 +34,4 @@ The source catalogue is recorded, but the following bridge-specific values and s
 - 2026-11-01: Added project-specific design baselines and the S01–S08 sensor-to-threshold mapping in `docs/thresholds/sensor-baseline-and-mapping.md`, plus a loadable profile at `config/bridge-threshold-profile.json` (validated with the backend's own `ThresholdProfileDocument` loader). Basis: L = 120 m steel-box-girder cable-stayed bridge → S05 `d_d` = L/400 = 300 mm (JTG/T 3365-01-2020 §7.2.5); S03 tower-top allowable 50 mm (proposed); S01/S02/S06 `ε_d` = 1200/900/650 µε; S04/S07 cable acceleration 0.98/2.94/4.41 m/s² (SJG 148-2024 Table 8.3.6, red is a platform extrapolation); S08 `T_d` = 46 °C (JTG D60-2015 Table 4.3.12-2), red = 60 °C paving limit. Provenance stays `provisional` (`code-derived-v1-pending-signoff`): `approved_by` and `effective_date` are still required to become authoritative.
 - 2026-11-01: Wired the S01-S08 mapping into the production default (`AppConfig.thresholds`, `sensor_thresholds`, and `threshold_provenance`) and kept the type-wide profiles as fallbacks. The rule-layer validation acceptance now applies the per-sensor mapping, restoring event recall to 1.0. Regenerated `bridge-validation-24h-v3` against the new limits (accuracy 0.9924, FPR 0.0023, event recall 1.0) and added a regression test that the versioned `config/bridge-threshold-profile.json` file equals the code default. Lifecycle tests use `legacy_test_config()` so they do not track production threshold tuning. Verification: 343 tests passed; mypy clean. Status moved to `ready-for-human` because the only remaining action is engineering approval of the derived values.
 - 2026-11-01: Closed the review-found provenance integrity gaps. Sensor overrides now carry their expected sensor type, so a mislabeled reading cannot apply a limit in the wrong unit. Type-level environment or API threshold updates switch to type-wide tuning, clear the default per-sensor overrides, and downgrade provenance to `provisional-default-v1` instead of being silently masked. Effective provenance is persisted in the engine checkpoint and restored with its values, and authoritative provenance now requires `scope`. System acceptance reports include the full type and per-sensor profile, not only a version string. Documentation now distinguishes the code default from its versioned mirror and states the S08 high-temperature-only boundary. Verification: 352 tests passed; mypy clean; system acceptance passed with 0.9924 accuracy / 0.0023 FPR / 1.0 event recall.
+- 2026-11-01: Finalized as a student-competition baseline, since the project has no engineering sign-off owner. The S01-S08 profile is versioned `competition-design-basis-v1`, remains `provisional`, and is applied to runtime, validation, acceptance, and VBA artifacts. The future toB approval interface is reserved: a deployment fills `approved_by`, `effective_date`, and `status=authoritative` in the same profile document and gates production on `provenance.authoritative`; no numeric or code changes are required. This closes the ticket for the competition scope without claiming formal engineering approval.

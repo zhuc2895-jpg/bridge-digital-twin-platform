@@ -85,4 +85,4 @@
    - 温度：黄 = 设计温度 T_d；橙 = 1.2 T_d；铺装层 > 60 °C 触发黄警（°C）
 3. 满足 ADR-0011 的 authoritative 要求后，将数值 + provenance（document/version/section/effective date/approver/scope/units）写入单一 JSON，经 `BRIDGE_THRESHOLD_PROFILE_PATH` 导入。
 
-本桥（L = 120 m 钢箱梁斜拉桥）的逐测点推导、单位与 S01–S08 映射见 `docs/thresholds/sensor-baseline-and-mapping.md`；当前可运行档案为 `config/bridge-threshold-profile.json`，状态为 `provisional`（`code-derived-v1-pending-signoff`）。
+本桥（L = 120 m 钢箱梁斜拉桥）的逐测点推导、单位与 S01–S08 映射见 `docs/thresholds/sensor-baseline-and-mapping.md`；当前可运行档案为 `config/bridge-threshold-profile.json`，状态为 `provisional`（`competition-design-basis-v1`），用于竞赛演示与算法验收。

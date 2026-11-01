@@ -1,23 +1,30 @@
 {
   "thresholds": {
-    "strain": { "yellow": 960.0, "orange": 1200.0, "red": 1440.0 },
-    "displacement": { "yellow": 240.0, "orange": 300.0, "red": 360.0 },
-    "acceleration": { "yellow": 0.315, "orange": 0.5, "red": 0.8 },
-    "temperature": { "yellow": 46.0, "orange": 55.2, "red": 60.0 }
-  },
-  "sensor_thresholds": {
-    "S01": { "yellow": 960.0, "orange": 1200.0, "red": 1440.0 },
-    "S02": { "yellow": 720.0, "orange": 900.0, "red": 1080.0 },
-    "S03": { "yellow": 40.0, "orange": 50.0, "red": 60.0 },
-    "S04": { "yellow": 0.98, "orange": 2.94, "red": 4.41 },
-    "S05": { "yellow": 240.0, "orange": 300.0, "red": 360.0 },
-    "S06": { "yellow": 520.0, "orange": 650.0, "red": 780.0 },
-    "S07": { "yellow": 0.98, "orange": 2.94, "red": 4.41 },
-    "S08": { "yellow": 46.0, "orange": 55.2, "red": 60.0 }
+    "strain": {
+      "yellow": 960.0,
+      "orange": 1200.0,
+      "red": 1440.0
+    },
+    "displacement": {
+      "yellow": 240.0,
+      "orange": 300.0,
+      "red": 360.0
+    },
+    "acceleration": {
+      "yellow": 0.315,
+      "orange": 0.5,
+      "red": 0.8
+    },
+    "temperature": {
+      "yellow": 46.0,
+      "orange": 55.2,
+      "red": 60.0
+    }
   },
   "provenance": {
     "status": "provisional",
-    "profile_version": "code-derived-v1-pending-signoff",
+    "authoritative": false,
+    "profile_version": "competition-design-basis-v1",
     "source_document": "JT/T 1037-2022 公路桥梁结构监测技术规范; SJG 148-2024 桥梁结构健康监测技术标准; JTG/T 3365-01-2020 公路斜拉桥设计规范; JTG D60-2015 公路桥涵设计通用规范",
     "source_version": "JT/T 1037-2022 (2022-01-13发布, 2022-04-13实施); SJG 148-2024 (2024-01-12发布, 2024-05-01实施); JTG/T 3365-01-2020; JTG D60-2015",
     "source_section": "JT/T 1037-2022 第11章 表9/表10; SJG 148-2024 §8.3 表8.3.5/表8.3.6; JTG/T 3365-01-2020 §7.2.5; JTG D60-2015 §4.3.12 表4.3.12-2",
@@ -30,6 +37,48 @@
       "acceleration": "metres per second squared (m/s²)",
       "temperature": "degrees Celsius (°C)"
     },
-    "notes": "Code-derived values pending engineering sign-off. Yellow=0.8x design (strain yellow proxies the historical-maximum rule until monitoring history exists), orange=1.0x design, red=1.2x design; red for strain/temperature/cable acceleration is a platform extrapolation (codes define no third level there). Cable acceleration follows SJG 148-2024 Table 8.3.6 (100 mg / 300 mg). S08 red = 60 °C paving-layer alarm limit (JT/T 1037-2022 Table 9). Becomes authoritative only after approved_by and effective_date are signed."
+    "notes": "Student-competition design basis, not a formally approved production limit. Yellow=0.8x design (strain yellow proxies the historical-maximum rule until monitoring history exists), orange=1.0x design, red=1.2x design; red for strain/temperature/cable acceleration is a platform extrapolation (codes define no third level there). Cable acceleration follows SJG 148-2024 Table 8.3.6 (100 mg / 300 mg). S08 red = 60 °C paving-layer alarm limit (JT/T 1037-2022 Table 9). The approval interface is reserved: a future toB deployment sets approved_by, effective_date, and status=authoritative."
+  },
+  "sensor_thresholds": {
+    "S01": {
+      "yellow": 960.0,
+      "orange": 1200.0,
+      "red": 1440.0
+    },
+    "S02": {
+      "yellow": 720.0,
+      "orange": 900.0,
+      "red": 1080.0
+    },
+    "S03": {
+      "yellow": 40.0,
+      "orange": 50.0,
+      "red": 60.0
+    },
+    "S04": {
+      "yellow": 0.98,
+      "orange": 2.94,
+      "red": 4.41
+    },
+    "S05": {
+      "yellow": 240.0,
+      "orange": 300.0,
+      "red": 360.0
+    },
+    "S06": {
+      "yellow": 520.0,
+      "orange": 650.0,
+      "red": 780.0
+    },
+    "S07": {
+      "yellow": 0.98,
+      "orange": 2.94,
+      "red": 4.41
+    },
+    "S08": {
+      "yellow": 46.0,
+      "orange": 55.2,
+      "red": 60.0
+    }
   }
 }

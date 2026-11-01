@@ -152,7 +152,7 @@ def provisional_threshold_provenance() -> ThresholdProvenance:
 
 
 def default_threshold_profile_document() -> ThresholdProfileDocument:
-    """Return the code-derived project profile pending engineering sign-off."""
+    """Return the competition design-basis profile with approval reserved."""
     return ThresholdProfileDocument(
         thresholds={
             "strain": {"yellow": 960.0, "orange": 1200.0, "red": 1440.0},
@@ -172,7 +172,7 @@ def default_threshold_profile_document() -> ThresholdProfileDocument:
         },
         provenance=ThresholdProvenance(
             status="provisional",
-            profile_version="code-derived-v1-pending-signoff",
+            profile_version="competition-design-basis-v1",
             source_document=(
                 "JT/T 1037-2022 公路桥梁结构监测技术规范; "
                 "SJG 148-2024 桥梁结构健康监测技术标准; "
@@ -196,15 +196,16 @@ def default_threshold_profile_document() -> ThresholdProfileDocument:
                 "per-measurement values in sensor_thresholds"
             ),
             notes=(
-                "Code-derived values pending engineering sign-off. Yellow=0.8x "
-                "design (strain yellow proxies the historical-maximum rule until "
-                "monitoring history exists), orange=1.0x design, red=1.2x design; "
-                "red for strain/temperature/cable acceleration is a platform "
+                "Student-competition design basis, not a formally approved "
+                "production limit. Yellow=0.8x design (strain yellow proxies the "
+                "historical-maximum rule until monitoring history exists), "
+                "orange=1.0x design, red=1.2x design; red for "
+                "strain/temperature/cable acceleration is a platform "
                 "extrapolation (codes define no third level there). Cable "
                 "acceleration follows SJG 148-2024 Table 8.3.6 (100 mg / 300 mg). "
                 "S08 red = 60 °C paving-layer alarm limit (JT/T 1037-2022 Table 9). "
-                "Becomes authoritative only after approved_by and effective_date "
-                "are signed."
+                "The approval interface is reserved: a future toB deployment sets "
+                "approved_by, effective_date, and status=authoritative."
             ),
         ),
     )
