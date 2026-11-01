@@ -6,8 +6,9 @@ import logging
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
 
+from app.sensor_ids import MAX_LIVE_SENSOR_ID_BYTES
 from app.ws.message_contract import MAX_SENSOR_UPDATE_BYTES, encode_message
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ class AlertWire(TypedDict):
 
 
 class SensorUpdateWire(TypedDict):
-    type: str
+    type: Literal["sensor_update"]
     sensors: list[SensorReadingWire]
     alerts: list[AlertWire]
     stats: dict[str, Any]
@@ -63,35 +64,35 @@ class LiveSensorSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class _WireTextLimits:
-    sensor_id: int
+    sensor_id_bytes: int
     sensor_name: int
     sensor_type: int
-    alert_sensor_id: int
+    alert_sensor_id_bytes: int
     alert_name: int
     alert_message: int
 
 
 _DEFAULT_TEXT_LIMITS = _WireTextLimits(
-    sensor_id=64,
+    sensor_id_bytes=MAX_LIVE_SENSOR_ID_BYTES,
     sensor_name=128,
     sensor_type=32,
-    alert_sensor_id=64,
+    alert_sensor_id_bytes=MAX_LIVE_SENSOR_ID_BYTES,
     alert_name=128,
     alert_message=512,
 )
 _SHORT_TEXT_LIMITS = _WireTextLimits(
-    sensor_id=16,
+    sensor_id_bytes=MAX_LIVE_SENSOR_ID_BYTES,
     sensor_name=32,
     sensor_type=16,
-    alert_sensor_id=16,
+    alert_sensor_id_bytes=MAX_LIVE_SENSOR_ID_BYTES,
     alert_name=16,
     alert_message=24,
 )
 _MINIMAL_TEXT_LIMITS = _WireTextLimits(
-    sensor_id=8,
+    sensor_id_bytes=MAX_LIVE_SENSOR_ID_BYTES,
     sensor_name=8,
     sensor_type=8,
-    alert_sensor_id=8,
+    alert_sensor_id_bytes=MAX_LIVE_SENSOR_ID_BYTES,
     alert_name=8,
     alert_message=8,
 )
@@ -107,14 +108,27 @@ def _truncate_text(value: Any, limit: int) -> str:
     return text[:limit]
 
 
+def _identifier_text(value: Any, byte_limit: int) -> str:
+    text = str(value)
+    try:
+        encoded = text.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ValueError("sensor identifier must be valid Unicode") from exc
+    if len(encoded) > byte_limit:
+        raise ValueError(
+            f"sensor identifier exceeds {byte_limit} UTF-8 bytes"
+        )
+    return text
+
+
 def _compact_reading(
     reading: Mapping[str, Any],
     limits: _WireTextLimits = _DEFAULT_TEXT_LIMITS,
 ) -> SensorReadingWire:
     return {
-        "sensor_id": _truncate_text(
+        "sensor_id": _identifier_text(
             reading.get("sensor_id", ""),
-            limits.sensor_id,
+            limits.sensor_id_bytes,
         ),
         "name": _truncate_text(reading.get("name", ""), limits.sensor_name),
         "type": _truncate_text(
@@ -162,9 +176,9 @@ def _alert_payload(
         )
     return {
         "id": str(alert.get("id", "")),
-        "sensor_id": _truncate_text(
+        "sensor_id": _identifier_text(
             alert.get("sensor_id", ""),
-            limits.alert_sensor_id,
+            limits.alert_sensor_id_bytes,
         ),
         "sensor_name": _truncate_text(
             alert.get("sensor_name", ""),

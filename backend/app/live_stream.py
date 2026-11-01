@@ -6,7 +6,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable
-from typing import cast
+from typing import Protocol, cast
 
 from app.engine.data_engine import MonitoringEngine
 from app.engine.simulator import DataSimulator
@@ -20,9 +20,42 @@ from app.live_contract import (
 )
 from app.processing import SensorDataProcessor
 from app.sensor_batch import LiveEligibility, SensorBatch
-from app.ws.websocket_manager import WebSocketManager
 
 logger = logging.getLogger(__name__)
+
+
+class LiveFrameSink(Protocol):
+    """Consumer-side seam for the transport that accepts Live Frames."""
+
+    def enqueue_broadcast(
+        self,
+        frame: SensorUpdateWire,
+        *,
+        budget_started_at: float | None = None,
+    ) -> None: ...
+
+
+class LivePublicationEnvironment(Protocol):
+    """Current application-owned collaborators used to publish Live Frames."""
+
+    @property
+    def engine(self) -> MonitoringEngine: ...
+
+    @property
+    def ws_manager(self) -> LiveFrameSink: ...
+
+    @property
+    def processing_lock(self) -> threading.RLock: ...
+
+
+class LiveTickEnvironment(LivePublicationEnvironment, Protocol):
+    """Current application-owned collaborators used to execute a Live Tick."""
+
+    @property
+    def simulator(self) -> DataSimulator: ...
+
+    @property
+    def processor(self) -> SensorDataProcessor: ...
 
 
 def capture_live_snapshot(
@@ -44,34 +77,24 @@ def capture_live_snapshot(
         )
 
 
-def build_sensor_update(
-    engine: MonitoringEngine,
-    processing_lock: threading.RLock,
-) -> SensorUpdateWire:
-    """Build one bounded Live Frame from a synchronized live snapshot."""
-    return build_sensor_update_from_snapshot(
-        capture_live_snapshot(engine, processing_lock)
-    )
-
-
 class SensorUpdatePublisher:
     """Build and enqueue sensor_update payloads through one policy boundary."""
 
     def __init__(
         self,
-        engine: MonitoringEngine,
-        ws_manager: WebSocketManager,
-        processing_lock: threading.RLock,
+        environment: LivePublicationEnvironment,
         *,
         max_frame_age_seconds: float = 0.5,
     ) -> None:
-        self.engine = engine
-        self.ws_manager = ws_manager
-        self.processing_lock = processing_lock
+        self._environment = environment
         self.max_frame_age_seconds = max_frame_age_seconds
 
     def capture_snapshot(self) -> LiveSensorSnapshot:
-        return capture_live_snapshot(self.engine, self.processing_lock)
+        environment = self._environment
+        return capture_live_snapshot(
+            environment.engine,
+            environment.processing_lock,
+        )
 
     def _skip_if_stale(self, generated_at: float | None) -> bool:
         if (
@@ -95,7 +118,7 @@ class SensorUpdatePublisher:
             payload = build_sensor_update_from_snapshot(current_snapshot)
             if self._skip_if_stale(generated_at):
                 return False
-            self.ws_manager.enqueue_broadcast(
+            self._environment.ws_manager.enqueue_broadcast(
                 payload,
                 budget_started_at=generated_at,
             )
@@ -105,43 +128,51 @@ class SensorUpdatePublisher:
             return False
 
 
-def process_live_tick(
-    *,
-    simulator: DataSimulator,
-    processor: SensorDataProcessor,
-    publisher: SensorUpdatePublisher,
-    processing_lock: threading.RLock,
-    generated_at: float,
-) -> None:
-    """Generate, ingest, and publish one serialized live frame."""
-    try:
-        raw_readings = simulator.next_readings()
-    except Exception:
-        logger.exception("Live simulator generation failed")
-        raw_readings = []
+class LiveTickPipeline:
+    """Generate, ingest, snapshot, and publish one serialized Live Tick."""
 
-    readings = validate_live_json_records(raw_readings)
-    with processing_lock:
-        pending_external = publisher.engine.get_pending_external_versions()
-        readings = [
-            reading
-            for reading in readings
-            if str(reading["sensor_id"]) not in pending_external
-        ]
-        batch = SensorBatch(
-            records=readings,
-            live_eligibility=LiveEligibility.INTERNAL,
+    def __init__(
+        self,
+        *,
+        environment: LiveTickEnvironment,
+        max_frame_age_seconds: float = 0.5,
+    ) -> None:
+        self._environment = environment
+        self._publisher = SensorUpdatePublisher(
+            environment,
+            max_frame_age_seconds=max_frame_age_seconds,
         )
-        try:
-            processor.process(batch)
-        except Exception:
-            logger.exception("Live ingestion/detector pipeline failed")
-        snapshot = publisher.capture_snapshot()
 
-    published = publisher.publish(snapshot, generated_at=generated_at)
-    if published:
-        with processing_lock:
-            publisher.engine.consume_pending_external(pending_external)
+    def run_once(self, generated_at: float) -> None:
+        environment = self._environment
+        try:
+            raw_readings = environment.simulator.next_readings()
+        except Exception:
+            logger.exception("Live simulator generation failed")
+            raw_readings = []
+
+        readings = validate_live_json_records(raw_readings)
+        with environment.processing_lock:
+            pending_external = environment.engine.get_pending_external_versions()
+            readings = [
+                reading
+                for reading in readings
+                if str(reading["sensor_id"]) not in pending_external
+            ]
+            batch = SensorBatch(
+                records=readings,
+                live_eligibility=LiveEligibility.INTERNAL,
+            )
+            try:
+                environment.processor.process(batch)
+            except Exception:
+                logger.exception("Live ingestion/detector pipeline failed")
+            snapshot = self._publisher.capture_snapshot()
+
+        published = self._publisher.publish(snapshot, generated_at=generated_at)
+        if published:
+            with environment.processing_lock:
+                environment.engine.consume_pending_external(pending_external)
 
 
 class LiveStreamRunner:

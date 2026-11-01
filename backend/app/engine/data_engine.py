@@ -4,16 +4,19 @@
 """
 
 import bisect
-from collections import deque
 import heapq
 import math
 import time
 import uuid
 from array import array
+from collections import deque
 from dataclasses import dataclass, field
+from typing import Any, Dict, List, Mapping, Optional
 
 from app.alert_contracts import (
     ALERT_LEVELS as CANONICAL_ALERT_LEVELS,
+)
+from app.alert_contracts import (
     ALERT_SOURCES as CANONICAL_ALERT_SOURCES,
 )
 from app.sensor_batch import SensorBatch
@@ -23,7 +26,6 @@ from app.sensor_metrics import (
     is_online,
 )
 from app.sensor_types import SensorType
-from typing import Any, Dict, List, Mapping, Optional
 
 # Keep enough timestamps to answer the maximum supported 168-hour report.
 _READING_TIMESTAMP_RETENTION_SECONDS = (168 + 1) * 3600.0
@@ -289,6 +291,10 @@ class MonitoringEngine:
             raise ValueError(f"Unknown alert level: {level}")
         if source not in self.ALERT_SOURCES:
             raise ValueError(f"Unknown alert source: {source}")
+        try:
+            sensor_id = str(SensorIdentifier(sensor_id))
+        except ValueError as exc:
+            raise ValueError(f"Invalid alert sensor_id: {exc}") from exc
         normalized_timestamp = self._normalize_alert_timestamp(timestamp)
         if (
             normalized_timestamp is not None

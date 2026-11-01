@@ -15,6 +15,8 @@ from app.ml.contracts import BaseDetector, BaselineStatus, DetectionResult
 
 @dataclass(frozen=True)
 class _AdversarialModel:
+    encoder_weight: np.ndarray
+    encoder_bias: np.ndarray
     generator_weight: np.ndarray
     generator_bias: np.ndarray
     discriminator_weight: np.ndarray
@@ -27,7 +29,6 @@ class _AdversarialModel:
 class _ReconstructionModel:
     window_mean: np.ndarray
     window_scale: float
-    components: np.ndarray
     error_mean: float
     error_std: float
     threshold: float
@@ -194,6 +195,8 @@ class GanAEDetector(BaseDetector):
                     "vote": False,
                     "model_ready": True,
                     "reconstruction_error": 0.0,
+                    "reconstruction_path": "encoder_generator_decoder",
+                    "generator_reconstruction_error": 0.0,
                     "reconstruction_mean": round(model.error_mean, 9),
                     "reconstruction_std": round(model.error_std, 9),
                     "threshold": round(model.threshold, 9),
@@ -242,6 +245,8 @@ class GanAEDetector(BaseDetector):
                 "vote": anomalous,
                 "model_ready": True,
                 "reconstruction_error": round(error, 9),
+                "reconstruction_path": "encoder_generator_decoder",
+                "generator_reconstruction_error": round(error, 9),
                 "reconstruction_mean": round(model.error_mean, 9),
                 "reconstruction_std": round(model.error_std, 9),
                 "threshold": round(model.threshold, 9),
@@ -318,23 +323,21 @@ class GanAEDetector(BaseDetector):
         value_scale = float(np.mean(np.abs(window_mean)))
         window_scale = max(rms, value_scale * 1e-6, self.min_scale)
         normalized = centered / window_scale
-        # SVD learns the optimal linear autoencoder: the right vectors are
-        # the decoder basis and their transpose forms the encoder.
-        _, _, right_vectors = np.linalg.svd(normalized, full_matrices=False)
-        components = right_vectors[: self.latent_rank]
-        reconstructed = (normalized @ components.T) @ components
-        errors = np.mean(np.square(normalized - reconstructed), axis=1)
-        error_mean = float(np.mean(errors))
-        error_std = float(np.std(errors))
-        threshold = error_mean + self.threshold_sigma * error_std
         adversarial = self._train_adversarial_model(
             normalized,
             sensor_id=state.sensor_id,
         )
+        latent = normalized @ adversarial.encoder_weight.T + adversarial.encoder_bias
+        reconstructed = (
+            latent @ adversarial.generator_weight + adversarial.generator_bias
+        )
+        errors = np.mean(np.square(normalized - reconstructed), axis=1)
+        error_mean = float(np.mean(errors))
+        error_std = float(np.std(errors))
+        threshold = error_mean + self.threshold_sigma * error_std
         return _ReconstructionModel(
             window_mean=window_mean,
             window_scale=window_scale,
-            components=components,
             error_mean=error_mean,
             error_std=error_std,
             threshold=threshold,
@@ -348,38 +351,42 @@ class GanAEDetector(BaseDetector):
         *,
         sensor_id: str,
     ) -> _AdversarialModel:
-        """Train a normal-window generator and discriminator for the GAN branch."""
+        """Train the autoencoder decoder as a generator against a discriminator."""
         sample_count, window_length = normalized_windows.shape
-        latent_width = max(2, min(self.latent_rank + 1, window_length))
-        seed = self.random_state + sum(
-            (index + 1) * ord(character) for index, character in enumerate(sensor_id)
+        _, _, right_vectors = np.linalg.svd(
+            normalized_windows,
+            full_matrices=False,
         )
-        rng = np.random.default_rng(seed)
-        generator_weight = rng.normal(
-            0.0,
-            1.0 / math.sqrt(latent_width),
-            size=(latent_width, window_length),
-        )
+        encoder_weight = right_vectors[: self.latent_rank].copy()
+        generator_weight = encoder_weight.copy()
+        encoder_bias = np.zeros(encoder_weight.shape[0], dtype=float)
         generator_bias = np.zeros(window_length, dtype=float)
         discriminator_weight = np.zeros(window_length, dtype=float)
         discriminator_bias = 0.0
         learning_rate = self.adversarial_learning_rate
 
+        seed = self.random_state + sum(
+            (index + 1) * ord(character) for index, character in enumerate(sensor_id)
+        )
+        rng = np.random.default_rng(seed)
+        encoder_weight += rng.normal(0.0, 1e-8, size=encoder_weight.shape)
+        generator_weight += rng.normal(0.0, 1e-8, size=generator_weight.shape)
+
         for _ in range(self.adversarial_steps):
-            latent = rng.normal(size=(sample_count, latent_width))
-            generated = np.tanh(latent @ generator_weight + generator_bias)
+            latent = normalized_windows @ encoder_weight.T + encoder_bias
+            reconstructed = latent @ generator_weight + generator_bias
             real_probability = self._sigmoid(
                 normalized_windows @ discriminator_weight + discriminator_bias
             )
             fake_probability = self._sigmoid(
-                generated @ discriminator_weight + discriminator_bias
+                reconstructed @ discriminator_weight + discriminator_bias
             )
 
             discriminator_weight -= (
                 learning_rate
                 * (
                     normalized_windows.T @ (real_probability - 1.0)
-                    + generated.T @ fake_probability
+                    + reconstructed.T @ fake_probability
                 )
                 / sample_count
             )
@@ -389,27 +396,42 @@ class GanAEDetector(BaseDetector):
             )
             discriminator_weight = np.clip(discriminator_weight, -5.0, 5.0)
 
-            latent = rng.normal(size=(sample_count, latent_width))
-            generated = np.tanh(latent @ generator_weight + generator_bias)
+            latent = normalized_windows @ encoder_weight.T + encoder_bias
+            reconstructed = latent @ generator_weight + generator_bias
             fake_probability = self._sigmoid(
-                generated @ discriminator_weight + discriminator_bias
+                reconstructed @ discriminator_weight + discriminator_bias
             )
-            generator_delta = (fake_probability[:, None] - 1.0) * (
-                1.0 - np.square(generated)
+            reconstruction_gradient = (
+                2.0
+                * (reconstructed - normalized_windows)
+                / (sample_count * window_length)
             )
+            adversarial_gradient = (
+                (fake_probability[:, None] - 1.0)
+                * discriminator_weight[None, :]
+                * 0.05
+                / sample_count
+            )
+            output_gradient = reconstruction_gradient + adversarial_gradient
+            latent_gradient = output_gradient @ generator_weight.T
             generator_weight -= (
-                learning_rate * (latent.T @ generator_delta) / sample_count
+                learning_rate * (latent.T @ output_gradient) / sample_count
             )
-            generator_bias -= learning_rate * np.mean(generator_delta, axis=0)
+            generator_bias -= learning_rate * np.mean(output_gradient, axis=0)
+            encoder_weight -= (
+                learning_rate * (latent_gradient.T @ normalized_windows) / sample_count
+            )
+            encoder_bias -= learning_rate * np.mean(latent_gradient, axis=0)
+            encoder_weight = np.clip(encoder_weight, -5.0, 5.0)
             generator_weight = np.clip(generator_weight, -5.0, 5.0)
 
-        final_latent = rng.normal(size=(sample_count, latent_width))
-        final_fake = np.tanh(final_latent @ generator_weight + generator_bias)
+        final_latent = normalized_windows @ encoder_weight.T + encoder_bias
+        final_reconstruction = final_latent @ generator_weight + generator_bias
         final_real_probability = self._sigmoid(
             normalized_windows @ discriminator_weight + discriminator_bias
         )
         final_fake_probability = self._sigmoid(
-            final_fake @ discriminator_weight + discriminator_bias
+            final_reconstruction @ discriminator_weight + discriminator_bias
         )
         epsilon = 1e-9
         discriminator_loss = float(
@@ -417,6 +439,8 @@ class GanAEDetector(BaseDetector):
             - np.mean(np.log(np.clip(1.0 - final_fake_probability, epsilon, 1.0)))
         )
         return _AdversarialModel(
+            encoder_weight=encoder_weight,
+            encoder_bias=encoder_bias,
             generator_weight=generator_weight,
             generator_bias=generator_bias,
             discriminator_weight=discriminator_weight,
@@ -463,14 +487,20 @@ class GanAEDetector(BaseDetector):
         normalized_window: np.ndarray,
         model: _ReconstructionModel,
     ) -> np.ndarray:
-        return normalized_window @ model.components.T
+        return (
+            normalized_window @ model.adversarial.encoder_weight.T
+            + model.adversarial.encoder_bias
+        )
 
     @staticmethod
     def _decode(
         latent: np.ndarray,
         model: _ReconstructionModel,
     ) -> np.ndarray:
-        return latent @ model.components
+        return (
+            latent @ model.adversarial.generator_weight
+            + model.adversarial.generator_bias
+        )
 
     def _confidence(self, error: float, model: _ReconstructionModel) -> float:
         if error <= model.threshold:

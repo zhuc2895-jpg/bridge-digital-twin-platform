@@ -31,3 +31,6 @@ backend/tests/artifacts/
 Thumbs.db
 .idea/
 .vscode/
+
+# External raw datasets
+data/external/

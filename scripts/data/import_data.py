@@ -2,18 +2,22 @@
 桥梁监测数据批量导入工具（零依赖版）
 使用方法:
     1. 确保后端已启动 (双击 start_backend.bat)
-    2. 把你的CSV文件放在和这个脚本同一个目录
+    2. 默认读取 data/validation/bridge_validation_data.csv
     3. 修改下面的 CONFIG 配置
-    4. 运行: py import_data.py
+    4. 运行: py scripts/data/import_data.py
 
 依赖: 只需要 requests (py -m pip install requests)
 """
 
-import requests
 import csv
-import time
 import json
 import os
+import time
+from pathlib import Path
+
+import requests
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # ====================== 配置区 ======================
 CONFIG = {
@@ -21,7 +25,7 @@ CONFIG = {
     "api_url": "http://localhost:8000",
 
     # 你的CSV文件路径
-    "csv_file": "bridge_validation_data.csv",
+    "csv_file": str(PROJECT_ROOT / "data" / "validation" / "bridge_validation_data.csv"),
 
     # CSV列名映射：左边是平台字段，右边是你的CSV列名
     # 如果你的CSV列名就是 sensor_id/name/type/value/timestamp 就不用改

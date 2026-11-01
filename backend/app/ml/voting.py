@@ -1,4 +1,4 @@
-"""Three-model majority voting behind one detector contract."""
+"""Three-model majority voting orchestration behind one detector contract."""
 
 from __future__ import annotations
 
@@ -15,12 +15,17 @@ from app.ml.contracts import (
 from app.ml.gan_ae import GanAEDetector
 from app.ml.isolation_forest import IsolationForestDetector
 from app.ml.stalwart import StalwartDetector
+from app.ml.voting_policy import (
+    CONFIDENCE_THRESHOLD,
+    MIN_VOTES,
+    MajorityVotePolicy,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class VotingDetector(BaseDetector):
-    """Require at least two confident model votes before emitting an alert."""
+    """Run three independent models and apply the fixed majority policy."""
 
     detector_id = "ensemble"
     display_name = "STALWART + GAN-AE + Isolation Forest"
@@ -28,15 +33,7 @@ class VotingDetector(BaseDetector):
     def __init__(
         self,
         detectors: Sequence[BaseDetector] | None = None,
-        *,
-        confidence_threshold: float = 0.7,
-        min_votes: int = 2,
     ) -> None:
-        if confidence_threshold != 0.7:
-            raise ValueError("confidence_threshold must be exactly 0.7")
-        if min_votes != 2:
-            raise ValueError("min_votes must be exactly two")
-
         self.detectors = list(
             detectors
             if detectors is not None
@@ -52,8 +49,7 @@ class VotingDetector(BaseDetector):
         if len(set(detector_ids)) != len(detector_ids):
             raise ValueError("model detector ids must be unique")
 
-        self.confidence_threshold = float(confidence_threshold)
-        self.min_votes = min_votes
+        self.policy = MajorityVotePolicy()
         self._total_detections = 0
         self._alerts_triggered = 0
         self._model_failures: dict[str, str] = {}
@@ -61,8 +57,8 @@ class VotingDetector(BaseDetector):
     @property
     def parameters(self) -> dict[str, float | int | list[str]]:
         return {
-            "confidence_threshold": self.confidence_threshold,
-            "min_votes": self.min_votes,
+            "confidence_threshold": CONFIDENCE_THRESHOLD,
+            "min_votes": MIN_VOTES,
             "models": [detector.detector_id for detector in self.detectors],
         }
 
@@ -72,9 +68,10 @@ class VotingDetector(BaseDetector):
         *,
         is_normal: bool = True,
     ) -> BaselineStatus:
-        statuses = []
-        for detector in self.detectors:
-            statuses.append(detector.learn_baseline(reading, is_normal=is_normal))
+        statuses = [
+            detector.learn_baseline(reading, is_normal=is_normal)
+            for detector in self.detectors
+        ]
         return self._aggregate_status(str(reading["sensor_id"]), statuses)
 
     def get_baseline_status(
@@ -127,11 +124,25 @@ class VotingDetector(BaseDetector):
                 self._record_failure(detector.detector_id, exc)
                 results.append(None)
         elapsed_ms = (time.perf_counter() - started) * 1000
-        return self._combine(
+        sensor_id = str(reading["sensor_id"])
+        readiness = {
+            detector.detector_id: self._ready_or_record_failure(
+                detector,
+                sensor_id,
+            )
+            for detector in self.detectors
+        }
+        tally = self.policy.tally(self.detectors, results, readiness)
+        result = self.policy.result(
             reading,
-            results,
+            tally,
+            detector_id=self.detector_id,
             inference_elapsed_ms=elapsed_ms,
         )
+        if result.anomalous:
+            self._alerts_triggered += 1
+        self._total_detections += 1
+        return result
 
     def detect_batch(
         self,
@@ -225,30 +236,40 @@ class VotingDetector(BaseDetector):
             ):
                 combined.append(self._normal_batch_result(current_reading))
                 continue
-            combined.append(
-                self._combine(
-                    current_reading,
-                    current_results,
-                    inference_elapsed_ms=None,
+
+            sensor_id = str(current_reading["sensor_id"])
+            readiness = {
+                detector.detector_id: self._ready_or_record_failure(
+                    detector,
+                    sensor_id,
                 )
+                for detector in self.detectors
+            }
+            tally = self.policy.tally(
+                self.detectors,
+                current_results,
+                readiness,
             )
+            result = self.policy.result(
+                current_reading,
+                tally,
+                detector_id=self.detector_id,
+            )
+            if result.anomalous:
+                self._alerts_triggered += 1
+            self._total_detections += 1
+            combined.append(result)
         return combined
 
     def _normal_batch_result(
         self,
         reading: Mapping[str, Any],
     ) -> DetectionResult:
-        sensor_id = str(reading["sensor_id"])
         self._total_detections += 1
-        return DetectionResult(
-            sensor_id=sensor_id,
-            name=str(reading.get("name", sensor_id)),
-            value=float(reading["value"]),
-            timestamp=float(reading["timestamp"]),
+        return self.policy.result(
+            reading,
+            self.policy.known_normal(self.detectors),
             detector_id=self.detector_id,
-            anomalous=False,
-            reason="no model voted anomaly",
-            details={"vote_count": 0, "participating_models": []},
         )
 
     def get_stats(self) -> dict:
@@ -295,115 +316,6 @@ class VotingDetector(BaseDetector):
             "models": models,
         }
 
-    def _combine(
-        self,
-        reading: Mapping[str, Any],
-        results: Sequence[DetectionResult | None],
-        *,
-        inference_elapsed_ms: float | None,
-    ) -> DetectionResult:
-        model_results: dict[str, dict[str, Any]] = {}
-        votes: dict[str, bool] = {}
-        scores: dict[str, float] = {}
-        confidences: dict[str, float] = {}
-        participating: list[str] = []
-        ready_models: list[str] = []
-        sensor_id = str(reading["sensor_id"])
-
-        for detector, result in zip(self.detectors, results, strict=True):
-            model_id = detector.detector_id
-            ready = self._model_is_ready(detector, sensor_id)
-            if ready:
-                ready_models.append(model_id)
-            confidence = float(result.confidence) if result is not None else 0.0
-            score = float(result.score) if result is not None else 0.0
-            vote = bool(
-                ready
-                and result is not None
-                and result.anomalous
-                and confidence >= self.confidence_threshold
-            )
-            votes[model_id] = vote
-            scores[model_id] = score
-            confidences[model_id] = confidence
-            if vote:
-                participating.append(model_id)
-            model_results[model_id] = {
-                "source": (result.source if result is not None else detector.source),
-                "ready": ready,
-                "vote": vote,
-                "raw_anomalous": (result.anomalous if result is not None else False),
-                "confidence": confidence,
-                "score": score,
-                "reason": result.reason if result is not None else "model_failed",
-            }
-
-        vote_count = len(participating)
-        details = {
-            "votes": votes,
-            "scores": scores,
-            "confidences": confidences,
-            "vote_count": vote_count,
-            "participating_models": participating,
-            "triggered_models": list(participating),
-            "ready_models": ready_models,
-            "model_ready": bool(ready_models),
-            "model_results": model_results,
-            "confidence_threshold": self.confidence_threshold,
-            "min_votes": self.min_votes,
-            "voting_parameters": self.parameters,
-        }
-        if inference_elapsed_ms is not None:
-            details["inference_elapsed_ms"] = round(inference_elapsed_ms, 3)
-
-        if vote_count >= self.min_votes:
-            self._alerts_triggered += 1
-            self._total_detections += 1
-            level = "red" if vote_count >= 3 else "orange"
-            confidence = max(confidences[model_id] for model_id in participating)
-            score = max(scores[model_id] for model_id in participating)
-            details["level_reason"] = (
-                "all three models confirmed"
-                if vote_count >= 3
-                else "two independent models confirmed"
-            )
-            return DetectionResult(
-                sensor_id=sensor_id,
-                name=str(reading.get("name", sensor_id)),
-                value=float(reading["value"]),
-                timestamp=float(reading["timestamp"]),
-                detector_id=self.detector_id,
-                anomalous=True,
-                score=score,
-                confidence=confidence,
-                reason="at least two confident detectors voted anomaly",
-                level=level,
-                source="ai_dual_confirm",
-                message=(
-                    f"[AI多模型确认] {reading.get('name', sensor_id)} 异常 "
-                    f"(投票:{'+'.join(participating)}, 置信度:{confidence:.0%})"
-                ),
-                details=details,
-            )
-
-        self._total_detections += 1
-        return DetectionResult(
-            sensor_id=sensor_id,
-            name=str(reading.get("name", sensor_id)),
-            value=float(reading["value"]),
-            timestamp=float(reading["timestamp"]),
-            detector_id=self.detector_id,
-            anomalous=False,
-            score=max(scores.values(), default=0.0),
-            confidence=max(confidences.values(), default=0.0),
-            reason=(
-                "insufficient confident model votes"
-                if ready_models
-                else "models_not_ready"
-            ),
-            details=details,
-        )
-
     @staticmethod
     def _single_status(
         detector: BaseDetector,
@@ -414,7 +326,11 @@ class VotingDetector(BaseDetector):
             raise TypeError("single-sensor baseline lookup must return BaselineStatus")
         return status
 
-    def _model_is_ready(self, detector: BaseDetector, sensor_id: str) -> bool:
+    def _ready_or_record_failure(
+        self,
+        detector: BaseDetector,
+        sensor_id: str,
+    ) -> bool:
         try:
             return self._single_status(detector, sensor_id).ready
         except Exception as exc:

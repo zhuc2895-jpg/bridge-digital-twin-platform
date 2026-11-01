@@ -8,7 +8,7 @@ import logging
 import math
 from typing import Any
 
-from app.sensor_ids import SensorIdentifier
+from app.sensor_ids import SensorIdentifier, validate_live_sensor_identifier
 from app.sensor_reading import SensorReadingRecord
 from app.sensor_types import SensorType
 
@@ -23,7 +23,11 @@ class IngestionValidationError(ValueError):
     """A malformed batch that must be rejected before any state changes."""
 
 
-def validate_json_batch(data: Any) -> list[SensorReadingRecord]:
+def validate_json_batch(
+    data: Any,
+    *,
+    live_eligible: bool = False,
+) -> list[SensorReadingRecord]:
     """Validate a JSON array and return normalized sensor records."""
     if not isinstance(data, list):
         raise IngestionValidationError("request body must be a JSON array")
@@ -33,10 +37,17 @@ def validate_json_batch(data: Any) -> list[SensorReadingRecord]:
             f"batch size {len(data)} exceeds the maximum of {MAX_BATCH_SIZE}"
         )
 
-    return [validate_json_record(item, index) for index, item in enumerate(data)]
+    return [
+        validate_json_record(item, index, live_eligible=live_eligible)
+        for index, item in enumerate(data)
+    ]
 
 
-def validate_csv_batch(content: bytes) -> list[SensorReadingRecord]:
+def validate_csv_batch(
+    content: bytes,
+    *,
+    live_eligible: bool = False,
+) -> list[SensorReadingRecord]:
     """Validate a UTF-8 CSV file and return normalized sensor records."""
     if not content:
         return []
@@ -73,20 +84,35 @@ def validate_csv_batch(content: bytes) -> list[SensorReadingRecord]:
                 raise IngestionValidationError(
                     f"batch size exceeds the maximum of {MAX_BATCH_SIZE}"
                 )
-            records.append(_validate_csv_record(row, index))
+            records.append(
+                _validate_csv_record(
+                    row,
+                    index,
+                    live_eligible=live_eligible,
+                )
+            )
         return records
     except csv.Error as exc:
         raise IngestionValidationError(f"invalid CSV file: {exc}") from exc
 
 
-def validate_json_record(item: Any, index: int) -> SensorReadingRecord:
+def validate_json_record(
+    item: Any,
+    index: int,
+    *,
+    live_eligible: bool = False,
+) -> SensorReadingRecord:
     if not isinstance(item, dict):
         raise IngestionValidationError(f"record {index}: must be a JSON object")
 
     _require_fields(item, index)
 
     return {
-        "sensor_id": _validated_sensor_identifier(item["sensor_id"], index),
+        "sensor_id": _validated_sensor_identifier(
+            item["sensor_id"],
+            index,
+            live_eligible=live_eligible,
+        ),
         "name": _validated_text(item["name"], index, "name"),
         "type": _validated_sensor_type(item["type"], index),
         "value": _validated_json_number(item["value"], index, "value"),
@@ -94,11 +120,20 @@ def validate_json_record(item: Any, index: int) -> SensorReadingRecord:
     }
 
 
-def _validate_csv_record(row: dict, index: int) -> SensorReadingRecord:
+def _validate_csv_record(
+    row: dict,
+    index: int,
+    *,
+    live_eligible: bool,
+) -> SensorReadingRecord:
     raw_value = row.get("value")
     raw_timestamp = row.get("timestamp")
     return {
-        "sensor_id": _validated_sensor_identifier(row.get("sensor_id"), index),
+        "sensor_id": _validated_sensor_identifier(
+            row.get("sensor_id"),
+            index,
+            live_eligible=live_eligible,
+        ),
         "name": _validated_text(row.get("name"), index, "name"),
         "type": _validated_sensor_type(row.get("type"), index),
         "value": _validated_csv_number(raw_value, index, "value"),
@@ -125,16 +160,21 @@ def _validated_text(value: Any, index: int, field: str) -> str:
 def _validated_sensor_identifier(
     value: Any,
     index: int,
+    *,
+    live_eligible: bool,
 ) -> SensorIdentifier:
     if not isinstance(value, str):
         raise IngestionValidationError(
             f"record {index}: sensor_id must be a non-empty string"
         )
     try:
-        return SensorIdentifier(value)
+        sensor_id = SensorIdentifier(value)
+        if live_eligible:
+            validate_live_sensor_identifier(sensor_id)
+        return sensor_id
     except ValueError as exc:
         raise IngestionValidationError(
-            f"record {index}: sensor_id must be a non-empty string"
+            f"record {index}: {exc}"
         ) from exc
 
 
@@ -195,7 +235,7 @@ def validate_live_json_records(records: Any) -> list[SensorReadingRecord]:
     for index, record in enumerate(records):
         sensor_id = record.get("sensor_id") if isinstance(record, dict) else None
         try:
-            reading = validate_json_record(record, index)
+            reading = validate_json_record(record, index, live_eligible=True)
         except (IngestionValidationError, OverflowError) as exc:
             logger.warning(
                 "Skipping invalid live reading index=%d sensor_id=%r error=%s",

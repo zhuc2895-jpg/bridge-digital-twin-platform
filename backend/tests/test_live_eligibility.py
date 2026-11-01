@@ -1,7 +1,8 @@
 from app.engine.data_engine import MonitoringEngine
 from app.sensor_batch import LiveEligibility, SensorBatch
+
 from tests.factories import reading
-from tests.helpers import ingest_records
+from tests.helpers import ingest_numbered_sensors, ingest_records
 
 
 def test_live_snapshot_ignores_newer_non_live_backfill():
@@ -26,17 +27,7 @@ def test_live_snapshot_ignores_newer_non_live_backfill():
 
 def test_live_snapshot_keeps_thirty_two_most_recent_sensors():
     engine = MonitoringEngine()
-    ingest_records(
-        engine,
-        [
-            reading(
-                sensor_id=f"S{index:03d}",
-                value=float(index),
-                timestamp=float(index),
-            )
-            for index in range(40)
-        ],
-    )
+    ingest_numbered_sensors(engine)
 
     snapshot = engine.get_live_snapshot()
 

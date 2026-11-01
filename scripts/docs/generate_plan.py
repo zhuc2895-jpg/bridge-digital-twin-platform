@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """生成项目计划书Word文档"""
+from pathlib import Path
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -258,6 +259,8 @@ add_para('（3）进度风险：团队成员非计算机专业，开发进度可
 add_para('（4）数据风险：缺乏真实桥梁监测数据。应对措施：基于桥梁力学特性与历史文献生成高仿真验证数据，覆盖正常工况与典型损伤工况，确保算法验证的科学性。')
 
 # ===== 保存 =====
-output_path = r'D:\bridge-digital-twin-platform\项目计划书_数字孪生桥梁健康监测.docx'
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+output_path = PROJECT_ROOT / 'assets' / 'planning' / 'project-plan.docx'
+output_path.parent.mkdir(parents=True, exist_ok=True)
 doc.save(output_path)
 print(f'文档已生成: {output_path}')

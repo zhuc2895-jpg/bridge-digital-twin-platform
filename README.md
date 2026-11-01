@@ -68,52 +68,50 @@
 
 ## 📁 项目结构
 
-```
+```text
 bridge-digital-twin-platform/
-├── frontend/                          # Vue3 前端
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── BridgeViewer.vue       # 3D桥梁查看器（核心）
-│   │   │   ├── DataDashboard.vue      # 实时数据仪表盘
-│   │   │   ├── AlertPanel.vue         # 智能预警面板
-│   │   │   ├── HistoryPlayback.vue    # 历史回放
-│   │   │   └── SensorMarker.vue       # 传感器标注组件
-│   │   ├── composables/
-│   │   │   ├── useWebSocket.ts        # WebSocket实时连接
-│   │   │   └── useSensorData.ts       # 传感器数据管理
-│   │   ├── stores/
-│   │   │   └── bridgeStore.ts         # Pinia全局状态
-│   │   ├── views/
-│   │   │   └── MainPlatform.vue       # 主平台页面
-│   │   ├── App.vue
-│   │   └── main.ts
-│   ├── public/models/                 # 3D模型文件
-│   │   └── bridge.glb                 # 桥梁glTF模型（待获取）
-│   ├── index.html
-│   ├── package.json
-│   ├── vite.config.ts
-│   └── tsconfig.json
-│
-├── backend/                           # FastAPI 后端
+├── backend/
 │   ├── app/
-│   │   ├── main.py                    # 入口 + WebSocket
-│   │   ├── api/
-│   │   │   ├── routes_sensor.py       # 传感器数据API
-│   │   │   ├── routes_alert.py        # 告警管理API
-│   │   │   └── routes_analysis.py     # 数据分析API
-│   │   ├── engine/
-│   │   │   ├── data_engine.py         # 数据引擎
-│   │   │   └── simulator.py           # 数据仿真器
-│   │   ├── ml/
-│   │   │   └── anomaly_detector.py    # 三层异常检测
-│   │   └── ws/
-│   │       └── websocket_manager.py   # WebSocket管理
+│   │   ├── api/                 # REST 路由
+│   │   ├── engine/              # 数据引擎与仿真器
+│   │   ├── ml/                  # 检测器、基线与投票
+│   │   └── ws/                  # WebSocket 管理
+│   ├── tests/                   # 后端自动化测试
 │   └── requirements.txt
-│
-└── README.md
+├── frontend/
+│   ├── public/models/           # 浏览器加载的 glTF 模型
+│   └── src/                     # Vue 组件、状态与数据访问
+├── benchmarks/vba/              # VBA 损伤识别验收基准
+├── data/
+│   ├── samples/                 # 示例导入数据
+│   ├── validation/              # 可提交的验证数据
+│   └── external/                # 外部原始数据，默认不提交
+├── assets/
+│   ├── design/                  # BIM/Revit 源文件
+│   ├── planning/                # 项目计划书等交付物
+│   └── screenshots/             # 演示与验收截图
+├── scripts/
+│   ├── data/                    # 数据生成与导入工具
+│   ├── docs/                    # 文档生成工具
+│   └── dev/                     # 本地联调辅助脚本
+├── docs/
+│   ├── adr/                     # 架构决策记录
+│   └── agents/                  # Agent 工作流配置
+├── .scratch/                    # 本地 Markdown issue tracker
+├── AGENTS.md
+├── CONTEXT.md
+├── start_backend.bat
+├── start_frontend.bat
+└── pyproject.toml
 ```
 
----
+### 目录职责
+
+- `backend/`、`frontend/`：可部署的应用源码，不存放临时验证文件。
+- `data/`：按“示例、验证、外部原始数据”分级；`data/external/` 不进入 Git。
+- `assets/`：非运行时二进制、设计源文件、交付文档和截图。
+- `scripts/`：一次性或半自动工具；默认路径均从仓库根目录推导。
+- `docs/`、`.scratch/`：决策记录、领域词汇和任务跟踪，不混入业务代码。
 
 ## 🧪 自动化测试
 

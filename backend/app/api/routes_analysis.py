@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from app.dependencies import AppServices, get_services
 from app.engine.simulator import UnknownSimulatorSensorError
 from app.html_report import render_monitoring_report
-from app.ml.registry import DetectorRegistryError
+from app.ml.registry import DetectorRegistryError, DetectorRelearnError
 from app.sensor_batch import LiveEligibility, SensorBatch
 from app.sensor_ids import SensorIdentifier
 
@@ -80,6 +80,14 @@ async def relearn_detector_baselines(
     try:
         with services.processing_lock:
             return services.detectors.relearn(sensor_id)
+    except DetectorRelearnError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "message": str(exc),
+                "failed_detectors": exc.detector_ids,
+            },
+        ) from exc
     except DetectorRegistryError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

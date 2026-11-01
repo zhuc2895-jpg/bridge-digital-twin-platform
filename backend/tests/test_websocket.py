@@ -4,28 +4,11 @@ import threading
 import time
 from contextlib import ExitStack
 
-from app.dependencies import create_services
-from app.ingestion import validate_live_json_records
 from app.live_contract import MAX_SENSOR_UPDATE_BYTES
-from app.live_stream import SensorUpdatePublisher, build_sensor_update
 from fastapi.testclient import TestClient
 
 from tests.factories import reading
-from tests.helpers import (
-    CapturingManager,
-    TrackingLock,
-    create_live_app,
-    ingest_records,
-    wait_until,
-)
-
-
-class OneShotSimulator:
-    is_running = False
-
-    def next_readings(self, timestamp=None):
-        self.is_running = False
-        return [reading(timestamp=timestamp or 1_700_000_000.0)]
+from tests.helpers import OneShotSimulator, create_live_app, wait_until
 
 
 class CountingSimulator:
@@ -90,6 +73,21 @@ class BadThenGoodSimulator:
         return [reading(sensor_id="S02", value=202.0, timestamp=1002.0)]
 
 
+class FlakyDetectorManager:
+    def __init__(self, delegate):
+        self.delegate = delegate
+        self.calls = 0
+
+    def detect(self, readings, *, normal_predicate=None):
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("detector pipeline exploded")
+        return self.delegate.detect(
+            readings,
+            normal_predicate=normal_predicate,
+        )
+
+
 class FlakyProcessor:
     def __init__(self, delegate):
         self.delegate = delegate
@@ -102,8 +100,21 @@ class FlakyProcessor:
         return self.delegate.process(records)
 
 
-def _add_twenty_alerts(services, *, long_messages: bool = False):
+def _add_twenty_alerts(
+    services,
+    *,
+    long_messages: bool = False,
+    oversized_details: bool = False,
+):
     for index in range(20):
+        details = (
+            {"blob": "x" * 20_000}
+            if oversized_details
+            else {
+                "case": index,
+                "evidence": {"source": "threshold", "sequence": index},
+            }
+        )
         services.engine.submit_alert(
             sensor_id=f"ALERT-{index:02d}",
             sensor_name=f"告警传感器 {index}",
@@ -113,10 +124,7 @@ def _add_twenty_alerts(services, *, long_messages: bool = False):
             threshold=300.0,
             source="rule",
             timestamp=1_700_000_000.0 + index * 20,
-            details={
-                "case": index,
-                "evidence": {"source": "threshold", "sequence": index},
-            },
+            details=details,
         )
 
 
@@ -131,18 +139,6 @@ def test_websocket_stats_expose_retained_alert_count():
     assert payload["stats"]["retained_alerts"] == 0
     assert "recent_alerts" not in payload["stats"]
     assert "active_alerts" not in payload["stats"]
-
-
-def test_live_stream_runs_without_websocket_clients():
-    services, app = create_live_app(autostart=True)
-
-    with TestClient(app) as client:
-        assert wait_until(lambda: services.engine.get_sensor_count() == 8)
-        assert services.live_stream.is_running is True
-        assert client.get("/api/health").json()["simulator_running"] is True
-
-    assert services.live_stream.is_running is False
-    assert services.simulator.is_running is False
 
 
 def test_ten_websocket_clients_receive_identical_complete_live_frames():
@@ -192,55 +188,6 @@ def test_ten_websocket_clients_receive_identical_complete_live_frames():
     assert services.ws_manager.active_connections == []
     assert services.simulator.is_running is False
     assert services.live_stream.is_running is False
-
-
-def test_shared_state_mutations_use_processing_lock():
-    services, app = create_live_app()
-    lock = TrackingLock()
-    services.processing_lock = lock
-
-    with TestClient(app) as client:
-        client.post(
-            "/api/data/upload/json?push_live=false",
-            json=[reading()],
-        )
-
-        before = lock.acquisitions
-        thresholds = client.post(
-            "/api/data/config/thresholds",
-            params={"strain_yellow": 301.0},
-        )
-        assert thresholds.status_code == 200
-        assert lock.acquisitions > before
-
-        before = lock.acquisitions
-        relearn = client.post(
-            "/api/analysis/detectors/relearn",
-            params={"sensor_id": "S01"},
-        )
-        assert relearn.status_code == 200
-        assert lock.acquisitions > before
-
-
-def test_live_payload_is_built_while_processing_lock_is_held():
-    services, app = create_live_app(simulator=OneShotSimulator())
-    lock = TrackingLock()
-    services.processing_lock = lock
-    original = services.engine.get_live_snapshot
-    observed: list[bool] = []
-
-    def tracked_live_snapshot(*args, **kwargs):
-        observed.append(lock.held)
-        return original(*args, **kwargs)
-
-    services.engine.get_live_snapshot = tracked_live_snapshot
-
-    with TestClient(app) as client:
-        with client.websocket_connect("/ws/live") as websocket:
-            websocket.receive_json()
-
-    assert observed
-    assert all(observed)
 
 
 class CurrentTimeCountingSimulator:
@@ -365,114 +312,12 @@ def test_sensor_update_contract_contains_recent_twenty_alerts_within_10kb():
     assert len(encoded) <= MAX_SENSOR_UPDATE_BYTES
 
 
-def test_bounded_sensor_update_keeps_all_twenty_alerts_and_sensor_frame():
-    services = create_services()
-    for index in range(20):
-        services.engine.submit_alert(
-            sensor_id=f"ALERT-{index:02d}",
-            sensor_name="告警" * 100,
-            level="yellow",
-            message="超限告警" * 500,
-            value=400.0 + index,
-            threshold=300.0,
-            source="rule",
-            timestamp=1_700_000_000.0 + index * 20,
-        )
-    readings = [
-        reading(
-            sensor_id=f"S{index:02d}",
-            name="传感器名称" * 500,
-            value=100.0 + index,
-            timestamp=1_700_000_000.0,
-        )
-        for index in range(8)
-    ]
-    ingest_records(services.engine, readings)
-
-    payload = build_sensor_update(services.engine, services.processing_lock)
-    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
-
-    assert len(payload["sensors"]) == 8
-    assert len(payload["alerts"]) == 20
-    assert len(encoded) <= MAX_SENSOR_UPDATE_BYTES
-
-
-def test_oversized_alert_details_are_bounded_without_dropping_records():
-    services = create_services()
-    for index in range(20):
-        services.engine.submit_alert(
-            sensor_id=f"ALERT-{index:02d}",
-            sensor_name=f"Alert source {index}",
-            level="yellow",
-            message=f"Alert {index}",
-            value=400.0 + index,
-            threshold=300.0,
-            source="rule",
-            timestamp=1_700_000_000.0 + index * 20,
-            details={
-                "blob": "x" * 20_000,
-                "context": {"index": index},
-            },
-        )
-    readings = [
-        reading(sensor_id=f"S{index:02d}", value=100.0 + index)
-        for index in range(8)
-    ]
-    ingest_records(services.engine, readings)
-
-    payload = build_sensor_update(services.engine, services.processing_lock)
-    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
-
-    assert len(payload["sensors"]) == 8
-    assert len(payload["alerts"]) == 20
-    assert len(encoded) <= MAX_SENSOR_UPDATE_BYTES
-    assert all("details" not in alert for alert in payload["alerts"])
-
-
-def test_non_serializable_ai_details_do_not_escape_publishing():
-    services = create_services()
-    services.engine.submit_alert(
-        sensor_id="S01",
-        sensor_name="AI detector",
-        level="yellow",
-        message="AI evidence",
-        value=400.0,
-        threshold=300.0,
-        source="ai_feature_arbitration",
-        timestamp=1_700_000_000.0,
-        details={"model_votes": {"stale", "confirm"}},
-    )
-    manager = CapturingManager()
-    publisher = SensorUpdatePublisher(
-        services.engine,
-        manager,
-        services.processing_lock,
-    )
-
-    publisher.publish()
-
-    assert len(manager.payloads) == 1
-    assert len(manager.payloads[0]["alerts"]) == 1
-    assert "details" not in manager.payloads[0]["alerts"][0]
-
-
 def test_live_websocket_pushes_bounded_frame_with_oversized_alert_details():
     services, app = create_live_app(
         simulator=OneShotSimulator(),
         interval_seconds=60.0,
     )
-    for index in range(20):
-        services.engine.submit_alert(
-            sensor_id=f"ALERT-{index:02d}",
-            sensor_name=f"Alert source {index}",
-            level="yellow",
-            message=f"Alert {index}",
-            value=400.0 + index,
-            threshold=300.0,
-            source="rule",
-            timestamp=1_700_000_000.0 + index * 20,
-            details={"blob": "x" * 20_000},
-        )
+    _add_twenty_alerts(services, oversized_details=True)
 
     with TestClient(app) as client:
         with client.websocket_connect("/ws/live") as websocket:
@@ -482,19 +327,6 @@ def test_live_websocket_pushes_bounded_frame_with_oversized_alert_details():
     assert len(payload["alerts"]) == 20
     assert len(encoded) <= MAX_SENSOR_UPDATE_BYTES
     assert all("details" not in alert for alert in payload["alerts"])
-
-
-def test_live_readings_use_shared_strict_ingestion_rules():
-    records = [
-        reading(sensor_id="S01", value=100.0),
-        reading(sensor_id="S02", value="101.0"),
-        reading(sensor_id="S03", value=True),
-        reading(sensor_id="S04", name="", value=102.0),
-    ]
-
-    normalized = validate_live_json_records(records)
-
-    assert [item["sensor_id"] for item in normalized] == ["S01"]
 
 
 def test_bad_live_reading_is_skipped_and_next_frame_is_delivered(caplog):
@@ -534,28 +366,28 @@ def test_processor_failure_is_logged_and_later_frames_continue(caplog):
     assert any("pipeline failed" in record.message for record in caplog.records)
 
 
-def test_live_frame_encoding_runs_outside_processing_lock(monkeypatch):
-    services, app = create_live_app(simulator=OneShotSimulator())
-    lock = TrackingLock()
-    services.processing_lock = lock
-    observed: list[bool] = []
+def test_detector_failure_is_logged_and_later_frames_continue(caplog):
+    services, app = create_live_app(
+        simulator=CountingSimulator(),
+        interval_seconds=0.02,
+    )
+    flaky_detectors = FlakyDetectorManager(services.processor.detectors)
+    services.processor.detectors = flaky_detectors
 
-    import app.live_contract as live_contract
+    with caplog.at_level(logging.ERROR, logger="app.processing"):
+        with TestClient(app) as client:
+            with client.websocket_connect("/ws/live") as websocket:
+                first = websocket.receive_json()
+                second = websocket.receive_json()
 
-    original_encode = live_contract.encode_message
-
-    def tracked_encode(payload):
-        observed.append(lock.held)
-        return original_encode(payload)
-
-    monkeypatch.setattr(live_contract, "encode_message", tracked_encode)
-
-    with TestClient(app) as client:
-        with client.websocket_connect("/ws/live") as websocket:
-            websocket.receive_json()
-
-    assert observed
-    assert all(held is False for held in observed)
+    assert first["type"] == "sensor_update"
+    assert second["type"] == "sensor_update"
+    assert flaky_detectors.calls >= 2
+    assert services.engine.get_stats()["total_readings"] >= 4
+    assert any(
+        "Detector pipeline failed" in record.message
+        for record in caplog.records
+    )
 
 
 def test_first_frame_latency_and_one_hz_cadence():

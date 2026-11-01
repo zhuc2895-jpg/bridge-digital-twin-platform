@@ -306,3 +306,215 @@ def test_confirmed_anomaly_does_not_poison_a_full_detector_window(client):
     assert [(alert["source"], alert["value"]) for alert in alerts] == [
         ("rule", 600.0)
     ]
+
+
+class ResetFailingDetector(AlwaysAnomalyDetector):
+    detector_id = "reset_failure"
+    display_name = "Reset failing detector"
+
+    def __init__(self):
+        super().__init__()
+        self.fail_reset = True
+
+    def reset_baseline(self, sensor_id=None):
+        if self.fail_reset:
+            raise RuntimeError("baseline reset unavailable")
+        super().reset_baseline(sensor_id)
+
+
+def test_failed_relearn_suppresses_ai_until_every_detector_resets(app, client):
+    services = app.state.services
+    base = 1_700_000_000.0
+    services.detectors.replace_detector(AlwaysAnomalyDetector())
+    reset_failure = ResetFailingDetector()
+    services.detectors.register_detector(reset_failure)
+    client.post(
+        "/api/data/upload/json?push_live=false",
+        json=[
+            reading(value=100.0, timestamp=base + index)
+            for index in range(100)
+        ],
+    )
+
+    failed_relearn = client.post(
+        "/api/analysis/detectors/relearn",
+        params={"sensor_id": "S01"},
+    )
+    upload_while_paused = client.post(
+        "/api/data/upload/json?push_live=false",
+        json=[
+            reading(value=100.0, timestamp=base + 100),
+            reading(value=600.0, timestamp=base + 101),
+        ],
+    )
+    alerts_while_paused = client.get("/api/alerts/").json()["alerts"]
+
+    assert failed_relearn.status_code == 503
+    assert upload_while_paused.status_code == 200
+    assert upload_while_paused.json()["alerts_triggered"] == 1
+    assert not any(
+        alert["source"].startswith("ai_")
+        for alert in alerts_while_paused
+    )
+
+    reset_failure.fail_reset = False
+    recovered = client.post(
+        "/api/analysis/detectors/relearn",
+        params={"sensor_id": "S01"},
+    )
+    client.post(
+        "/api/data/upload/json?push_live=false",
+        json=[
+            reading(value=100.0, timestamp=base + 102 + index)
+            for index in range(101)
+        ],
+    )
+
+    assert recovered.status_code == 200
+    assert any(
+        alert["source"].startswith("ai_")
+        for alert in client.get("/api/alerts/").json()["alerts"]
+    )
+
+
+def test_global_relearn_failure_can_recover_one_sensor_without_unsuppressing_others(
+    app,
+    client,
+):
+    services = app.state.services
+    base = 1_700_000_000.0
+    services.detectors.replace_detector(AlwaysAnomalyDetector())
+    reset_failure = ResetFailingDetector()
+    services.detectors.register_detector(reset_failure)
+
+    client.post(
+        "/api/data/upload/json?push_live=false",
+        json=[
+            reading(
+                sensor_id=sensor_id,
+                name=sensor_id,
+                value=100.0,
+                timestamp=base + index,
+            )
+            for index in range(100)
+            for sensor_id in ("S01", "S02")
+        ],
+    )
+    failed_global_relearn = client.post("/api/analysis/detectors/relearn")
+    client.post(
+        "/api/data/upload/json?push_live=false",
+        json=[
+            reading(sensor_id="S01", name="S01", timestamp=base + 100),
+            reading(sensor_id="S02", name="S02", timestamp=base + 100),
+        ],
+    )
+
+    assert failed_global_relearn.status_code == 503
+    assert not any(
+        alert["source"].startswith("ai_")
+        for alert in client.get("/api/alerts/").json()["alerts"]
+    )
+
+    reset_failure.fail_reset = False
+    recovered_s01 = client.post(
+        "/api/analysis/detectors/relearn",
+        params={"sensor_id": "S01"},
+    )
+    client.post(
+        "/api/data/upload/json?push_live=false",
+        json=[
+            reading(
+                sensor_id="S01",
+                name="S01",
+                timestamp=base + 101 + index,
+            )
+            for index in range(101)
+        ],
+    )
+    s01_ai_alerts = [
+        alert
+        for alert in client.get("/api/alerts/").json()["alerts"]
+        if alert["sensor_id"] == "S01"
+        and alert["source"].startswith("ai_")
+    ]
+    client.post(
+        "/api/data/upload/json?push_live=false",
+        json=[
+            reading(
+                sensor_id="S02",
+                name="S02",
+                timestamp=base + 202,
+            )
+        ],
+    )
+    s02_ai_alerts = [
+        alert
+        for alert in client.get("/api/alerts/").json()["alerts"]
+        if alert["sensor_id"] == "S02"
+        and alert["source"].startswith("ai_")
+    ]
+
+    assert recovered_s01.status_code == 200
+    assert s01_ai_alerts
+    assert not s02_ai_alerts
+
+
+def test_detector_replacement_keeps_suppression_until_new_baseline_is_ready(
+    app,
+    client,
+):
+    services = app.state.services
+    base = 1_700_000_000.0
+    services.detectors.replace_detector(AlwaysAnomalyDetector())
+    reset_failure = ResetFailingDetector()
+    services.detectors.register_detector(reset_failure)
+    client.post(
+        "/api/data/upload/json?push_live=false",
+        json=[
+            reading(value=100.0, timestamp=base + index)
+            for index in range(100)
+        ],
+    )
+    failed_relearn = client.post(
+        "/api/analysis/detectors/relearn",
+        params={"sensor_id": "S01"},
+    )
+    client.post(
+        "/api/data/upload/json?push_live=false",
+        json=[
+            reading(value=100.0, timestamp=base + 100 + index)
+            for index in range(100)
+        ],
+    )
+
+    replacement = AlwaysAnomalyDetector()
+    replacement.detector_id = "reset_failure"
+    replacement.display_name = "Reset-capable replacement"
+    services.detectors.replace_detector(replacement)
+    client.post(
+        "/api/data/upload/json?push_live=false",
+        json=[reading(value=100.0, timestamp=base + 200)],
+    )
+    alerts_while_replacement_learns = client.get("/api/alerts/").json()["alerts"]
+
+    client.post(
+        "/api/data/upload/json?push_live=false",
+        json=[
+            reading(value=100.0, timestamp=base + 201 + index)
+            for index in range(99)
+        ],
+    )
+    client.post(
+        "/api/data/upload/json?push_live=false",
+        json=[reading(value=100.0, timestamp=base + 300)],
+    )
+
+    assert failed_relearn.status_code == 503
+    assert not any(
+        alert["source"].startswith("ai_")
+        for alert in alerts_while_replacement_learns
+    )
+    assert any(
+        alert["source"].startswith("ai_")
+        for alert in client.get("/api/alerts/").json()["alerts"]
+    )

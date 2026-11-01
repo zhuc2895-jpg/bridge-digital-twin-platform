@@ -8,7 +8,7 @@ from app.sensor_types import SensorType
 from fastapi.testclient import TestClient
 
 from tests.factories import reading
-from tests.helpers import CapturingManager
+from tests.helpers import install_capturing_manager
 
 
 def csv_text(rows: list[dict]) -> str:
@@ -34,9 +34,7 @@ def test_json_validation_retains_domain_types():
 
 
 def test_json_upload_updates_latest_state_and_health(client, app):
-    capturing_manager = CapturingManager()
-    app.state.services.ws_manager = capturing_manager
-    app.state.services.sensor_updates.ws_manager = capturing_manager
+    capturing_manager = install_capturing_manager(app)
 
     response = client.post(
         "/api/data/upload/json",
@@ -120,6 +118,31 @@ def test_push_live_controls_live_eligibility(client):
     ] == ["LIVE"]
 
 
+def test_backfill_sensor_identifier_longer_than_live_wire_limit_is_accepted(client):
+    long_id = "S" * 65
+
+    response = client.post(
+        "/api/data/upload/json?push_live=false",
+        json=[reading(sensor_id=long_id)],
+    )
+
+    assert response.status_code == 200
+    assert client.get(f"/api/sensors/{long_id}").status_code == 200
+
+
+def test_live_sensor_identifier_longer_than_wire_limit_is_rejected(client):
+    long_id = "S" * 65
+
+    response = client.post(
+        "/api/data/upload/json?push_live=true",
+        json=[reading(sensor_id=long_id)],
+    )
+
+    assert response.status_code == 400
+    assert "64" in response.json()["detail"]
+    assert_empty_sensor_state(client)
+
+
 def test_json_ingestion_normalizes_sensor_identifier_whitespace(client):
     response = client.post(
         "/api/data/upload/json?push_live=false",
@@ -131,9 +154,7 @@ def test_json_ingestion_normalizes_sensor_identifier_whitespace(client):
 
 
 def test_csv_upload_and_push_live_false_are_accepted(client, app):
-    capturing_manager = CapturingManager()
-    app.state.services.ws_manager = capturing_manager
-    app.state.services.sensor_updates.ws_manager = capturing_manager
+    capturing_manager = install_capturing_manager(app)
 
     response = client.post(
         "/api/data/upload/csv?push_live=false",

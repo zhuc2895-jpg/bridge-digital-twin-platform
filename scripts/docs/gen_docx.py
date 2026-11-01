@@ -2,9 +2,12 @@
 """纯标准库生成Word文档 - 修复版"""
 import zipfile
 import os
+from pathlib import Path
 from xml.sax.saxutils import escape
 
-OUTPUT = r'D:\bridge-digital-twin-platform\项目计划书_数字孪生拉索桥健康监测.docx'
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+OUTPUT = PROJECT_ROOT / 'assets' / 'planning' / 'project-plan.docx'
+OUTPUT.parent.mkdir(parents=True, exist_ok=True)
 
 content = [
     ('title', '项目计划书'),

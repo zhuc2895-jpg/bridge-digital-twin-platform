@@ -2,24 +2,50 @@ import json
 import threading
 import time
 
+import pytest
 from app.dependencies import create_services
 from app.engine.data_engine import MonitoringEngine
+from app.ingestion import validate_live_json_records
 from app.live_contract import (
     LiveSensorSnapshot,
     build_sensor_update_from_snapshot,
 )
-from app.live_stream import SensorUpdatePublisher, build_sensor_update
+from app.live_stream import SensorUpdatePublisher, capture_live_snapshot
 from app.sensor_batch import LiveEligibility, SensorBatch
-from app.ws.message_contract import encode_message
+from app.ws.message_contract import MAX_SENSOR_UPDATE_BYTES, encode_message
 
 from tests.factories import reading
-from tests.helpers import CapturingManager, ingest_records
+from tests.helpers import (
+    CapturingManager,
+    PublisherEnvironment,
+    ingest_numbered_sensors,
+    ingest_records,
+)
 
 _SHARED_LOCK = threading.RLock()
 
 
 def _build(engine):
-    return build_sensor_update(engine, _SHARED_LOCK)
+    return build_sensor_update_from_snapshot(
+        capture_live_snapshot(engine, _SHARED_LOCK)
+    )
+
+
+def _publisher(
+    engine,
+    manager,
+    *,
+    lock=None,
+    max_frame_age_seconds=0.5,
+):
+    return SensorUpdatePublisher(
+        PublisherEnvironment(
+            engine=engine,
+            ws_manager=manager,
+            processing_lock=lock or _SHARED_LOCK,
+        ),
+        max_frame_age_seconds=max_frame_age_seconds,
+    )
 
 
 def test_live_frame_uses_only_live_eligible_state():
@@ -77,7 +103,7 @@ def test_malformed_alert_value_does_not_suppress_live_update(caplog):
         timestamp=1_700_000_000.0,
     )
     manager = CapturingManager()
-    publisher = SensorUpdatePublisher(services.engine, manager, _SHARED_LOCK)
+    publisher = _publisher(services.engine, manager)
 
     publisher.publish()
 
@@ -115,22 +141,50 @@ def test_non_finite_alert_value_produces_standard_json():
 
 def test_live_frame_contains_at_most_thirty_two_live_sensors():
     engine = MonitoringEngine()
-    ingest_records(
-        engine,
-        [
-            reading(
-                sensor_id=f"S{index:03d}",
-                value=float(index),
-                timestamp=float(index),
-            )
-            for index in range(40)
-        ],
-    )
+    ingest_numbered_sensors(engine)
 
     payload = _build(engine)
 
     assert len(payload["sensors"]) == 32
     assert {item["timestamp"] for item in payload["sensors"]} == set(range(8, 40))
+
+def test_bounded_frame_preserves_distinct_sensor_identifiers(monkeypatch):
+    first_id = "S" * 63 + "1"
+    second_id = "S" * 63 + "2"
+    engine = MonitoringEngine()
+    ingest_records(
+        engine,
+        [
+            reading(sensor_id=first_id, name="first-" * 20),
+            reading(sensor_id=second_id, name="second-" * 20),
+        ],
+    )
+    for sensor_id in (first_id, second_id):
+        engine.submit_alert(
+            sensor_id=sensor_id,
+            sensor_name="AI detector",
+            level="yellow",
+            message="alert-" * 20,
+            value=400.0,
+            threshold=0.0,
+            source="ai_feature_arbitration",
+            timestamp=1_700_000_000.0,
+        )
+
+    import app.live_contract as live_contract
+
+    monkeypatch.setattr(live_contract, "MAX_SENSOR_UPDATE_BYTES", 1100)
+    payload = _build(engine)
+
+    assert {item["sensor_id"] for item in payload["sensors"]} == {
+        first_id,
+        second_id,
+    }
+    assert {item["sensor_id"] for item in payload["alerts"]} == {
+        first_id,
+        second_id,
+    }
+
 
 def test_unpaired_surrogate_is_isolated_from_live_frame_encoding(tmp_path):
     engine = MonitoringEngine()
@@ -206,10 +260,9 @@ def test_overflow_keeps_newest_sensor_records(monkeypatch):
 def test_late_server_processing_drops_frame_without_enqueueing():
     services = create_services()
     manager = CapturingManager()
-    publisher = SensorUpdatePublisher(
+    publisher = _publisher(
         services.engine,
         manager,
-        _SHARED_LOCK,
         max_frame_age_seconds=0.5,
     )
     snapshot = LiveSensorSnapshot(sensors=[], alerts=[], stats={})
@@ -326,10 +379,9 @@ def test_rule_alert_with_nonpositive_threshold_is_invalid():
 def test_slow_encoding_consumes_total_latency_budget(monkeypatch):
     services = create_services()
     manager = CapturingManager()
-    publisher = SensorUpdatePublisher(
+    publisher = _publisher(
         services.engine,
         manager,
-        _SHARED_LOCK,
         max_frame_age_seconds=0.05,
     )
     snapshot = LiveSensorSnapshot(sensors=[], alerts=[], stats={})
@@ -358,9 +410,95 @@ def test_external_update_is_not_consumed_when_frame_is_skipped():
         )
     )
     manager = CapturingManager()
-    publisher = SensorUpdatePublisher(engine, manager, _SHARED_LOCK)
+    publisher = _publisher(engine, manager)
 
     publisher.publish(generated_at=time.monotonic() - 1.0)
 
     assert manager.payloads == []
     assert set(engine.get_pending_external_versions()) == {"S01"}
+
+
+@pytest.mark.parametrize(
+    "oversized_details",
+    [False, True],
+    ids=["long-text", "oversized-details"],
+)
+def test_bounded_sensor_update_preserves_complete_frame(oversized_details):
+    services = create_services()
+    for index in range(20):
+        services.engine.submit_alert(
+            sensor_id=f"ALERT-{index:02d}",
+            sensor_name="告警" * 100,
+            level="yellow",
+            message="超限告警" * 500,
+            value=400.0 + index,
+            threshold=300.0,
+            source="rule",
+            timestamp=1_700_000_000.0 + index * 20,
+            details=(
+                {
+                    "blob": "x" * 20_000,
+                    "context": {"index": index},
+                }
+                if oversized_details
+                else None
+            ),
+        )
+    readings = [
+        reading(
+            sensor_id=f"S{index:02d}",
+            name="传感器名称" * 500,
+            value=100.0 + index,
+            timestamp=1_700_000_000.0,
+        )
+        for index in range(8)
+    ]
+    ingest_records(services.engine, readings)
+
+    payload = _build(services.engine)
+    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+
+    assert len(payload["sensors"]) == 8
+    assert len(payload["alerts"]) == 20
+    assert len(encoded) <= MAX_SENSOR_UPDATE_BYTES
+    assert all("details" not in alert for alert in payload["alerts"])
+
+
+def test_non_serializable_ai_details_do_not_escape_publishing():
+    services = create_services()
+    services.engine.submit_alert(
+        sensor_id="S01",
+        sensor_name="AI detector",
+        level="yellow",
+        message="AI evidence",
+        value=400.0,
+        threshold=300.0,
+        source="ai_feature_arbitration",
+        timestamp=1_700_000_000.0,
+        details={"model_votes": {"stale", "confirm"}},
+    )
+    manager = CapturingManager()
+    publisher = _publisher(
+        services.engine,
+        manager,
+        lock=services.processing_lock,
+    )
+
+    publisher.publish()
+
+    assert len(manager.payloads) == 1
+    assert len(manager.payloads[0]["alerts"]) == 1
+    assert "details" not in manager.payloads[0]["alerts"][0]
+
+
+def test_live_readings_use_shared_strict_ingestion_rules():
+    records = [
+        reading(sensor_id="S01", value=100.0),
+        reading(sensor_id="S02", value="101.0"),
+        reading(sensor_id="S03", value=True),
+        reading(sensor_id="S04", name="", value=102.0),
+    ]
+
+    normalized = validate_live_json_records(records)
+
+    assert [item["sensor_id"] for item in normalized] == ["S01"]

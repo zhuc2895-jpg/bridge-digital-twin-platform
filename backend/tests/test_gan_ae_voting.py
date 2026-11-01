@@ -287,9 +287,14 @@ def test_ai_alert_details_are_retained(client):
 
     assert response.status_code == 200
     assert ai_alerts
+    details = ai_alerts[0]["details"]
     assert ai_alerts[0]["source"] == "ai_dual_confirm"
-    assert len(ai_alerts[0]["details"]["participating_models"]) >= 2
-    assert ai_alerts[0]["details"]["model_results"]
+    assert len(details["participating_models"]) >= 2
+    for model_id in details["participating_models"]:
+        model_result = details["model_results"][model_id]
+        assert model_result["source"].startswith("ai_")
+        assert 0.0 <= model_result["confidence"] <= 1.0
+        assert 0.0 <= model_result["score"] <= 1.0
 
 
 def test_normal_steady_data_after_baseline_does_not_generate_ai_alerts(client):
@@ -336,19 +341,54 @@ def test_steady_shortcut_does_not_hide_sustained_anomalies():
     assert all(result.anomalous for result in results)
 
 
-def test_voting_gates_are_fixed_by_specification():
-    for threshold in (0.69, 0.8):
-        try:
-            VotingDetector(confidence_threshold=threshold)
-        except ValueError as exc:
-            assert "0.7" in str(exc)
-        else:
-            raise AssertionError("confidence threshold must be fixed at 0.7")
+def test_voting_policy_uses_the_fixed_specification_constants():
+    detector = VotingDetector()
 
-    for vote_count in (1, 3):
-        try:
-            VotingDetector(min_votes=vote_count)
-        except ValueError as exc:
-            assert "two" in str(exc)
-        else:
-            raise AssertionError("min_votes must be fixed at two")
+    assert detector.parameters["confidence_threshold"] == 0.7
+    assert detector.parameters["min_votes"] == 2
+
+
+def test_gan_ae_reconstruction_uses_the_trained_generator():
+    detector = GanAEDetector(required_readings=100, sequence_length=8)
+    base = 1_700_000_000.0
+    detector.detect_batch(
+        [
+            reading(
+                value=100.0 + 4.0 * math.sin(0.2 * index),
+                timestamp=base + index,
+            )
+            for index in range(100)
+        ]
+    )
+
+    result = detector.detect_one(reading(value=250.0, timestamp=base + 100))
+
+    assert result.details["reconstruction_path"] == "encoder_generator_decoder"
+    assert math.isclose(
+        result.details["reconstruction_error"],
+        result.details["generator_reconstruction_error"],
+        rel_tol=1e-6,
+        abs_tol=1e-9,
+    )
+
+
+def test_steady_batch_results_keep_all_model_vote_diagnostics():
+    detector = VotingDetector()
+    base = 1_700_000_000.0
+    detector.detect_batch(
+        [reading(value=100.0, timestamp=base + index) for index in range(100)]
+    )
+
+    results = detector.detect_batch(
+        [reading(value=100.0, timestamp=base + 100 + index) for index in range(10)]
+    )
+
+    for result in results:
+        assert set(result.details["votes"]) == {
+            "stalwart",
+            "gan_ae",
+            "isolation_forest",
+        }
+        assert set(result.details["confidences"]) == set(result.details["votes"])
+        assert set(result.details["model_results"]) == set(result.details["votes"])
+        assert all(not vote for vote in result.details["votes"].values())

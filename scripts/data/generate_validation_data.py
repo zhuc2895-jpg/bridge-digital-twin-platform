@@ -4,9 +4,13 @@
 基于Z24桥和浍河大桥参数，包含正常状态、温度影响、车辆荷载和3次损伤事件
 """
 import csv
+from pathlib import Path
 import math
 import random
 from datetime import datetime, timedelta
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+OUTPUT_FILE = PROJECT_ROOT / 'data' / 'validation' / 'bridge_validation_data.csv'
 
 random.seed(42)  # 固定随机种子，结果可复现
 
@@ -91,7 +95,8 @@ def generate_value(sensor, step):
     return round(value, 3)
 
 def main():
-    output_file = "bridge_validation_data.csv"
+    output_file = OUTPUT_FILE
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     print(f"正在生成验证数据：{DURATION_HOURS}小时，每{INTERVAL_SECONDS}秒一条...")
 
     with open(output_file, "w", newline="", encoding="utf-8-sig") as f:

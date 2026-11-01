@@ -16,6 +16,23 @@ class DetectorRegistryError(ValueError):
     """Invalid or conflicting detector registration."""
 
 
+class DetectorRelearnError(DetectorRegistryError):
+    """A baseline relearn could not reset every registered detector."""
+
+    def __init__(
+        self,
+        sensor_id: str | None,
+        detector_ids: list[str],
+    ) -> None:
+        self.sensor_id = sensor_id
+        self.detector_ids = detector_ids
+        target = sensor_id if sensor_id is not None else "all sensors"
+        super().__init__(
+            f"baseline relearn failed for {target}: "
+            f"{", ".join(detector_ids)}"
+        )
+
+
 @dataclass
 class _DetectorFailure:
     count: int = 0
@@ -79,6 +96,8 @@ class DetectorManager:
     def __init__(self, registry: DetectorRegistry | None = None) -> None:
         self.registry = registry or DetectorRegistry()
         self._failures: dict[str, _DetectorFailure] = {}
+        self._relearn_failures: dict[str, set[str]] = {}
+        self._pending_detector_replacements: dict[str, set[str]] = {}
 
     def register_detector(
         self,
@@ -88,6 +107,7 @@ class DetectorManager:
     ) -> None:
         self.registry.register(detector, replace=replace)
         self._failures[detector.detector_id] = _DetectorFailure()
+        self._replace_relearn_failure(detector.detector_id)
 
     def replace_detector(self, detector: BaseDetector) -> None:
         self.register_detector(detector, replace=True)
@@ -109,7 +129,9 @@ class DetectorManager:
                 for result in results:
                     if not isinstance(result, DetectionResult):
                         raise TypeError("detect_batch must return DetectionResult values")
-                    if result.anomalous:
+                    if result.anomalous and not self._ai_is_suppressed(
+                        result.sensor_id
+                    ):
                         detections.append(result)
             except Exception as exc:  # detector plugins are untrusted boundaries
                 self._record_failure(detector_id, exc)
@@ -117,12 +139,29 @@ class DetectorManager:
 
     def relearn(self, sensor_id: str | None = None) -> dict:
         reset_ids: list[str] = []
+        failed_ids: list[str] = []
         for detector_id, detector in self.registry.items():
             try:
                 detector.reset_baseline(sensor_id)
                 reset_ids.append(detector_id)
             except Exception as exc:
+                failed_ids.append(detector_id)
                 self._record_failure(detector_id, exc)
+
+        if failed_ids:
+            targets = (
+                self._known_sensor_ids() if sensor_id is None else {sensor_id}
+            )
+            for target_sensor_id in targets:
+                self._relearn_failures[target_sensor_id] = set(failed_ids)
+            raise DetectorRelearnError(sensor_id, failed_ids)
+
+        if sensor_id is None:
+            self._relearn_failures.clear()
+            self._pending_detector_replacements.clear()
+        else:
+            self._relearn_failures.pop(sensor_id, None)
+            self._pending_detector_replacements.pop(sensor_id, None)
 
         if not reset_ids:
             raise DetectorRegistryError("no detector baseline could be reset")
@@ -131,6 +170,49 @@ class DetectorManager:
             "sensor_id": sensor_id,
             "detectors": reset_ids,
         }
+
+    def _replace_relearn_failure(self, detector_id: str) -> None:
+        for sensor_id, failed_ids in list(self._relearn_failures.items()):
+            if detector_id not in failed_ids:
+                continue
+            failed_ids.discard(detector_id)
+            self._pending_detector_replacements.setdefault(sensor_id, set()).add(
+                detector_id
+            )
+            if not failed_ids:
+                del self._relearn_failures[sensor_id]
+
+    def _ai_is_suppressed(self, sensor_id: str) -> bool:
+        self._release_completed_replacements(sensor_id)
+        return bool(
+            self._relearn_failures.get(sensor_id)
+            or self._pending_detector_replacements.get(sensor_id)
+        )
+
+    def _release_completed_replacements(self, sensor_id: str) -> None:
+        if not self._pending_detector_replacements.get(sensor_id):
+            return
+        for detector_id, detector in self.registry.items():
+            try:
+                status = detector.get_baseline_status(sensor_id)
+            except Exception as exc:
+                self._record_failure(detector_id, exc)
+                return
+            if not getattr(status, "ready", False):
+                return
+        self._pending_detector_replacements.pop(sensor_id, None)
+
+    def _known_sensor_ids(self) -> set[str]:
+        sensor_ids: set[str] = set()
+        for _, detector in self.registry.items():
+            try:
+                statuses = detector.get_baseline_status()
+            except Exception as exc:
+                self._record_failure(detector.detector_id, exc)
+                continue
+            if isinstance(statuses, dict):
+                sensor_ids.update(statuses)
+        return sensor_ids
 
     def get_stats(self) -> dict:
         detector_stats: list[dict] = []

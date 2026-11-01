@@ -4,7 +4,7 @@ This document defines the operational protocol for the VBA acceptance benchmark.
 
 ## Source and checksum stages
 
-The source is the external `Old_ADA_Bridge-damage_vibration_data.mat` file, using its `VBA` variable. The raw file is not committed. Conversion validates the source SHA-256:
+The source is the external `data/external/Old_ADA_Bridge-damage_vibration_data.mat` file, using its `VBA` variable. The raw file is not committed. Conversion validates the source SHA-256:
 
 `001F8A1ADD06649A6156FA7D33440D889A9E0CB036C17895E9F357BD1E281DA5`
 

@@ -173,3 +173,41 @@ _Avoid_: validation dataset, training set
 **Damage Label**:
 A binary classification of a Vibration Recording as normal (`INT`, `RCV`) or damaged (`DMG1`, `DMG2`, `DMG3`).
 _Avoid_: anomaly flag, alert label
+
+### Simulation-Measurement Fusion
+
+**Model Cognition**:
+The degree to which an AI model recognizes a sample as belonging to its learned operating domain, derived from agreement among distinct sublearners.
+_Avoid_: confidence, anomaly score
+
+**Uncertainty Gate**:
+A policy that downgrades or routes an AI result to arbitration when model cognition is low or sublearner disagreement is high, instead of allowing the result to directly create a high-severity alert.
+_Avoid_: confidence threshold, cooldown
+
+**Consensus Confidence**:
+The combined reliability of an AI verdict after accounting for model votes, individual confidences, and model cognition.
+_Avoid_: average confidence, model score
+
+**Spatial Residual**:
+The difference between a sensor reading and the value predicted for that sensor from other sensors at the same timestamp.
+_Avoid_: prediction error, sensor noise
+
+**Calibration Case**:
+A versioned simulation or measurement scenario that pairs input features with a target load or structural response and declares its fidelity level.
+_Avoid_: sample, data row
+
+**Simulation-Measurement Compensation**:
+A two-stage response estimate in which a simulation-based model supplies the baseline prediction and a measurement-based model corrects its bias.
+_Avoid_: data mapping, simulation replacement
+
+**Modal Coordinate**:
+The contribution weight of one selected structural mode in a reconstructed deformation field.
+_Avoid_: mode, coefficient
+
+**Full-Field Deformation Inversion**:
+Estimation of deformation across structural locations from sparse measurements using structural modes and sensor confidence.
+_Avoid_: deformation prediction, shape interpolation
+
+**Reconstruction Residual**:
+The difference between a measured structural response and the response reconstructed from the selected deformation model.
+_Avoid_: reconstruction error, alert value

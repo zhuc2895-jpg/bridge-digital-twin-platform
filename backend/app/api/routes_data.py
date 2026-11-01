@@ -48,7 +48,7 @@ async def upload_csv(
     """Upload a UTF-8 CSV file with the five required sensor fields."""
     content = await file.read()
     try:
-        records = validate_csv_batch(content)
+        records = validate_csv_batch(content, live_eligible=push_live)
     except IngestionValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -73,7 +73,7 @@ async def upload_json(
 ):
     """Upload a JSON array containing at most 10,000 sensor readings."""
     try:
-        records = validate_json_batch(data)
+        records = validate_json_batch(data, live_eligible=push_live)
     except IngestionValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -110,7 +110,10 @@ async def push_single(
         "timestamp": time.time(),
     }
     try:
-        records = validate_json_batch([raw_record])
+        records = validate_json_batch(
+            [raw_record],
+            live_eligible=push_live,
+        )
     except IngestionValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
