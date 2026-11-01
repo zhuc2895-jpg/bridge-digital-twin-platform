@@ -544,6 +544,9 @@ def evaluate_alert_pipeline(
         cognition_threshold=config.cognition_threshold,
         uncertainty_threshold=config.uncertainty_threshold,
     )
+    calibration["compensation_reliability"] = component_checks["compensation"][
+        "reliability_bins"
+    ]
     counts = _summarize_counts(run_records)
 
     baseline_metrics = None
@@ -954,6 +957,9 @@ def evaluate_enhanced(
         cognition_threshold=config.cognition_threshold,
         uncertainty_threshold=config.uncertainty_threshold,
     )
+    calibration["compensation_reliability"] = component_checks["compensation"][
+        "reliability_bins"
+    ]
     counts = _summarize_counts(evidence_records)
     baseline_metrics = None
     baseline_comparison: dict[str, Any] = {}

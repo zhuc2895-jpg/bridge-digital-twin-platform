@@ -2,9 +2,9 @@
 
 - Mode: baseline
 - Status: **failed**
-- Generated: 2026-11-01T11:58:38.239755+00:00
+- Generated: 2026-11-01T12:35:20.780654+00:00
 - Reproduction: `python -m benchmarks.vba.evaluate --mode baseline --output benchmarks/vba/baseline-v1.json`
-- Git commit: `394061ab9f48edd478d8ecf917d48f8776896f3f`
+- Git commit: `fa68eced957f1f08ee071ff666d1c8b4af0c4913`
 - Dataset SHA-256: `BE13A4CAE46E877C6613FABA9ABF164449CFC58EAA73AC86599473EF078FF7A3`
 
 ## Overall Metrics
@@ -22,7 +22,7 @@
 | --- | ---: | ---: | --- |
 | vba_accuracy | 0.47058823529411764 | 0.9 | FAIL |
 | vba_false_positive_rate | 1.0 | 0.1 | FAIL |
-| single_chain_p95_ms | 6.962087500141934 | 200.0 | PASS |
+| single_chain_p95_ms | 10.839737500646152 | 200.0 | PASS |
 | all_components_present | 6 | 6 | PASS |
 | all_baselines_ready | 1 | 1 | PASS |
 | fusion_component_checks | 1 | 1 | PASS |
@@ -32,6 +32,6 @@
 - Gated AI alerts: 0
 - Isolated spatial suppressions: 0
 - Detector failures: 0
-- Processing p95: 6.962 ms
+- Processing p95: 10.840 ms
 
 synthetic fixtures, not real VBA structural-response accuracy
