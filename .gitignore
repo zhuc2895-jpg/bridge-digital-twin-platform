@@ -34,3 +34,6 @@ Thumbs.db
 
 # External raw datasets
 data/external/
+
+# Runtime monitoring checkpoints
+data/state/

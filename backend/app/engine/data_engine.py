@@ -731,6 +731,358 @@ class MonitoringEngine:
             "uptime_seconds": round(elapsed, 1)
         }
 
+    def export_state(self) -> dict[str, Any]:
+        """Export the persisted domain state without storage-specific details."""
+        return {
+            "latest": [
+                self._reading_state(reading)
+                for reading in sorted(
+                    self._latest.values(),
+                    key=lambda reading: str(reading.sensor_id),
+                )
+            ],
+            "live_latest": [
+                self._reading_state(reading)
+                for reading in sorted(
+                    self._live_latest.values(),
+                    key=lambda reading: str(reading.sensor_id),
+                )
+            ],
+            "full_history": {
+                sensor_id: [self._reading_state(reading) for reading in readings]
+                for sensor_id, readings in self._full_history.items()
+            },
+            "history": {
+                sensor_id: [self._reading_state(reading) for reading in readings]
+                for sensor_id, readings in self._history.items()
+            },
+            "reading_timestamps": {
+                sensor_id: list(timestamps)
+                for sensor_id, timestamps in self._reading_timestamps.items()
+            },
+            "reading_retention_anchor": self._reading_retention_anchor,
+            "latest_time_valid": [
+                self._reading_state(reading)
+                for reading in sorted(
+                    self._latest_time_valid.values(),
+                    key=lambda reading: str(reading.sensor_id),
+                )
+            ],
+            "future_readings": {
+                sensor_id: [self._reading_state(reading) for reading in readings]
+                for sensor_id, readings in self._future_readings.items()
+            },
+            "pending_external_versions": dict(self._pending_external_versions),
+            "external_version": self._external_version,
+            "min_ts": self._min_ts,
+            "max_ts": self._max_ts,
+            "top_spikes": [
+                [negative_value, sensor_id, timestamp]
+                for negative_value, sensor_id, timestamp in self._top_spikes
+            ],
+            "alerts": [self._alert_state(alert) for alert in self._alerts],
+            "detection_sequence": self._detection_sequence,
+            "alert_cooldowns": [
+                {
+                    "sensor_id": key[0],
+                    "level": key[1],
+                    "timestamps": list(timestamps),
+                }
+                for key, timestamps in sorted(
+                    self._alert_cooldowns.items(),
+                    key=lambda item: item[0],
+                )
+            ],
+            "alert_cooldown_events": [
+                [key[0], key[1], timestamp]
+                for key, timestamp in self._alert_cooldown_events
+            ],
+            "alert_cooldown_seconds": self._alert_cooldown_seconds,
+            "thresholds": {
+                sensor_type: dict(levels)
+                for sensor_type, levels in self.thresholds.items()
+            },
+        }
+
+    def restore_state(self, state: Mapping[str, Any]) -> None:
+        """Restore a complete exported state, rejecting malformed checkpoints."""
+        if not isinstance(state, Mapping):
+            raise TypeError("engine state must be a mapping")
+
+        latest = {
+            str(reading.sensor_id): reading
+            for reading in self._decode_reading_list(state.get("latest", []), "latest")
+        }
+        live_latest = {
+            str(reading.sensor_id): reading
+            for reading in self._decode_reading_list(
+                state.get("live_latest", []),
+                "live_latest",
+            )
+        }
+        full_history = self._decode_reading_map(
+            state.get("full_history", {}),
+            "full_history",
+        )
+
+        history_state = state.get("history")
+        if history_state is None:
+            history = {
+                sensor_id: deque(readings[-self.window_size :], maxlen=self.window_size)
+                for sensor_id, readings in full_history.items()
+            }
+        else:
+            decoded_history = self._decode_reading_map(history_state, "history")
+            history = {
+                sensor_id: deque(readings, maxlen=self.window_size)
+                for sensor_id, readings in decoded_history.items()
+            }
+
+        timestamps_state = state.get("reading_timestamps")
+        if timestamps_state is None:
+            reading_timestamps = {
+                sensor_id: array("d", sorted(reading.timestamp for reading in readings))
+                for sensor_id, readings in full_history.items()
+            }
+        else:
+            if not isinstance(timestamps_state, Mapping):
+                raise ValueError("reading_timestamps must be a mapping")
+            reading_timestamps = {
+                str(sensor_id): array(
+                    "d",
+                    sorted(float(timestamp) for timestamp in timestamps),
+                )
+                for sensor_id, timestamps in timestamps_state.items()
+            }
+
+        latest_time_valid = {
+            str(reading.sensor_id): reading
+            for reading in self._decode_reading_list(
+                state.get("latest_time_valid", []),
+                "latest_time_valid",
+            )
+        }
+        future_readings = self._decode_reading_map(
+            state.get("future_readings", {}),
+            "future_readings",
+        )
+        for readings in future_readings.values():
+            readings.sort(key=lambda reading: reading.timestamp)
+
+        alerts = [
+            self._decode_alert(item, index)
+            for index, item in enumerate(state.get("alerts", []))
+        ]
+        alerts.sort(key=self._alert_sort_key)
+        if len(alerts) > self.MAX_ALERTS:
+            alerts = alerts[-self.MAX_ALERTS :]
+
+        cooldowns, cooldown_events = self._decode_cooldowns(state)
+        thresholds = self._decode_thresholds(state.get("thresholds"))
+        top_spikes = self._decode_top_spikes(state.get("top_spikes", []))
+        pending_external_versions = state.get("pending_external_versions", {})
+        if not isinstance(pending_external_versions, Mapping):
+            raise ValueError("pending_external_versions must be a mapping")
+        decoded_pending_versions = {
+            str(sensor_id): int(version)
+            for sensor_id, version in pending_external_versions.items()
+        }
+
+        min_ts = self._optional_finite_float(state.get("min_ts"), "min_ts")
+        max_ts = self._optional_finite_float(state.get("max_ts"), "max_ts")
+        retention_anchor = self._optional_finite_float(
+            state.get("reading_retention_anchor"),
+            "reading_retention_anchor",
+        )
+        cooldown_seconds = float(state.get("alert_cooldown_seconds", 10.0))
+        if not math.isfinite(cooldown_seconds) or cooldown_seconds < 0:
+            raise ValueError("alert_cooldown_seconds must be non-negative")
+
+        self._latest = latest
+        self._live_latest = live_latest
+        self._full_history = full_history
+        self._history = history
+        self._reading_timestamps = reading_timestamps
+        self._reading_retention_anchor = retention_anchor
+        self._latest_time_valid = latest_time_valid
+        self._future_readings = future_readings
+        self._pending_external_versions = decoded_pending_versions
+        self._external_version = int(state.get("external_version", 0))
+        self._min_ts = min_ts
+        self._max_ts = max_ts
+        self._top_spikes = top_spikes
+        self._alerts = alerts
+        self._detection_sequence = int(
+            state.get(
+                "detection_sequence",
+                max((alert.detection_sequence for alert in alerts), default=0),
+            )
+        )
+        self._alert_cooldowns = cooldowns
+        self._alert_cooldown_events = deque(cooldown_events)
+        self._alert_cooldown_seconds = cooldown_seconds
+        self.thresholds = thresholds
+
+    def _decode_reading_list(self, value: Any, field: str) -> List[SensorReading]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError(f"{field} must be a list")
+        return [self._decode_reading(item, field) for item in value]
+
+    def _decode_reading_map(self, value: Any, field: str) -> Dict[str, List[SensorReading]]:
+        if value is None:
+            return {}
+        if not isinstance(value, Mapping):
+            raise ValueError(f"{field} must be a mapping")
+        return {
+            str(sensor_id): self._decode_reading_list(readings, field)
+            for sensor_id, readings in value.items()
+        }
+
+    @staticmethod
+    def _decode_reading(item: Any, field: str) -> SensorReading:
+        if not isinstance(item, Mapping):
+            raise ValueError(f"{field} readings must be objects")
+        try:
+            return SensorReading(
+                sensor_id=SensorIdentifier(str(item["sensor_id"])),
+                name=str(item["name"]),
+                type=SensorType(str(item["type"])),
+                value=float(item["value"]),
+                timestamp=float(item["timestamp"]),
+                live_eligible=bool(item.get("live_eligible", True)),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"invalid {field} reading: {exc}") from exc
+
+    @staticmethod
+    def _decode_alert(item: Any, index: int) -> Alert:
+        if not isinstance(item, Mapping):
+            raise ValueError(f"alert {index} must be an object")
+        try:
+            details = item.get("details", {})
+            if not isinstance(details, Mapping):
+                raise TypeError("details must be a mapping")
+            return Alert(
+                id=uuid.UUID(str(item["id"])),
+                sensor_id=str(SensorIdentifier(item["sensor_id"])),
+                sensor_name=str(item["sensor_name"]),
+                level=str(item["level"]),
+                message=str(item["message"]),
+                value=float(item["value"]),
+                threshold=float(item["threshold"]),
+                source=str(item["source"]),
+                timestamp=MonitoringEngine._normalize_alert_timestamp(
+                    item.get("timestamp")
+                ),
+                detection_sequence=int(item.get("detection_sequence", 0)),
+                details=dict(details),
+                live_eligible=bool(item.get("live_eligible", True)),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"invalid alert {index}: {exc}") from exc
+
+    @staticmethod
+    def _decode_cooldowns(
+        state: Mapping[str, Any],
+    ) -> tuple[
+        Dict[tuple[str, str], List[float]],
+        List[tuple[tuple[str, str], float]],
+    ]:
+        cooldowns: Dict[tuple[str, str], List[float]] = {}
+        raw_cooldowns = state.get("alert_cooldowns", [])
+        if not isinstance(raw_cooldowns, list):
+            raise ValueError("alert_cooldowns must be a list")
+        for item in raw_cooldowns:
+            if not isinstance(item, Mapping):
+                raise ValueError("alert cooldown entries must be objects")
+            key = (str(item["sensor_id"]), str(item["level"]))
+            cooldowns[key] = sorted(
+                float(timestamp) for timestamp in item.get("timestamps", [])
+            )
+
+        events: List[tuple[tuple[str, str], float]] = []
+        raw_events = state.get("alert_cooldown_events", [])
+        if not isinstance(raw_events, list):
+            raise ValueError("alert_cooldown_events must be a list")
+        for item in raw_events:
+            if not isinstance(item, (list, tuple)) or len(item) != 3:
+                raise ValueError("alert cooldown events must have three fields")
+            events.append(((str(item[0]), str(item[1])), float(item[2])))
+        return cooldowns, events
+
+    def _decode_thresholds(self, value: Any) -> Dict[str, Dict[str, float]]:
+        if value is None:
+            return {
+                sensor_type: dict(levels)
+                for sensor_type, levels in self.thresholds.items()
+            }
+        if not isinstance(value, Mapping):
+            raise ValueError("thresholds must be a mapping")
+        decoded: Dict[str, Dict[str, float]] = {}
+        for sensor_type, levels in value.items():
+            if not isinstance(levels, Mapping):
+                raise ValueError("threshold levels must be mappings")
+            candidate = {
+                str(level): float(threshold)
+                for level, threshold in levels.items()
+            }
+            if set(candidate) != {"yellow", "orange", "red"}:
+                raise ValueError("each threshold profile needs yellow/orange/red")
+            if not (
+                0 < candidate["yellow"] < candidate["orange"] < candidate["red"]
+            ):
+                raise ValueError("thresholds must be positive and strictly ordered")
+            decoded[str(sensor_type)] = candidate
+        if set(decoded) != set(self.thresholds):
+            raise ValueError("threshold profiles must match the sensor types")
+        return decoded
+
+    @staticmethod
+    def _decode_top_spikes(value: Any) -> List[tuple]:
+        if not isinstance(value, list):
+            raise ValueError("top_spikes must be a list")
+        decoded: List[tuple] = []
+        for item in value:
+            if not isinstance(item, (list, tuple)) or len(item) != 3:
+                raise ValueError("top spike entries must have three fields")
+            decoded.append((float(item[0]), str(item[1]), float(item[2])))
+        return decoded
+
+    @staticmethod
+    def _optional_finite_float(value: Any, field: str) -> Optional[float]:
+        if value is None:
+            return None
+        result = float(value)
+        if not math.isfinite(result):
+            raise ValueError(f"{field} must be finite")
+        return result
+
+    @staticmethod
+    def _reading_state(reading: SensorReading) -> dict[str, Any]:
+        return {
+            **MonitoringEngine._reading_to_dict(reading),
+            "live_eligible": reading.live_eligible,
+        }
+
+    @staticmethod
+    def _alert_state(alert: Alert) -> dict[str, Any]:
+        return {
+            "id": str(alert.id),
+            "sensor_id": alert.sensor_id,
+            "sensor_name": alert.sensor_name,
+            "level": alert.level,
+            "message": alert.message,
+            "value": alert.value,
+            "threshold": alert.threshold,
+            "source": alert.source,
+            "timestamp": alert.timestamp,
+            "detection_sequence": alert.detection_sequence,
+            "details": alert.details,
+            "live_eligible": alert.live_eligible,
+        }
+
     def _trim_reading_timestamps(self, sensor_id: str) -> None:
         timestamps = self._reading_timestamps.get(sensor_id)
         anchor = self._reading_retention_anchor
@@ -756,7 +1108,8 @@ class MonitoringEngine:
             "details": alert.details,
         }
 
-    def _reading_to_dict(self, r: SensorReading) -> dict:
+    @staticmethod
+    def _reading_to_dict(r: SensorReading) -> dict:
         return {
             "sensor_id": r.sensor_id,
             "name": r.name,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from fastapi import Depends
 from starlette.requests import HTTPConnection
@@ -15,6 +16,12 @@ from app.ml.contracts import ReadingPredicate
 from app.ml.feature_arbitration import FeatureArbitrationDetector
 from app.ml.registry import DetectorManager, DetectorRegistry
 from app.ml.voting import VotingDetector
+from app.persistence import (
+    DEFAULT_CHECKPOINT_PATH,
+    CheckpointManager,
+    CheckpointStore,
+    JsonCheckpointStore,
+)
 from app.processing import SensorDataProcessor
 from app.ws.websocket_manager import WebSocketManager
 
@@ -28,6 +35,7 @@ class AppServices:
     detectors: DetectorManager
     processor: SensorDataProcessor
     ws_manager: WebSocketManager
+    persistence: CheckpointManager | None = None
     live_stream_interval_seconds: float = 1.0
     live_stream_autostart: bool = True
     processing_lock: threading.RLock = field(default_factory=threading.RLock)
@@ -61,9 +69,21 @@ def build_detector_registry(
     )
 
 
-def create_services() -> AppServices:
+def create_services(
+    *,
+    checkpoint_path: str | Path | None = None,
+    checkpoint_store: CheckpointStore | None = None,
+    persistence_enabled: bool = False,
+) -> AppServices:
     """Create a fresh, isolated set of services for an application instance."""
     engine = MonitoringEngine()
+    persistence = None
+    if checkpoint_store is not None or checkpoint_path is not None or persistence_enabled:
+        store = checkpoint_store or JsonCheckpointStore(
+            checkpoint_path or DEFAULT_CHECKPOINT_PATH
+        )
+        persistence = CheckpointManager(engine, store)
+        persistence.restore()
     detectors = DetectorManager(
         build_detector_registry(normal_predicate=engine.is_normal_reading)
     )
@@ -71,8 +91,9 @@ def create_services() -> AppServices:
         engine=engine,
         simulator=DataSimulator(),
         detectors=detectors,
-        processor=SensorDataProcessor(engine, detectors),
+        processor=SensorDataProcessor(engine, detectors, persistence=persistence),
         ws_manager=WebSocketManager(),
+        persistence=persistence,
     )
 
 

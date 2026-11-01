@@ -132,6 +132,8 @@ py -3.13 -m venv .venv
 - 每条记录必须包含 `sensor_id`、`name`、`type`、`value`、`timestamp`；类型仅支持 `strain`、`displacement`、`acceleration`、`temperature`。
 - 整批数据会先完整校验再写入；任一记录非法时返回 400，且不会产生部分写入。
 
+运行状态默认持久化到 `data/state/monitoring.json`。批次处理、阈值修改和正常停止都会提交原子检查点；进程重启后自动恢复最近一次完整检查点。损坏或不完整的检查点只会记录告警并被忽略，不阻止服务启动。存储通过 `CheckpointStore` 适配接口替换。
+
 ---
 
 ## 🚀 快速启动

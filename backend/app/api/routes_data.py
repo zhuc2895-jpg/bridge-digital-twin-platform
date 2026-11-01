@@ -163,6 +163,8 @@ async def update_thresholds(
     try:
         with services.processing_lock:
             current_thresholds = services.engine.update_thresholds(requested)
+            if services.persistence is not None:
+                services.persistence.commit()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

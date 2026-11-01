@@ -17,7 +17,7 @@ from app.dependencies import AppServices, create_services, get_services
 
 def create_app(services: Optional[AppServices] = None) -> FastAPI:
     """Build an isolated application with its own mutable service state."""
-    resolved_services = services or create_services()
+    resolved_services = services or create_services(persistence_enabled=True)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
@@ -27,6 +27,10 @@ def create_app(services: Optional[AppServices] = None) -> FastAPI:
             yield
         finally:
             application.state.services.live_stream.stop()
+            persistence = application.state.services.persistence
+            if persistence is not None:
+                with application.state.services.processing_lock:
+                    persistence.commit()
 
     application = FastAPI(
         title="Bridge Digital Twin Platform",
@@ -106,6 +110,11 @@ def create_app(services: Optional[AppServices] = None) -> FastAPI:
             "retained_alerts": retained_alerts,
             "simulator_running": services.simulator.is_running,
             "state_scope": "process",
+            "persistence": (
+                services.persistence.status()
+                if services.persistence is not None
+                else {"enabled": False}
+            ),
         }
 
     @application.websocket("/ws/live")

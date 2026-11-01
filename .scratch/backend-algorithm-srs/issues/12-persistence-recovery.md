@@ -6,9 +6,13 @@
 
 **Status:** ready-for-agent
 
-- [ ] 存储通过可替换适配接口访问，不把持久化细节泄漏到业务查询和检测模块。
-- [ ] 最新状态、历史读数、滚动窗口可重建所需数据、告警、时间范围和阈值配置均被持久化。
-- [ ] 正常停止和异常退出后重启，系统自动恢复最近已提交的数据与告警，无需人工导入。
-- [ ] 检查点写入具备原子性；损坏或不完整检查点不会阻止服务启动，并记录明确告警。
-- [ ] 恢复后的最新查询、时间范围、快照、告警查询和阈值配置与重启前一致。
-- [ ] 覆盖空库启动、首次写入、正常重启、异常中断模拟、损坏数据和存储适配替换测试。
+- [x] 存储通过可替换适配接口访问，不把持久化细节泄漏到业务查询和检测模块。
+- [x] 最新状态、历史读数、滚动窗口可重建所需数据、告警、时间范围和阈值配置均被持久化。
+- [x] 正常停止和异常退出后重启，系统自动恢复最近已提交的数据与告警，无需人工导入。
+- [x] 检查点写入具备原子性；损坏或不完整检查点不会阻止服务启动，并记录明确告警。
+- [x] 恢复后的最新查询、时间范围、快照、告警查询和阈值配置与重启前一致。
+- [x] 覆盖空库启动、首次写入、正常重启、异常中断模拟、损坏数据和存储适配替换测试。
+
+## Comments
+
+- 2026-11-01: Implemented `CheckpointStore`, the atomic JSON adapter, engine state export/restore, per-batch and threshold-change commits, shutdown flushing, and persistence health status. Added ADR-0007 and 12 automated tests covering empty startup, first write, normal restart, interrupted-process recovery, four damaged/incomplete payloads, rolling-window reconstruction, cooldown continuity, adapter replacement, and interrupted atomic replacement. Verification: targeted 79 tests passed; mypy passed.
