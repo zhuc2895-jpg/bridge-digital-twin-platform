@@ -7,6 +7,8 @@ from app.dependencies import create_services
 from app.engine.data_engine import MonitoringEngine
 from app.ingestion import validate_live_json_records
 from app.live_contract import (
+    LiveFrameAssembler,
+    LiveFrameBudgetError,
     LiveSensorSnapshot,
     build_sensor_update_from_snapshot,
 )
@@ -173,7 +175,7 @@ def test_bounded_frame_preserves_distinct_sensor_identifiers(monkeypatch):
 
     import app.live_contract as live_contract
 
-    monkeypatch.setattr(live_contract, "MAX_SENSOR_UPDATE_BYTES", 1100)
+    monkeypatch.setattr(live_contract, "MAX_SENSOR_UPDATE_BYTES", 1400)
     payload = _build(engine)
 
     assert {item["sensor_id"] for item in payload["sensors"]} == {
@@ -255,6 +257,30 @@ def test_overflow_keeps_newest_sensor_records(monkeypatch):
     timestamps = [item["timestamp"] for item in payload["sensors"]]
     assert timestamps == sorted(timestamps, reverse=True)
     assert 31.0 in timestamps
+    assert payload["budget"]["text_detail"] in {"compact", "minimal"}
+
+
+def test_frame_assembler_raises_when_required_alerts_exceed_budget():
+    snapshot = LiveSensorSnapshot(
+        sensors=[],
+        alerts=[
+            {
+                "id": "alert-1",
+                "sensor_id": "S01",
+                "sensor_name": "Detector",
+                "level": "red",
+                "message": "x" * 2_000,
+                "value": 1.0,
+                "threshold": 0.5,
+                "source": "ai_feature_arbitration",
+                "timestamp": 1_700_000_000.0,
+            }
+        ],
+        stats={},
+    )
+
+    with pytest.raises(LiveFrameBudgetError):
+        LiveFrameAssembler(max_bytes=256).assemble(snapshot)
 
 
 def test_late_server_processing_drops_frame_without_enqueueing():
@@ -273,6 +299,26 @@ def test_late_server_processing_drops_frame_without_enqueueing():
     )
 
     assert manager.payloads == []
+
+
+def test_pressure_build_failure_is_reported_in_budget_metadata(monkeypatch):
+    services = create_services()
+    manager = CapturingManager()
+    publisher = _publisher(services.engine, manager)
+    snapshot = LiveSensorSnapshot(sensors=[], alerts=[], stats={})
+
+    from app import live_stream
+
+    def fail_pressure(*args, **kwargs):
+        raise RuntimeError("pressure builder failed")
+
+    monkeypatch.setattr(live_stream, "build_pressure_update", fail_pressure)
+
+    assert publisher.publish(snapshot, generated_at=time.monotonic()) is True
+
+    payload = manager.payloads[0]
+    assert "pressure" not in payload
+    assert payload["budget"]["omissions"] == ["pressure.failed"]
 
 
 def test_boolean_alert_value_is_invalid():

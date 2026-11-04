@@ -8,6 +8,7 @@ import time
 from collections.abc import Callable
 from typing import Protocol, cast
 
+from app.bridge_scene_profile import BridgeSceneProfile, bundled_scene_profile
 from app.engine.data_engine import MonitoringEngine
 from app.engine.simulator import DataSimulator
 from app.ingestion import validate_live_json_records
@@ -18,6 +19,7 @@ from app.live_contract import (
     SensorUpdateWire,
     build_sensor_update_from_snapshot,
 )
+from app.pressure_field import build_pressure_update
 from app.processing import SensorDataProcessor
 from app.sensor_batch import LiveEligibility, SensorBatch
 
@@ -47,6 +49,9 @@ class LivePublicationEnvironment(Protocol):
     @property
     def processing_lock(self) -> threading.RLock: ...
 
+    @property
+    def scene_profile(self) -> BridgeSceneProfile: ...
+
 
 class LiveTickEnvironment(LivePublicationEnvironment, Protocol):
     """Current application-owned collaborators used to execute a Live Tick."""
@@ -74,6 +79,7 @@ def capture_live_snapshot(
                 engine.get_recent_live_alerts(),
             ),
             stats=engine.get_stats(),
+            threshold_profile=engine.threshold_profile_summary(),
         )
 
 
@@ -115,7 +121,32 @@ class SensorUpdatePublisher:
             if self._skip_if_stale(generated_at):
                 return False
             current_snapshot = snapshot or self.capture_snapshot()
-            payload = build_sensor_update_from_snapshot(current_snapshot)
+            pressure_payload = None
+            pressure_omission = None
+            try:
+                profile = getattr(
+                    self._environment,
+                    "scene_profile",
+                    bundled_scene_profile(),
+                )
+                pressure_payload = build_pressure_update(
+                    current_snapshot.sensors,
+                    self._environment.engine.projection_thresholds_for,
+                    deck_bounds=profile.deck_bounds.to_dict(),
+                    sensor_anchors={
+                        sensor_id: anchor.position
+                        for sensor_id, anchor in profile.sensor_anchors.items()
+                    },
+                    generated_at=time.time(),
+                )
+            except Exception:
+                logger.exception("Failed to build pressure_update")
+                pressure_omission = "pressure.failed"
+            payload = build_sensor_update_from_snapshot(
+                current_snapshot,
+                pressure=pressure_payload,
+                pressure_omission=pressure_omission,
+            )
             if self._skip_if_stale(generated_at):
                 return False
             self._environment.ws_manager.enqueue_broadcast(

@@ -288,11 +288,43 @@ def test_sensor_update_contract_contains_recent_twenty_alerts_within_10kb():
         with client.websocket_connect("/ws/live") as websocket:
             payload = websocket.receive_json()
 
-    assert set(payload) == {"type", "sensors", "alerts", "stats"}
+    assert set(payload) == {
+        "type",
+        "sensors",
+        "alerts",
+        "stats",
+        "budget",
+        "threshold_profile",
+    }
     assert payload["type"] == "sensor_update"
     assert len(payload["sensors"]) == 1
     assert len(payload["alerts"]) == 20
+    assert payload["threshold_profile"]["version"]
+    assert payload["threshold_profile"]["status"] in {
+        "provisional",
+        "authoritative",
+    }
+    assert set(payload["sensors"][0]) == {
+        "sensor_id",
+        "name",
+        "type",
+        "value",
+        "timestamp",
+        "physical_state",
+        "connection_state",
+    }
+    assert payload["sensors"][0]["physical_state"] in {
+        "normal",
+        "yellow",
+        "orange",
+        "red",
+        "unknown",
+    }
+    assert payload["sensors"][0]["connection_state"] in {"online", "offline"}
     assert payload["stats"]["retained_alerts"] == 20
+    assert payload["budget"]["limit_bytes"] == MAX_SENSOR_UPDATE_BYTES
+    assert "pressure" in payload["budget"]["omissions"]
+    assert payload["budget"]["text_detail"] in {"compact", "minimal"}
     assert all(
         set(alert) == {
             "id",

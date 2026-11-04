@@ -163,6 +163,8 @@ def test_abnormal_exit_keeps_last_committed_batch(tmp_path: Path) -> None:
             "type": "strain",
             "value": 1000.0,
             "timestamp": 1003.0,
+            "physical_state": "yellow",
+            "connection_state": "online",
         }
     }
 

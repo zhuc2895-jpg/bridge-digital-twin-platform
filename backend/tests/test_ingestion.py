@@ -61,12 +61,18 @@ def test_json_upload_updates_latest_state_and_health(client, app):
 
     latest = client.get("/api/sensors/").json()
     assert set(latest) == {"S01", "S02"}
-    assert latest["S01"] == reading()
+    expected = reading()
+    assert {key: latest["S01"][key] for key in expected} == expected
+    assert latest["S01"]["physical_state"] == "normal"
+    assert latest["S01"]["connection_state"] == "offline"
     assert latest["S02"]["value"] == 90.0
 
     single = client.get("/api/sensors/S01")
     assert single.status_code == 200
-    assert single.json() == reading()
+    single_payload = single.json()
+    assert {key: single_payload[key] for key in expected} == expected
+    assert single_payload["physical_state"] == "normal"
+    assert single_payload["connection_state"] == "offline"
 
     health = client.get("/api/health")
     assert health.status_code == 200
@@ -175,7 +181,11 @@ def test_csv_upload_and_push_live_false_are_accepted(client, app):
         "sensors_updated": 1,
     }
     assert capturing_manager.payloads == []
-    assert client.get("/api/sensors/CSV-01").json() == reading(sensor_id="CSV-01")
+    csv_latest = client.get("/api/sensors/CSV-01").json()
+    expected = reading(sensor_id="CSV-01")
+    assert {key: csv_latest[key] for key in expected} == expected
+    assert csv_latest["physical_state"] == "normal"
+    assert csv_latest["connection_state"] == "offline"
 
 
 def test_json_missing_field_rejects_whole_batch_without_writes(client):

@@ -12,6 +12,8 @@ venv/
 env/
 build/
 dist/
+dist-windows/
+.build/
 *.egg-info/
 
 # Node and frontend build output
@@ -38,6 +40,7 @@ data/external/
 
 # Runtime monitoring checkpoints
 data/state/
+data/models/
 
 # Generated acceptance reports
 benchmarks/runs/

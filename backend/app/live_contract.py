@@ -5,9 +5,10 @@ from __future__ import annotations
 import logging
 import math
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
-from typing import Any, Literal, TypedDict
+from dataclasses import dataclass, field
+from typing import Any, Literal, NotRequired, TypedDict, cast
 
+from app.pressure_field import PressureUpdateWire
 from app.sensor_ids import MAX_LIVE_SENSOR_ID_BYTES
 from app.ws.message_contract import MAX_SENSOR_UPDATE_BYTES, encode_message
 
@@ -20,6 +21,19 @@ class SensorReadingWire(TypedDict):
     type: str
     value: float
     timestamp: float
+    physical_state: str
+    connection_state: str
+
+
+class ThresholdProfileWire(TypedDict):
+    version: str
+    status: str
+
+
+class FrameBudgetWire(TypedDict):
+    limit_bytes: int
+    omissions: list[str]
+    text_detail: NotRequired[str]
 
 
 class AlertWire(TypedDict):
@@ -40,6 +54,9 @@ class SensorUpdateWire(TypedDict):
     sensors: list[SensorReadingWire]
     alerts: list[AlertWire]
     stats: dict[str, Any]
+    budget: FrameBudgetWire
+    threshold_profile: NotRequired[ThresholdProfileWire]
+    pressure: NotRequired[PressureUpdateWire]
 
 
 class AlertSnapshotRecord(TypedDict, total=False):
@@ -60,6 +77,7 @@ class LiveSensorSnapshot:
     sensors: list[SensorReadingWire]
     alerts: list[AlertSnapshotRecord]
     stats: dict[str, Any]
+    threshold_profile: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +155,14 @@ def _compact_reading(
         ),
         "value": float(reading.get("value", 0.0)),
         "timestamp": float(reading.get("timestamp", 0.0)),
+        "physical_state": _truncate_text(
+            reading.get("physical_state", "unknown"),
+            16,
+        ),
+        "connection_state": _truncate_text(
+            reading.get("connection_state", "offline"),
+            16,
+        ),
     }
 
 
@@ -208,31 +234,157 @@ def _live_sensors(
     return [_compact_reading(reading, limits) for reading in readings]
 
 
-def build_sensor_update_from_snapshot(
-    snapshot: LiveSensorSnapshot,
-) -> SensorUpdateWire:
-    """Build a bounded Live Frame from an already copied live snapshot."""
-    sensors = _live_sensors(snapshot.sensors)
-    alerts = [_alert_payload(alert) for alert in snapshot.alerts]
-    payload: SensorUpdateWire = {
-        "type": "sensor_update",
-        "sensors": sensors,
-        "alerts": alerts,
-        "stats": snapshot.stats,
-    }
-    if _message_size(payload) <= MAX_SENSOR_UPDATE_BYTES:
-        return payload
+class LiveFrameBudgetError(ValueError):
+    """No valid Live Frame can fit inside the configured byte budget."""
 
-    for text_limits in (_SHORT_TEXT_LIMITS, _MINIMAL_TEXT_LIMITS):
-        sensors = _live_sensors(snapshot.sensors, text_limits)
-        alerts = [_alert_payload(alert, text_limits) for alert in snapshot.alerts]
-        payload["sensors"] = sensors
-        payload["alerts"] = alerts
-        if _message_size(payload) <= MAX_SENSOR_UPDATE_BYTES:
+
+def _compact_pressure_payload(
+    pressure: PressureUpdateWire,
+) -> PressureUpdateWire | None:
+    if not pressure.get("points"):
+        return None
+    compact = cast(PressureUpdateWire, dict(pressure))
+    compact["points"] = []
+    return compact
+
+
+class LiveFrameAssembler:
+    """Own Live Frame packaging, degradation order, and omission metadata."""
+
+    def __init__(self, max_bytes: int | None = None) -> None:
+        resolved_limit = MAX_SENSOR_UPDATE_BYTES if max_bytes is None else max_bytes
+        if resolved_limit <= 0:
+            raise ValueError("Live Frame byte budget must be positive")
+        self.max_bytes = int(resolved_limit)
+
+    def assemble(
+        self,
+        snapshot: LiveSensorSnapshot,
+        *,
+        pressure: PressureUpdateWire | None = None,
+        pressure_omission: str | None = None,
+    ) -> SensorUpdateWire:
+        omissions: tuple[str, ...] = (
+            (pressure_omission,)
+            if pressure_omission
+            else ()
+        )
+        payload = self._payload(
+            snapshot,
+            pressure=pressure,
+            omissions=omissions,
+        )
+        if self._fits(payload):
             return payload
 
-    while sensors and _message_size(payload) > MAX_SENSOR_UPDATE_BYTES:
-        sensors.pop()
+        if pressure is not None:
+            compact_pressure = _compact_pressure_payload(pressure)
+            if compact_pressure is not None:
+                payload = self._payload(
+                    snapshot,
+                    pressure=compact_pressure,
+                    omissions=("pressure.points",),
+                )
+                if self._fits(payload):
+                    return payload
+            omissions = ("pressure",)
+            payload = self._payload(
+                snapshot,
+                pressure=None,
+                omissions=omissions,
+            )
+            if self._fits(payload):
+                return payload
 
-    payload["sensors"] = sensors
-    return payload
+        for text_detail, text_limits in (
+            ("compact", _SHORT_TEXT_LIMITS),
+            ("minimal", _MINIMAL_TEXT_LIMITS),
+        ):
+            payload = self._payload(
+                snapshot,
+                pressure=None,
+                limits=text_limits,
+                omissions=omissions,
+                text_detail=text_detail,
+            )
+            if self._fits(payload):
+                return payload
+
+        sensors = _live_sensors(snapshot.sensors, _MINIMAL_TEXT_LIMITS)
+        while sensors:
+            sensors.pop()
+            payload = self._payload(
+                snapshot,
+                pressure=None,
+                limits=_MINIMAL_TEXT_LIMITS,
+                omissions=(*omissions, "sensors"),
+                text_detail="minimal",
+                sensors=sensors,
+            )
+            if self._fits(payload):
+                return payload
+
+        raise LiveFrameBudgetError(
+            f"Live Frame cannot fit within {self.max_bytes} bytes"
+        )
+
+    def _fits(self, payload: Mapping[str, Any]) -> bool:
+        return _message_size(payload) <= self.max_bytes
+
+    def _payload(
+        self,
+        snapshot: LiveSensorSnapshot,
+        *,
+        pressure: PressureUpdateWire | None,
+        limits: _WireTextLimits = _DEFAULT_TEXT_LIMITS,
+        omissions: tuple[str, ...] = (),
+        text_detail: str = "full",
+        sensors: Sequence[SensorReadingWire] | None = None,
+    ) -> SensorUpdateWire:
+        payload: SensorUpdateWire = {
+            "type": "sensor_update",
+            "sensors": (
+                list(sensors)
+                if sensors is not None
+                else _live_sensors(snapshot.sensors, limits)
+            ),
+            "alerts": [
+                _alert_payload(alert, limits)
+                for alert in snapshot.alerts
+            ],
+            "stats": snapshot.stats,
+            "budget": {
+                "limit_bytes": self.max_bytes,
+                "omissions": list(omissions),
+            },
+        }
+        if text_detail != "full":
+            payload["budget"]["text_detail"] = text_detail
+        if snapshot.threshold_profile:
+            payload["threshold_profile"] = {
+                "version": _truncate_text(
+                    snapshot.threshold_profile.get("version", ""),
+                    64,
+                ),
+                "status": _truncate_text(
+                    snapshot.threshold_profile.get("status", ""),
+                    16,
+                ),
+            }
+        if pressure is not None:
+            payload["pressure"] = pressure
+        return payload
+
+
+def build_sensor_update_from_snapshot(
+    snapshot: LiveSensorSnapshot,
+    *,
+    pressure: PressureUpdateWire | None = None,
+    pressure_omission: str | None = None,
+) -> SensorUpdateWire:
+    """Build a bounded Live Frame through the shared assembler policy."""
+    return LiveFrameAssembler().assemble(
+        snapshot,
+        pressure=pressure,
+        pressure_omission=pressure_omission,
+    )

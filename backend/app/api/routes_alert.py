@@ -4,26 +4,26 @@
 
 from fastapi import APIRouter, Depends
 
-from app.dependencies import get_engine
-from app.engine.data_engine import MonitoringEngine
+from app.dependencies import get_history_read_model
+from app.history_read import HistoryReadModel
 
 router = APIRouter()
 
 
 @router.get("/")
-async def get_alerts(engine: MonitoringEngine = Depends(get_engine)):
+async def get_alerts(history: HistoryReadModel = Depends(get_history_read_model)):
     """获取最近告警列表"""
-    alerts = engine.get_recent_alerts()
+    alerts = history.recent_alerts()
     return {"count": len(alerts), "alerts": alerts}
 
 
 @router.get("/recent")
-async def get_recent_alerts(engine: MonitoringEngine = Depends(get_engine)):
+async def get_recent_alerts(history: HistoryReadModel = Depends(get_history_read_model)):
     """获取最近告警（最近20条）"""
-    return engine.get_recent_alerts()
+    return history.recent_alerts()
 
 
 @router.get("/stats")
-async def get_alert_stats(engine: MonitoringEngine = Depends(get_engine)):
+async def get_alert_stats(history: HistoryReadModel = Depends(get_history_read_model)):
     """获取全部已存储告警的统计"""
-    return engine.get_alert_stats()
+    return history.alert_stats()

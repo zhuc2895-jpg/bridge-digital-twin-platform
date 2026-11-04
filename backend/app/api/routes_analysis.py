@@ -2,16 +2,18 @@
 数据分析 REST API
 """
 
-import math
+import time
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from app.dependencies import AppServices, get_services
+from app.dependencies import AppServices, get_history_read_model, get_services
 from app.engine.simulator import UnknownSimulatorSensorError
+from app.history_read import HistoryReadError, HistoryReadModel
 from app.html_report import render_monitoring_report
 from app.ml.registry import DetectorRegistryError, DetectorRelearnError
+from app.pressure_field import build_pressure_update
 from app.sensor_batch import LiveEligibility, SensorBatch
 from app.sensor_ids import SensorIdentifier
 
@@ -63,7 +65,10 @@ def _resolve_anomaly_target(
 
 
 @router.get("/overview")
-async def get_overview(services: AppServices = Depends(get_services)):
+async def get_overview(
+    services: AppServices = Depends(get_services),
+    history: HistoryReadModel = Depends(get_history_read_model),
+):
     """获取系统总览"""
     engine = services.engine
     detector = services.detectors
@@ -74,7 +79,7 @@ async def get_overview(services: AppServices = Depends(get_services)):
         "simulator_running": (
             simulator.is_running if services.config.simulation_enabled else False
         ),
-        "top_spikes": engine.get_top_spikes()
+        "top_spikes": history.top_spikes()
     }
 
 
@@ -90,9 +95,10 @@ async def get_detector_status(
 async def relearn_detector_baselines(
     sensor_id: str | None = Query(default=None),
     services: AppServices = Depends(get_services),
+    history: HistoryReadModel = Depends(get_history_read_model),
 ):
     """Start a fresh baseline for one sensor or every known sensor."""
-    if sensor_id is not None and services.engine.get_latest(sensor_id) is None:
+    if sensor_id is not None and history.latest(sensor_id) is None:
         raise HTTPException(status_code=404, detail=f"Sensor {sensor_id} not found")
     try:
         with services.processing_lock:
@@ -151,10 +157,11 @@ async def inject_anomaly(
 
 
 @router.get("/top-spikes")
-async def get_top_spikes(services: AppServices = Depends(get_services)):
+async def get_top_spikes(
+    history: HistoryReadModel = Depends(get_history_read_model),
+):
     """获取 Top-K 峰值"""
-    engine = services.engine
-    return engine.get_top_spikes()
+    return history.top_spikes()
 
 
 @router.post("/response-estimate")
@@ -163,7 +170,10 @@ async def estimate_structural_response(
     services: AppServices = Depends(get_services),
 ):
     """Estimate response through simulation prior plus measurement compensation."""
-    estimate = services.response_estimator.estimate(payload.features)
+    estimate = await services.analysis_executor.run(
+        services.response_estimator.estimate,
+        payload.features,
+    )
     return {
         "status": "estimated" if estimate.prediction is not None else "fallback",
         "sensor_id": payload.sensor_id,
@@ -176,48 +186,23 @@ async def estimate_structural_response(
 async def invert_full_field_deformation(
     payload: DeformationInversionRequest,
     services: AppServices = Depends(get_services),
+    history: HistoryReadModel = Depends(get_history_read_model),
 ):
     """Invert modal coordinates and return the associated full-field deformation."""
-    engine = services.engine
     timestamp = payload.timestamp
-    time_range = engine.get_time_range()
-    if timestamp is not None:
-        if not math.isfinite(timestamp):
-            raise HTTPException(status_code=400, detail="timestamp must be finite")
-        if not time_range["has_data"]:
-            raise HTTPException(
-                status_code=400,
-                detail="No sensor history is available",
-            )
-        if not time_range["start"] <= timestamp <= time_range["end"]:
-            raise HTTPException(
-                status_code=400,
-                detail="timestamp is outside the retained sensor history",
-            )
-
-    snapshot = engine.get_snapshot_at(timestamp) if timestamp is not None else None
-    if timestamp is not None and not snapshot:
-        raise HTTPException(
-            status_code=400,
-            detail="No sensor snapshot exists at the requested timestamp",
-        )
-
     measurements = payload.measurements
+    snapshot = None
+    try:
+        if timestamp is not None:
+            snapshot = history.snapshot_at_retained_time(timestamp)
+        elif measurements is None:
+            timestamp, snapshot = history.latest_retained_snapshot()
+    except HistoryReadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     source = "measurements"
     if measurements is None:
-        if timestamp is None:
-            if not time_range["has_data"]:
-                raise HTTPException(
-                    status_code=400,
-                    detail="No sensor history is available",
-                )
-            timestamp = time_range["end"]
-            snapshot = engine.get_snapshot_at(timestamp)
-        if not snapshot:
-            raise HTTPException(
-                status_code=400,
-                detail="No sensor snapshot exists at the requested timestamp",
-            )
+        assert snapshot is not None
         primary_direction = services.modal_model.primary_direction
         measurements = {
             sensor_id: {primary_direction: float(reading["value"])}
@@ -225,7 +210,8 @@ async def invert_full_field_deformation(
         }
         source = "snapshot"
 
-    result = services.modal_model.invert(
+    result = await services.analysis_executor.run(
+        services.modal_model.invert,
         measurements,
         snr=payload.snr,
         confidence=payload.confidence,
@@ -239,6 +225,51 @@ async def invert_full_field_deformation(
     }
 
 
+@router.get("/response-field")
+async def get_response_field(
+    timestamp: float | None = Query(default=None),
+    services: AppServices = Depends(get_services),
+    history: HistoryReadModel = Depends(get_history_read_model),
+):
+    """Return the normalized response pressure field for a live or historical point."""
+    engine = services.engine
+    source = "live"
+    resolved_timestamp = time.time()
+
+    profile = services.scene_profile
+    if timestamp is None:
+        sensors = history.live_snapshot(limit=32)
+    else:
+        try:
+            snapshot = history.snapshot_at_retained_time(timestamp)
+        except HistoryReadError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        sensors = list(snapshot.values())
+        source = "history"
+        resolved_timestamp = timestamp
+
+    field = await services.analysis_executor.run(
+        build_pressure_update,
+        sensors,
+        engine.projection_thresholds_for,
+        deck_bounds=profile.deck_bounds.to_dict(),
+        sensor_anchors={
+            sensor_id: anchor.position
+            for sensor_id, anchor in profile.sensor_anchors.items()
+        },
+        generated_at=resolved_timestamp,
+    )
+    threshold_profile = history.threshold_profile_summary()
+
+    return {
+        "status": "ok" if field["coverage"] else "unavailable",
+        "source": source,
+        "timestamp": resolved_timestamp,
+        "threshold_profile": threshold_profile,
+        **field,
+    }
+
+
 @router.get("/report", response_class=HTMLResponse)
 async def export_report(
     hours: int = Query(default=24, ge=1, le=168),
@@ -246,4 +277,9 @@ async def export_report(
     services: AppServices = Depends(get_services),
 ):
     """Export a printable HTML report for the requested trailing period."""
-    return render_monitoring_report(services, hours=hours, title=title)
+    return await services.analysis_executor.run(
+        render_monitoring_report,
+        services,
+        hours=hours,
+        title=title,
+    )

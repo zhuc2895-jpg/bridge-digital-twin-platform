@@ -20,6 +20,9 @@ from app.threshold_provenance import (
     validate_sensor_thresholds,
 )
 
+DEFAULT_MODEL_DIR = Path(__file__).resolve().parents[2] / "data" / "models"
+DEFAULT_FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+
 _LOG_LEVELS = {
     "CRITICAL": 50,
     "ERROR": 40,
@@ -61,6 +64,8 @@ class AppConfig:
     host: str = "0.0.0.0"
     port: int = 8000
     checkpoint_path: Path = DEFAULT_CHECKPOINT_PATH
+    model_dir: Path = DEFAULT_MODEL_DIR
+    frontend_dist: Path = DEFAULT_FRONTEND_DIST
     log_level: str = "INFO"
     cors_origins: tuple[str, ...] = DEFAULT_CORS_ORIGINS
     simulation_enabled: bool = True
@@ -98,6 +103,12 @@ class AppConfig:
         checkpoint_path = Path(self.checkpoint_path)
         if not str(checkpoint_path):
             raise ValueError("checkpoint_path must be non-empty")
+        model_dir = Path(self.model_dir)
+        if not str(model_dir):
+            raise ValueError("model_dir must be non-empty")
+        frontend_dist = Path(self.frontend_dist)
+        if not str(frontend_dist):
+            raise ValueError("frontend_dist must be non-empty")
 
         normalized_level = str(self.log_level).strip().upper()
         if normalized_level not in _LOG_LEVELS:
@@ -164,6 +175,8 @@ class AppConfig:
         object.__setattr__(self, "host", host)
         object.__setattr__(self, "port", int(self.port))
         object.__setattr__(self, "checkpoint_path", checkpoint_path)
+        object.__setattr__(self, "model_dir", model_dir)
+        object.__setattr__(self, "frontend_dist", frontend_dist)
         object.__setattr__(self, "log_level", normalized_level)
         object.__setattr__(self, "cors_origins", origins)
         object.__setattr__(self, "thresholds", thresholds)
@@ -258,6 +271,8 @@ class AppConfig:
             else DEFAULT_CORS_ORIGINS
         )
         checkpoint_raw = source.get("BRIDGE_CHECKPOINT_PATH")
+        model_dir_raw = source.get("BRIDGE_MODEL_DIR")
+        frontend_dist_raw = source.get("BRIDGE_FRONTEND_DIST")
         return cls(
             host=source.get("BRIDGE_HOST", "0.0.0.0"),
             port=_integer(source.get("BRIDGE_PORT", "8000"), "BRIDGE_PORT"),
@@ -265,6 +280,16 @@ class AppConfig:
                 Path(checkpoint_raw)
                 if checkpoint_raw is not None
                 else DEFAULT_CHECKPOINT_PATH
+            ),
+            model_dir=(
+                Path(model_dir_raw)
+                if model_dir_raw is not None
+                else DEFAULT_MODEL_DIR
+            ),
+            frontend_dist=(
+                Path(frontend_dist_raw)
+                if frontend_dist_raw is not None
+                else DEFAULT_FRONTEND_DIST
             ),
             log_level=source.get("BRIDGE_LOG_LEVEL", "INFO"),
             cors_origins=origins,

@@ -9,9 +9,13 @@ from pathlib import Path
 from fastapi import Depends
 from starlette.requests import HTTPConnection
 
+from app.analysis_execution import AnalysisExecutor, ThreadedAnalysisExecutor
+from app.bridge_models import BridgeModelStore
+from app.bridge_scene_profile import BridgeSceneProfile, bundled_scene_profile
 from app.config import AppConfig
 from app.engine.data_engine import MonitoringEngine
 from app.engine.simulator import DataSimulator
+from app.history_read import HistoryReadModel
 from app.live_stream import LiveStreamRunner, LiveTickPipeline
 from app.ml.compensation import (
     ResponseCompensationEstimator,
@@ -42,8 +46,12 @@ class AppServices:
     processor: SensorDataProcessor
     ws_manager: WebSocketManager
     config: AppConfig
+    model_store: BridgeModelStore
     response_estimator: ResponseCompensationEstimator
     modal_model: ModalInversionModel
+    analysis_executor: AnalysisExecutor = field(
+        default_factory=ThreadedAnalysisExecutor
+    )
     persistence: CheckpointManager | None = None
     live_stream_interval_seconds: float = 1.0
     live_stream_autostart: bool = True
@@ -62,6 +70,11 @@ class AppServices:
                 running,
             ),
         )
+
+    @property
+    def scene_profile(self) -> BridgeSceneProfile:
+        profile = self.model_store.active_profile()
+        return profile if profile is not None else bundled_scene_profile()
 
 
 def build_detector_registry(
@@ -148,6 +161,7 @@ def create_services(
         processor=SensorDataProcessor(engine, detectors, persistence=persistence),
         ws_manager=WebSocketManager(),
         config=resolved_config,
+        model_store=BridgeModelStore(resolved_config.model_dir),
         response_estimator=response_estimator,
         modal_model=modal_model,
         persistence=persistence,
@@ -162,3 +176,15 @@ def get_services(connection: HTTPConnection) -> AppServices:
 
 def get_engine(services: AppServices = Depends(get_services)) -> MonitoringEngine:
     return services.engine
+
+
+def get_history_read_model(
+    services: AppServices = Depends(get_services),
+) -> HistoryReadModel:
+    return HistoryReadModel(services.engine, services.processing_lock)
+
+
+def get_analysis_executor(
+    services: AppServices = Depends(get_services),
+) -> AnalysisExecutor:
+    return services.analysis_executor

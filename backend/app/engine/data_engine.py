@@ -25,6 +25,7 @@ from app.sensor_metrics import (
     ONLINE_SENSOR_FRESHNESS_SECONDS,
     is_online,
 )
+from app.sensor_state import project_sensor_state
 from app.sensor_types import SensorType
 from app.threshold_provenance import (
     DEFAULT_SENSOR_THRESHOLD_TYPES,
@@ -326,6 +327,30 @@ class MonitoringEngine:
             return sensor_specific
         return self.thresholds.get(str(sensor_type), {})
 
+    def projection_thresholds_for(
+        self,
+        sensor_id: object,
+        sensor_type: object,
+    ) -> Mapping[str, float]:
+        """Return thresholds only when the sensor override type matches."""
+        sensor_specific = self.sensor_thresholds.get(str(sensor_id))
+        expected_type = self.sensor_threshold_types.get(str(sensor_id))
+        if (
+            sensor_specific is not None
+            and expected_type is not None
+            and str(expected_type) != str(sensor_type)
+        ):
+            return {}
+        return self.thresholds_for(sensor_id, sensor_type)
+
+    def threshold_profile_summary(self) -> dict[str, str]:
+        """Return compact provenance for the active threshold profile."""
+        provenance = self.threshold_provenance
+        return {
+            "version": provenance.profile_version,
+            "status": provenance.status,
+        }
+
     def submit_alert(
         self,
         *,
@@ -551,14 +576,23 @@ class MonitoringEngine:
         """Return the newest retained alerts created by Live Eligible data."""
         return self._recent_alert_dicts(live_only=True)
 
-    def get_live_snapshot(self, limit: int = 32) -> List[dict]:
+    def get_live_snapshot(
+        self,
+        limit: int = 32,
+        *,
+        reference_time: Optional[float] = None,
+    ) -> List[dict]:
         """Return the newest Live Eligible reading for each sensor."""
+        reference = time.time() if reference_time is None else reference_time
         readings = sorted(
             self._live_latest.values(),
             key=lambda reading: (reading.timestamp, str(reading.sensor_id)),
             reverse=True,
         )
-        return [self._reading_to_dict(reading) for reading in readings[:limit]]
+        return [
+            self._project_reading(reading, reference)
+            for reading in readings[:limit]
+        ]
 
     def get_pending_external_versions(self) -> Dict[str, int]:
         return dict(self._pending_external_versions)
@@ -632,7 +666,7 @@ class MonitoringEngine:
                 continue
             consider(future_readings[index])
         return {
-            sensor_id: self._reading_to_dict(reading)
+            sensor_id: self._project_reading(reading, reference_time)
             for sensor_id, reading in candidates.items()
         }
 
@@ -652,11 +686,20 @@ class MonitoringEngine:
         """Return the number of retained alerts, not only the recent page."""
         return len(self._alerts)
 
-    def get_latest(self, sensor_id: Optional[str] = None) -> Optional[dict]:
+    def get_latest(
+        self,
+        sensor_id: Optional[str] = None,
+        *,
+        reference_time: Optional[float] = None,
+    ) -> Optional[dict]:
+        reference = time.time() if reference_time is None else reference_time
         if sensor_id:
             r = self._latest.get(sensor_id)
-            return self._reading_to_dict(r) if r else None
-        return {sid: self._reading_to_dict(r) for sid, r in self._latest.items()}
+            return self._project_reading(r, reference) if r else None
+        return {
+            sid: self._project_reading(r, reference)
+            for sid, r in self._latest.items()
+        }
 
     def get_history(self, sensor_id: str, minutes: int = 60) -> List[dict]:
         """获取指定传感器最近N分钟的历史数据"""
@@ -775,7 +818,7 @@ class MonitoringEngine:
                 key=lambda reading: reading.timestamp,
             ) - 1
             if index >= 0:
-                result[sensor_id] = self._reading_to_dict(readings[index])
+                result[sensor_id] = self._project_reading(readings[index], ts)
         return result
 
     def get_top_spikes(self) -> List[dict]:
@@ -1225,6 +1268,27 @@ class MonitoringEngine:
             "source": alert.source,
             "timestamp": alert.timestamp,
             "details": alert.details,
+        }
+
+    def _project_reading(
+        self,
+        reading: SensorReading,
+        reference_time: float,
+    ) -> dict:
+        thresholds = self.projection_thresholds_for(
+            reading.sensor_id,
+            reading.type,
+        )
+        physical_state, connection_state = project_sensor_state(
+            value=reading.value,
+            thresholds=thresholds,
+            timestamp=reading.timestamp,
+            reference_time=reference_time,
+        )
+        return {
+            **self._reading_to_dict(reading),
+            "physical_state": physical_state,
+            "connection_state": connection_state,
         }
 
     @staticmethod

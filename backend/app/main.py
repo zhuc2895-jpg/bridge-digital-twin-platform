@@ -5,15 +5,17 @@ Bridge Digital Twin Platform - FastAPI application assembly.
 import logging
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
-from app.api import routes_alert, routes_analysis, routes_data, routes_sensor
+from app.api import routes_alert, routes_analysis, routes_data, routes_models, routes_sensor
 from app.config import AppConfig
 from app.dependencies import AppServices, create_services, get_services
 from app.observability import (
@@ -103,6 +105,41 @@ def create_app(
     application.include_router(
         routes_data.router, prefix="/api/data", tags=["数据上传"]
     )
+    application.include_router(
+        routes_models.router, prefix="/api/models", tags=["桥梁模型"]
+    )
+
+    frontend_dist = Path(resolved_config.frontend_dist)
+    frontend_assets = frontend_dist / "assets"
+    frontend_models = frontend_dist / "models"
+    desktop_index = frontend_dist / "index.html"
+    if desktop_index.is_file():
+        if frontend_assets.is_dir():
+            application.mount(
+                "/assets",
+                StaticFiles(directory=frontend_assets),
+                name="desktop-assets",
+            )
+        if frontend_models.is_dir():
+            application.mount(
+                "/models",
+                StaticFiles(directory=frontend_models),
+                name="desktop-models",
+            )
+
+        @application.get("/app", include_in_schema=False)
+        async def desktop_app():
+            return FileResponse(desktop_index)
+
+        @application.get("/app/{asset_path:path}", include_in_schema=False)
+        async def desktop_app_fallback(asset_path: str):
+            candidate = (frontend_dist / asset_path).resolve()
+            if (
+                candidate.is_file()
+                and frontend_dist.resolve() in candidate.parents
+            ):
+                return FileResponse(candidate)
+            return FileResponse(desktop_index)
 
     @application.exception_handler(RequestValidationError)
     async def request_validation_error_handler(

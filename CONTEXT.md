@@ -32,6 +32,10 @@ _Avoid_: physical state, alert level
 The normal, yellow, orange, or red condition derived from a sensor's latest Time-Valid Sensor Reading and its Threshold Profile, or unknown when no time-valid reading exists; it is independent of connection state.
 _Avoid_: connection state, alert state
 
+**Sensor State Projection**:
+The read-time pairing of one Sensor Reading's Sensor Physical State and Sensor Connection State under the active Threshold Profile, including unknown when no matching thresholds exist; it is derived for a read surface and never persisted as monitoring state.
+_Avoid_: stored health, frontend threshold calculation
+
 **Cumulative Reading Count**:
 The number of Sensor Readings ingested since the current process started, across all ingestion paths; a process restart resets it.
 _Avoid_: online sensor count, period reading count
@@ -117,8 +121,56 @@ The application-wide instant at which the current monitoring state is sampled an
 _Avoid_: per-client tick, connection timer
 
 **Live Frame**:
-One `sensor_update` snapshot emitted by a Live Tick, with exactly one scheduled emission per second and a UTF-8 encoded size no greater than 10KB.
+One `sensor_update` snapshot emitted by a Live Tick, with exactly one scheduled emission per second and a UTF-8 encoded size no greater than 10KB. It carries Sensor State Projections, compact Threshold Profile provenance, Live Frame Budget metadata, and may carry a Response Pressure Field when that field fits the same byte budget.
 _Avoid_: per-upload frame, immediate update
+
+**Live Frame Budget**:
+The 10KB UTF-8 allowance owned by the Live Frame Assembler. When optional content cannot fit, the assembler applies one fixed degradation order and reports every omission or reduced text detail in the frame's `budget` metadata; a failed Pressure Field production is reported as `pressure.failed`, separate from budget omission.
+_Avoid_: pressure-only byte cap, per-builder truncation
+
+**Bridge Scene Runtime**:
+The module that owns the Three.js scene, bridge model replacement, sensor markers, pressure overlay, picking, animation, and resource disposal while consuming the Bridge Scene Profile as spatial authority.
+_Avoid_: component-local Three.js state, page-owned renderer
+
+**Measurement Timeline**:
+The bounded trend history keyed by Measurement Role rather than fixed sensor identifiers; it resets when the active Bridge Scene Profile identity or role mapping changes and feeds both live and replay chart updates.
+_Avoid_: fixed S01/S03/S04 buffers, model-mixed trend history
+
+**History Read Snapshot**:
+A stable result assembled inside the shared mutation boundary for history windows, retained snapshots, alerts, or report state.
+_Avoid_: route-owned lock policy, torn multi-read state
+
+**Response Pressure Field**:
+A normalized structural-response surface interpolated from the Live Sensor Snapshot over the bridge deck plane, using each sensor's absolute reading divided by its red threshold; it is a visualization index, not a physical pressure or stress measurement.
+_Avoid_: stress cloud, finite-element pressure, measured pressure
+
+**Imported Bridge Model**:
+A validated, self-contained glTF 2.0 asset uploaded through the bridge model API and stored under the configured model directory.
+_Avoid_: BIM source file, arbitrary mesh upload
+
+**Active Bridge Model**:
+The one Imported Bridge Model selected for display, or the Bundled Bridge Model when no import is active.
+_Avoid_: latest upload, default upload
+
+**Bundled Bridge Model**:
+The read-only glTF asset shipped with the frontend and used when no Imported Bridge Model is active.
+_Avoid_: fallback upload, generated bridge
+
+**Bridge Scene Profile**:
+A versioned spatial interpretation of one bridge model containing its coordinate frame, model-to-scene transform, deck bounds, Sensor Anchors, Measurement Roles, and display metadata; its source is bundled, explicit, or inferred.
+_Avoid_: hard-coded model fit, frontend geometry guesses
+
+**Inferred Scene Profile**:
+A provisional Bridge Scene Profile derived from model geometry when no explicit profile exists, marked with `source: inferred` until replaced.
+_Avoid_: authoritative profile, permanent default
+
+**Sensor Anchor**:
+A bridge-scene position in metres assigned to one sensor identifier by a Bridge Scene Profile.
+_Avoid_: label position, hard-coded sensor coordinate
+
+**Measurement Role**:
+A named presentation role, such as primary strain or tower displacement, mapped by a Bridge Scene Profile to one sensor identifier; the role is unavailable until the profile provides it.
+_Avoid_: fixed sensor ID, chart default
 
 **Live Eligible Sensor Reading**:
 A Sensor Reading marked to participate in future Live Frames; backfill and non-live uploads are not Live Eligible.
@@ -215,3 +267,7 @@ _Avoid_: deformation prediction, shape interpolation
 **Reconstruction Residual**:
 The difference between a measured structural response and the response reconstructed from the selected deformation model.
 _Avoid_: reconstruction error, alert value
+
+**Desktop Distribution**:
+The Windows application package that starts one local FastAPI process, serves the built frontend at `/app`, and hosts it in a native WebView window.
+_Avoid_: browser shortcut, remote deployment

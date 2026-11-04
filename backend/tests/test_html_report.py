@@ -244,6 +244,43 @@ def test_report_separates_connection_and_physical_state(client, app):
     assert "未知" in rows["S-TIME-INVALID-NO-HISTORY"]
 
 
+def test_report_consumes_projected_state_with_overrides_and_unknown(client, app):
+    now = time.time()
+    engine = app.state.services.engine
+    engine.sensor_thresholds["S-OVERRIDE"] = {
+        "yellow": 2_000.0,
+        "orange": 2_500.0,
+        "red": 3_000.0,
+    }
+    engine.ingest(
+        SensorBatch(
+            records=[
+                reading(
+                    sensor_id="S-OVERRIDE",
+                    value=700.0,
+                    timestamp=now - 5,
+                ),
+                reading(
+                    sensor_id="S-UNKNOWN",
+                    sensor_type="mystery",
+                    value=700.0,
+                    timestamp=now - 5,
+                ),
+            ],
+            live_eligibility=LiveEligibility.BACKFILL,
+        )
+    )
+
+    response = client.get("/api/analysis/report", params={"hours": 1})
+
+    assert response.status_code == 200
+    override_row = _sensor_row(response.text, "S-OVERRIDE")
+    unknown_row = _sensor_row(response.text, "S-UNKNOWN")
+    assert "正常" in override_row
+    assert "报警" not in override_row
+    assert "未知" in unknown_row
+
+
 def test_report_limits_alert_rows_to_newest_fifty_but_keeps_counts(client, app):
     now = time.time()
     engine = app.state.services.engine

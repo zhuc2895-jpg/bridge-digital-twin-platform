@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from html import escape
 from typing import TYPE_CHECKING, Any
 
+from app.history_read import HistoryReadModel
 from app.sensor_metrics import finite_float, is_online, is_time_valid
 
 if TYPE_CHECKING:
@@ -62,23 +63,15 @@ def _format_timestamp(value: object) -> str:
         return "—"
 
 
-def _sensor_status(
-    reading: Mapping[str, Any] | None,
-    thresholds: Mapping[str, Any],
-) -> str | None:
+def _physical_status(reading: Mapping[str, Any] | None) -> str | None:
     if reading is None:
         return None
-    sensor_type = str(reading.get("type", ""))
-    value = finite_float(reading.get("value"))
-    sensor_thresholds = thresholds.get(sensor_type)
-    if value is None or not isinstance(sensor_thresholds, Mapping):
+    state = str(reading.get("physical_state", "unknown"))
+    if state == "normal":
         return "green"
-    absolute_value = abs(value)
-    for level in ("red", "orange", "yellow"):
-        threshold = finite_float(sensor_thresholds.get(level))
-        if threshold is not None and absolute_value >= threshold:
-            return level
-    return "green"
+    if state in {"yellow", "orange", "red"}:
+        return state
+    return None
 
 
 def _connection_label(timestamp: Any, reference_time: float) -> tuple[str, str, bool]:
@@ -129,7 +122,6 @@ def _detector_summary(detector_stats: Mapping[str, Any]) -> str:
 def _render_sensor_rows(
     latest: Mapping[str, Mapping[str, Any]],
     time_valid_latest: Mapping[str, Mapping[str, Any]],
-    thresholds: Mapping[str, Any],
     alerts: list[dict],
     reference_time: float,
 ) -> str:
@@ -144,7 +136,7 @@ def _render_sensor_rows(
     rows: list[str] = []
     for sensor_id, reading in sorted(latest.items(), key=lambda item: str(item[0])):
         physical_source = time_valid_latest.get(sensor_id)
-        status = _sensor_status(physical_source, thresholds)
+        status = _physical_status(physical_source)
         connection_label, connection_color, latest_time_valid = _connection_label(
             reading.get("timestamp"),
             reference_time,
@@ -215,28 +207,23 @@ def render_monitoring_report(
     """Build one self-contained report for the requested trailing period."""
     generated_at = time.time()
 
-    with services.processing_lock:
-        engine = services.engine
-        end_ts = generated_at
-        start_ts = end_ts - hours * 3600
-        alerts = engine.get_alerts_range(start_ts, end_ts)
-        latest = engine.get_latest() or {}
-        time_valid_latest = engine.get_latest_time_valid(end_ts)
-        period_reading_count = engine.get_period_reading_count(start_ts, end_ts)
-        stats = engine.get_stats(reference_time=end_ts)
-        detector_stats = services.detectors.get_stats()
-        thresholds = {
-            sensor_type: dict(levels)
-            for sensor_type, levels in engine.thresholds.items()
-        }
-        simulator_running = bool(services.simulator.is_running)
+    end_ts = generated_at
+    start_ts = end_ts - hours * 3600
+    history = HistoryReadModel(services.engine, services.processing_lock)
+    read = history.report_snapshot(start_ts, end_ts)
+    alerts = read.alerts
+    latest = read.latest
+    time_valid_latest = read.time_valid_latest
+    period_reading_count = read.period_reading_count
+    stats = read.stats
+    detector_stats = services.detectors.get_stats()
+    simulator_running = bool(services.simulator.is_running)
 
     recent_alerts = alerts[:REPORT_ALERT_LIMIT]
     level_counts = _level_counts(alerts)
     sensor_rows = _render_sensor_rows(
         latest,
         time_valid_latest,
-        thresholds,
         alerts,
         end_ts,
     )

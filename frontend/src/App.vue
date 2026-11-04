@@ -1,201 +1,336 @@
 <template>
-  <div class="app">
-    <!-- 顶部标题栏 -->
+  <div class="app" :class="'level-' + systemLevel">
     <header class="topbar">
-      <div class="title">
-        <span class="icon">🌉</span>
-        <span class="main">桥梁健康监测数字孪生平台</span>
-        <span class="sub">Bridge Health Monitoring Digital Twin Platform</span>
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 48 48">
+            <path d="M5 37h38M13 37V13M35 37V13M13 18l22 19M35 18 13 37M8 31h32" />
+          </svg>
+        </div>
+        <div class="brand-lockup">
+        <div class="brand-l1" :title="brandTitle">{{ brandTitle }}</div>
+          <div class="brand-l2">STRUCTURAL HEALTH MONITORING</div>
+          <div class="brand-l3"><span>MONITOR</span><b>OS</b></div>
+        </div>
       </div>
-      <div class="status-bar">
-        <span class="conn" :class="{ on: connected, replay: replayMode }">
-          <span class="dot"></span>{{ replayMode ? '⏯ 历史回放中' : (connected ? '实时连接' : '连接断开') }}
+
+      <div class="topbar-mid" aria-hidden="true">
+        <span>SYNTHESIZE SENSOR DATA</span>
+        <i></i>
+        <span>ANALYZE STRUCTURAL STATE</span>
+      </div>
+
+      <div class="topbar-actions">
+        <span class="conn" :class="{ on: connected, replay: replayMode }" :title="connectionError || replayError">
+          <i></i>{{ replayMode ? 'REPLAY / 历史回放' : connected ? 'LIVE / 实时连接' : 'OFFLINE / 连接断开' }}
         </span>
-        <span class="time">{{ now }}</span>
+        <span class="model-ref">MODEL / {{ activeModelLabel }}</span>
+        <button class="import-btn" type="button" @click="modelDialogVisible = true">
+          <span>导入模型</span>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8m0 0 3-3m-3 3L5 7M3 12v2h10v-2" /></svg>
+        </button>
+        <div class="clock">
+          <span>{{ nowDate }}</span>
+          <b>{{ nowClock }}</b>
+        </div>
       </div>
     </header>
 
-    <!-- 主体 -->
-    <div class="body">
-      <!-- 左侧 3D 视图 -->
-      <div class="left-panel">
-        <div class="panel-title">
-          🗺️ 桥梁三维视图
-          <span class="view-tip">鼠标拖拽旋转 · 滚轮缩放 · 右键平移</span>
+    <main class="stage">
+      <div class="viewer" ref="viewerRef"></div>
+      <div v-if="sceneError" class="scene-error">
+        <span>SCENE PROFILE ERROR</span>
+        <strong>{{ sceneError }}</strong>
+      </div>
+      <div class="stage-grid" aria-hidden="true"></div>
+      <i class="corner tl" aria-hidden="true"></i>
+      <i class="corner tr" aria-hidden="true"></i>
+      <i class="corner bl" aria-hidden="true"></i>
+      <i class="corner br" aria-hidden="true"></i>
+
+      <aside class="rail" aria-hidden="true">
+        <span class="rail-index">04</span>
+        <div class="rail-nodes">
+          <span v-for="s in sortedSensors" :key="s.sensor_id" :class="getLevel(s)"></span>
         </div>
-        <div class="viewer" ref="viewerRef"></div>
-        <!-- 点击信息弹窗 -->
-        <div class="info-popup" v-if="popup.show" :style="{ left: popup.x + 'px', top: popup.y + 'px' }">
-          <div class="popup-hd">
-            <span>{{ popup.title }}</span>
-            <button class="popup-close" @click="popup.show = false">×</button>
-          </div>
-          <div class="popup-body">
-            <div v-for="(v, k) in popup.data" :key="k" class="popup-row">
-              <span class="pk">{{ k }}</span>
-              <span class="pv">{{ v }}</span>
-            </div>
-          </div>
-        </div>
-        <!-- 图例 -->
-        <div class="legend">
-          <span><i class="g"></i>正常</span>
-          <span><i class="y"></i>注意</span>
-          <span><i class="o"></i>警告</span>
-          <span><i class="r"></i>危险</span>
+        <i class="rail-rule"></i>
+        <span class="rail-caption">SECTION 04 · MAIN SPAN</span>
+      </aside>
+
+      <div class="stage-title">
+        <div class="stage-kicker">LIVE STRUCTURAL MODEL / 实时结构模型</div>
+        <h1>{{ stageDisplayName }}<span>{{ stageEnglishName }}</span></h1>
+        <div class="stage-sub">{{ stageDescription }}</div>
+        <div class="stage-readout">
+          <span>RESPONSE {{ pressureField?.max?.toFixed(3) ?? '—' }}</span>
+          <span>STATE {{ systemStateEn }}</span>
         </div>
       </div>
 
-      <!-- 右侧数据面板 -->
-      <div class="right-panel">
-        <!-- 历史回放控制条 -->
-        <div class="replay-bar" v-if="historyRange.hasData">
-          <div class="replay-controls">
-            <button class="replay-btn" @click="toggleReplay">
-              {{ replayPlaying ? '⏸ 暂停' : '▶ 播放' }}
-            </button>
-            <select v-model="replaySpeed" class="replay-speed">
-              <option :value="1">1x</option>
-              <option :value="2">2x</option>
-              <option :value="4">4x</option>
-              <option :value="8">8x</option>
-              <option :value="16">16x</option>
-            </select>
-            <button class="replay-btn" @click="resetReplay">⏮ 重置</button>
-            <span class="replay-time">{{ replayTimeText }}</span>
-            <button class="replay-btn" @click="exitReplay" v-if="replayMode">⏹ 退出回放</button>
-          </div>
-          <input
-            type="range"
-            class="replay-slider"
-            :min="historyRange.start"
-            :max="historyRange.end"
-            :step="10"
-            v-model.number="replayCurrentTs"
-            @input="onReplaySeek"
-          />
-        </div>
-        <!-- 统计卡片 -->
-        <div class="stats-row">
-          <div class="stat-card">
-            <div class="num">{{ onlineSensorCount }}</div>
-            <div class="lbl">传感器在线</div>
-          </div>
-          <div class="stat-card">
-            <div class="num">{{ totalReadings.toLocaleString() }}</div>
-            <div class="lbl">累计读数</div>
-          </div>
-          <div class="stat-card">
-            <div class="num red">{{ alertCount }}</div>
-            <div class="lbl">活跃告警</div>
-          </div>
-          <div class="stat-card">
-            <div class="num">{{ uptime }}s</div>
-            <div class="lbl">运行时长</div>
-          </div>
-        </div>
+      <div class="stage-tools">
+        <span class="source-chip">
+          {{ activeModelLabel }} · {{ activeProfile?.source?.toUpperCase() || 'NO' }} PROFILE
+        </span>
+        <button class="tool" type="button" :class="{ active: pressureOverlayEnabled }" @click="pressureOverlayEnabled = !pressureOverlayEnabled">
+          <i></i>FIELD MAP
+        </button>
+        <button class="tool" type="button" @click="resetView">RESET VIEW</button>
+      </div>
+      <span class="view-hint">DRAG ROTATE · SCROLL ZOOM · RIGHT-DRAG PAN</span>
 
-        <!-- 传感器数据 -->
-        <div class="data-panel">
-          <div class="panel-hd">
-            <span>📡 实时传感器数据</span>
-            <span class="upd" v-if="lastUpdate">更新于 {{ lastUpdate }}</span>
-          </div>
-          <div class="sensor-grid">
-            <div
-              v-for="s in sensors"
-              :key="s.sensor_id"
-              class="sensor-card"
-              :class="getLevel(s)"
-              @click="focusSensor(s.sensor_id)"
-            >
-              <div class="sh">
-                <span class="sid">{{ s.sensor_id }}</span>
-                <span class="stype">{{ typeName(s.type) }}</span>
-              </div>
-              <div class="sname">{{ s.name }}</div>
-              <div class="sval">{{ s.value.toFixed(2) }}</div>
-              <div class="sunit">{{ unitName(s.type) }}</div>
-            </div>
-          </div>
+      <div class="info-popup" v-if="popup.show" :style="{ left: popup.x + 'px', top: popup.y + 'px' }">
+        <div class="popup-hd">
+          <span>{{ popup.title }}</span>
+          <button class="popup-close" type="button" aria-label="关闭" @click="popup.show = false">×</button>
         </div>
-
-        <!-- 实时趋势图 -->
-        <div class="chart-panel">
-          <div class="panel-hd">
-            <span>📈 实时监测趋势</span>
-            <span class="chart-legend">
-              <em class="l1"></em>S01跨中应变
-              <em class="l2"></em>S03塔顶位移
-              <em class="l3"></em>S04拉索振动
-            </span>
-          </div>
-          <div class="chart-container" ref="chartRef"></div>
-        </div>
-
-        <!-- 告警列表 -->
-        <div class="alert-panel">
-          <div class="panel-hd">
-            <span>🚨 智能预警</span>
-            <span class="alert-badges">
-              <em class="r">{{ redCount }}</em>红
-              <em class="o">{{ orangeCount }}</em>橙
-              <em class="y">{{ yellowCount }}</em>黄
-            </span>
-          </div>
-          <div class="alert-list" v-if="alerts.length">
-            <div v-for="a in alerts.slice(0, 6)" :key="a.id" class="alert-item" :class="a.level">
-              <span class="ai-icon">{{ levelIcon(a.level) }}</span>
-              <div class="ai-body">
-                <div class="ai-msg">{{ a.message }}</div>
-                <div class="ai-detail">
-                  {{ a.sensor_name }} · 当前
-                  {{ a.value === null ? '--' : a.value.toFixed(2) }}
-                  / 阈值 {{ a.threshold ?? '--' }}
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="no-alert" v-else>
-            <span>✅</span> 系统运行正常，无告警
-          </div>
-          <div class="btn-row">
-            <button class="btn danger" @click="injectAnomaly('S01')">⚡ 注入异常(S01)</button>
-            <button class="btn" @click="resetView">🔄 重置视角</button>
-            <button class="btn primary" @click="exportReport">📄 导出报告</button>
+        <div class="popup-body">
+          <div v-for="(v, k) in popup.data" :key="k" class="popup-row">
+            <span class="pk">{{ k }}</span>
+            <span class="pv">{{ v }}</span>
           </div>
         </div>
       </div>
-    </div>
+
+      <PressureCloud
+        class="stage-pressure"
+        :field="pressureField"
+        :overlay-enabled="pressureOverlayEnabled"
+        @toggle-overlay="pressureOverlayEnabled = !pressureOverlayEnabled"
+      />
+
+      <div class="legend" aria-label="状态图例">
+        <span><i class="n"></i>NORMAL 正常</span>
+        <span><i class="y"></i>CAUTION 注意</span>
+        <span><i class="o"></i>WARNING 警告</span>
+        <span><i class="r"></i>ALERT 危险</span>
+      </div>
+    </main>
+
+    <aside class="dossier">
+      <div class="dossier-tags">
+        <span class="tag-solid">SECTION PROFILE</span>
+        <span class="tag-rule">SHM / 04</span>
+        <span class="tag-rule">{{ nowDate }}</span>
+      </div>
+
+      <div class="dossier-state">
+        <span class="micro">SYSTEM STATE / 系统状态</span>
+        <div class="state-value"><i class="state-dot"></i><strong>{{ systemStateZh }}</strong></div>
+        <span class="state-en">{{ systemStateEn }}</span>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat">
+          <span class="stat-label">SENSOR NODES</span>
+          <span class="stat-value">{{ pad2(onlineSensorCount) }}<small>/{{ pad2(sensors.length) }}</small></span>
+          <span class="stat-zh">在线传感器</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">CUMULATIVE READS</span>
+          <span class="stat-value">{{ totalReadings.toLocaleString() }}</span>
+          <span class="stat-zh">累计读数</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">RECENT ALERTS</span>
+          <span class="stat-value alert-number">{{ pad2(alertCount) }}</span>
+          <span class="stat-zh">近期告警</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">SESSION UPTIME</span>
+          <span class="stat-value">{{ uptimeText }}</span>
+          <span class="stat-zh">运行时长</span>
+        </div>
+      </div>
+
+      <section class="block sensors-block">
+        <header class="block-head">
+          <span class="code">01</span>
+          <h2>LIVE SENSOR ARRAY</h2>
+          <span class="note">实时测点</span>
+        </header>
+        <div class="sensor-grid" :class="{ sparse: sortedSensors.length < 4 }">
+          <div v-if="!sortedSensors.length" class="sensor-empty"><i></i>AWAITING TELEMETRY / 等待测点接入</div>
+          <button
+            v-for="s in sortedSensors"
+            :key="s.sensor_id"
+            class="sensor-cell"
+            :class="getLevel(s)"
+            type="button"
+            :title="`${s.name} · ${s.value.toFixed(2)} ${unitName(s.type)} · ${s.connection_state === 'online' ? '在线' : '离线'} · ${getLevelText(getLevel(s))}`"
+            @click="focusSensor(s.sensor_id)"
+          >
+            <span class="sensor-dot"></span>
+            <span class="sensor-id">{{ s.sensor_id }}</span>
+            <span class="sensor-name">{{ s.name }}</span>
+            <span class="sensor-value">{{ s.value.toFixed(2) }}<em>{{ unitName(s.type) }}</em></span>
+          </button>
+        </div>
+      </section>
+
+      <section class="block chart-block">
+        <header class="block-head">
+          <span class="code">02</span>
+          <h2>MEASUREMENT TREND</h2>
+          <span class="note">实时趋势</span>
+        </header>
+        <div class="chart" ref="chartRef"></div>
+        <div v-if="!sensors.length" class="chart-empty">AWAITING TREND DATA / 等待趋势数据</div>
+        <div class="chart-key">
+          <span class="s1"><i></i>{{ roleLabel('primary_strain', '跨中应变') }}</span>
+          <span class="s3"><i></i>{{ roleLabel('tower_displacement', '塔顶位移') }}</span>
+          <span class="s4"><i></i>{{ roleLabel('cable_acceleration', '拉索振动') }}</span>
+        </div>
+      </section>
+
+      <section class="block alert-block">
+        <header class="block-head">
+          <span class="code">03</span>
+          <h2>ALERT LOG</h2>
+          <span class="alert-counts">
+            <span><i class="r"></i>{{ redCount }}</span>
+            <span><i class="o"></i>{{ orangeCount }}</span>
+            <span><i class="y"></i>{{ yellowCount }}</span>
+          </span>
+        </header>
+        <div class="alert-list" v-if="alerts.length">
+          <article v-for="a in alerts.slice(0, 3)" :key="a.id" class="alert-row" :class="a.level">
+            <span class="alert-level">{{ levelLabel(a.level) }}</span>
+            <div class="alert-copy">
+              <div class="alert-title">{{ a.sensor_name }}<span>{{ sourceLabel(a.source) }}</span></div>
+              <div class="alert-msg">{{ a.message }}</div>
+            </div>
+            <time>{{ alertTime(a.timestamp) }}</time>
+          </article>
+        </div>
+        <div class="no-alert" v-else><i></i>STRUCTURE NOMINAL · 系统运行正常，无告警</div>
+      </section>
+
+      <footer class="dossier-actions">
+        <button class="action" type="button" @click="injectAnomaly('S01')">INJECT ANOMALY / S01</button>
+        <button class="action accent" type="button" @click="exportReport">EXPORT REPORT</button>
+      </footer>
+    </aside>
+
+    <footer class="dock">
+      <div class="dock-id">
+        <span>HISTORICAL REPLAY</span>
+        <b>SHM–04 / {{ nowDate }}</b>
+      </div>
+      <div class="dock-transport">
+        <button class="transport" type="button" :disabled="!historyRange.hasData" :aria-label="replayPlaying ? '暂停回放' : '播放回放'" @click="onToggleReplay">
+          <svg v-if="!replayPlaying" viewBox="0 0 12 14" aria-hidden="true"><path d="M1 1l10 6-10 6z" /></svg>
+          <svg v-else viewBox="0 0 12 14" aria-hidden="true"><path d="M1 1h3.2v12H1zM7.8 1H11v12H7.8z" /></svg>
+        </button>
+        <div class="timeline">
+          <div class="timeline-meta">
+            <span>{{ historyRange.hasData ? 'RECORDED WINDOW' : 'NO ARCHIVE LINK' }}</span>
+            <b>{{ replayTimeText }}</b>
+          </div>
+          <div class="timeline-track">
+            <span class="timeline-fill" :style="{ width: replayProgress + '%' }"></span>
+            <span class="timeline-knob" :style="{ left: replayProgress + '%' }"></span>
+            <input
+              type="range"
+              :min="historyRange.start"
+              :max="historyRange.end"
+              :step="10"
+              :disabled="!historyRange.hasData"
+              v-model.number="replayCurrentTs"
+              aria-label="历史回放时间轴"
+              @input="onReplaySeek"
+            />
+          </div>
+        </div>
+        <button class="transport text" type="button" :disabled="!historyRange.hasData" aria-label="重置回放" @click="onResetReplay">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 1 1-5.2 7.3l1.4-.5A4 4 0 1 0 8 4v2.2L4.8 3.1 8 .4z" /></svg>
+        </button>
+        <select v-model.number="replaySpeed" class="speed" aria-label="回放速度">
+          <option :value="1">1×</option>
+          <option :value="2">2×</option>
+          <option :value="4">4×</option>
+          <option :value="8">8×</option>
+          <option :value="16">16×</option>
+        </select>
+        <button v-if="replayMode" class="exit" type="button" @click="onExitReplay">EXIT REPLAY</button>
+      </div>
+      <div class="dock-actions">
+        <span class="frame-time">LAST FRAME <b>{{ lastUpdate || '—' }}</b></span>
+        <span class="view-hint">ROTATE · ZOOM · PAN</span>
+      </div>
+    </footer>
+
+    <ModelImportDialog v-model="modelDialogVisible" @activated="onModelActivated" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
-import * as THREE from 'three'
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import * as echarts from 'echarts'
 
-import type { Alert, SensorReading as Sensor } from './types/live'
+import { apiFetch, apiUrl } from './api'
+import PressureCloud from './components/PressureCloud.vue'
+import ModelImportDialog from './components/ModelImportDialog.vue'
+import { profileDisplayString } from './scene/bridgeSceneProfile'
+import {
+  BridgeSceneRuntime,
+  type BridgeScenePick
+} from './scene/bridgeSceneRuntime'
+import {
+  applyMeasurementRoles,
+  createMeasurementChart,
+  updateMeasurementChart,
+  type MeasurementChart
+} from './monitoring/measurementChart'
+import { MeasurementTimeline } from './monitoring/measurementTimeline'
+import { useMonitoringSession } from './composables/useMonitoringSession'
+import type {
+  ActiveBridgeModel,
+  BridgeSceneProfile,
+  PressureField,
+  SensorReading as Sensor
+} from './types/live'
 
-const connected = ref(false)
-const sensors = ref<Sensor[]>([])
-const alerts = ref<Alert[]>([])
-const totalReadings = ref(0)
-const onlineSensorCount = ref(0)
-const now = ref('')
-const lastUpdate = ref('')
+const session = useMonitoringSession()
+const {
+  connected,
+  sensors,
+  alerts,
+  stats,
+  pressureField,
+  lastUpdate: sessionLastUpdate,
+  frameVersion,
+  connectionError,
+  replayError,
+  mode,
+  historyRange,
+  replayPlaying,
+  replaySpeed,
+  replayCurrentTs,
+  replaySnapshot,
+  replayTimeText,
+  replayProgress
+} = session
+const totalReadings = computed(() => stats.value?.total_readings ?? 0)
+const onlineSensorCount = computed(() => stats.value?.online_sensor_count ?? 0)
+const nowDate = ref('')
+const nowClock = ref('')
+const uptimeTick = ref(Date.now())
+const lastUpdate = computed(() => (
+  sessionLastUpdate.value
+    ? new Date(sessionLastUpdate.value).toLocaleTimeString()
+    : ''
+))
 const startTime = ref(Date.now())
 const viewerRef = ref<HTMLDivElement>()
 const chartRef = ref<HTMLDivElement>()
+const pressureOverlayEnabled = ref(true)
+const modelDialogVisible = ref(false)
+const activeModelLabel = ref('内置模型')
+const activeModelIsBundled = ref(true)
+const activeProfile = ref<BridgeSceneProfile | null>(null)
+const sceneError = ref('')
 
-// ECharts 变量
-let chart: echarts.ECharts | null = null
-const historyData: Record<string, { time: string; value: number }[]> = {
-  S01: [], S03: [], S04: []
-}
-const MAX_POINTS = 60
+let chart: MeasurementChart | null = null
+const measurementTimeline = new MeasurementTimeline(60)
 
 // 点击弹窗
 const popup = ref({
@@ -205,99 +340,144 @@ const popup = ref({
   data: {} as Record<string, string | number>
 })
 
-// Raycaster
-const raycaster = new THREE.Raycaster()
-const mouse = new THREE.Vector2()
-
-let ws: WebSocket | null = null
 let timer: number | null = null
-let reconnectTimer: number | null = null
-let animFrame: number = 0
+let sceneRuntime: BridgeSceneRuntime | null = null
 
-// 历史回放
-const historyRange = ref({ start: 0, end: 0, hasData: false })
-const replayMode = ref(false)
-const replayPlaying = ref(false)
-const replaySpeed = ref(4)
-const replayCurrentTs = ref(0)
-let replayTimer: number | null = null
-const replaySnapshot = ref<Record<string, Sensor>>({})
-const replayAlerts = ref<Alert[]>([])
+const replayMode = computed(() => mode.value === 'replay')
 
-const replayTimeText = computed(() => {
-  if (!replayCurrentTs.value) return '--:--:--'
-  const d = new Date(replayCurrentTs.value * 1000)
-  return d.toLocaleString('zh-CN', { hour12: false })
+const uptime = computed(() => Math.max(0, Math.floor((uptimeTick.value - startTime.value) / 1000)))
+const uptimeText = computed(() => {
+  const total = uptime.value
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const seconds = total % 60
+  return [hours, minutes, seconds].map(pad2).join(':')
 })
-
-// Three.js 变量
-let scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer
-let controls: OrbitControls
-let sensorMeshes: Record<string, THREE.Mesh> = {}
-let partMeshes: Record<string, THREE.Mesh> = {}
-let bridgeModel: THREE.Object3D | null = null
-const sensorColors = {
-  normal: new THREE.Color(0x52c41a),
-  caution: new THREE.Color(0xfadb14),
-  warning: new THREE.Color(0xfa8c16),
-  danger: new THREE.Color(0xff4d4f)
-}
-
-const uptime = computed(() => Math.floor((Date.now() - startTime.value) / 1000))
 const alertCount = computed(() => alerts.value.length)
 const redCount = computed(() => alerts.value.filter(a => a.level === 'red').length)
 const orangeCount = computed(() => alerts.value.filter(a => a.level === 'orange').length)
 const yellowCount = computed(() => alerts.value.filter(a => a.level === 'yellow').length)
+const sortedSensors = computed(() => [...sensors.value].sort((a, b) => a.sensor_id.localeCompare(b.sensor_id)))
+const systemLevel = computed<'normal' | 'yellow' | 'orange' | 'red'>(() => {
+  if (redCount.value > 0) return 'red'
+  if (orangeCount.value > 0) return 'orange'
+  if (yellowCount.value > 0) return 'yellow'
+  return 'normal'
+})
+const systemStateZh = computed(() => ({
+  normal: '结构状态正常',
+  yellow: '存在注意级测点',
+  orange: '存在警告级告警',
+  red: '存在危险级告警'
+})[systemLevel.value])
+const systemStateEn = computed(() => ({
+  normal: 'STRUCTURE NOMINAL',
+  yellow: 'CAUTION REGISTERED',
+  orange: 'ATTENTION REQUIRED',
+  red: 'STRUCTURAL ALERT'
+})[systemLevel.value])
 
-// ====== WebSocket ======
-function connect() {
-  ws = new WebSocket('ws://127.0.0.1:8000/ws/live')
-  ws.onopen = () => { connected.value = true }
-  ws.onmessage = (e) => {
-    try {
-      const d = JSON.parse(e.data)
-      if (d.type === 'sensor_update') {
-        // 回放模式下不更新实时数据，避免覆盖回放内容
-        if (replayMode.value) return
-        sensors.value = d.sensors || []
-        alerts.value = d.alerts || []
-        if (d.stats) {
-          totalReadings.value = d.stats.total_readings || 0
-          onlineSensorCount.value = d.stats.online_sensor_count || 0
-        }
-        lastUpdate.value = new Date().toLocaleTimeString()
-        updateSensorColors()
-        updateChartData(d.sensors || [])
-      }
-    } catch {}
-  }
-  ws.onclose = () => {
-    connected.value = false
-    reconnectTimer = window.setTimeout(connect, 3000)
-  }
-  ws.onerror = () => { connected.value = false }
+function compactModelLabel(value: string, limit = 24) {
+  const text = value.trim() || '内置模型'
+  return text.length > limit ? `${text.slice(0, limit - 1)}…` : text
 }
 
-function tick() { now.value = new Date().toLocaleString('zh-CN') }
+const brandTitle = computed(() => {
+  const displayName = profileDisplayString(activeProfile.value, 'name_en')
+  if (displayName) return compactModelLabel(displayName, 22).toUpperCase()
+  if (activeModelIsBundled.value) return 'HUIHE BRIDGE'
+  return compactModelLabel(activeModelLabel.value, 22).toUpperCase()
+})
+const stageDisplayName = computed(() => {
+  const displayName = profileDisplayString(activeProfile.value, 'name_zh')
+  if (displayName) return compactModelLabel(displayName, 18)
+  return activeModelIsBundled.value ? '浍河大桥' : compactModelLabel(activeModelLabel.value, 18)
+})
+const stageEnglishName = computed(() => {
+  const displayName = profileDisplayString(activeProfile.value, 'name_en')
+  if (displayName) return compactModelLabel(displayName, 24).toUpperCase()
+  return activeModelIsBundled.value ? 'HUIHE BRIDGE' : 'IMPORTED MODEL'
+})
+const stageDescription = computed(() => {
+  const display = activeProfile.value?.display || {}
+  const modelKind = String(display.bridge_type || (activeModelIsBundled.value ? 'CABLE-STAYED' : 'IMPORTED GLTF'))
+  const span = Number(display.span_m || 0)
+  const spanText = Number.isFinite(span) && span > 0 ? ` · ${Math.round(span)} M` : ''
+  const nodeCount = sensors.value.length || Number(display.sensor_node_count || 0)
+  return `${modelKind}${spanText} · ${nodeCount} SENSOR NODES`
+})
+
+function roleLabel(role: string, fallback: string) {
+  const definition = measurementTimeline
+    .seriesDefinitions()
+    .find((item) => item.key === role)
+  return definition?.label || `${fallback} UNAVAILABLE`
+}
+
+watch([activeModelLabel, activeModelIsBundled], () => {
+  document.title = activeModelIsBundled.value
+    ? '桥梁结构健康监测'
+    : `${compactModelLabel(activeModelLabel.value, 24)} · 结构健康监测`
+}, { immediate: true })
+
+watch(pressureOverlayEnabled, (visible) => {
+  sceneRuntime?.setPressureOverlayEnabled(visible)
+})
+
+watch(frameVersion, () => {
+  sceneRuntime?.setSensors(sensors.value)
+  sceneRuntime?.setPressureField(pressureField.value)
+  if (mode.value === 'live') appendLiveTrend()
+  else appendReplayTrend()
+})
+
+function resetTrend() {
+  measurementTimeline.reset()
+  updateTrendChart()
+}
+
+function onToggleReplay() {
+  if (mode.value === 'live') resetTrend()
+  session.toggleReplay()
+}
+
+function onResetReplay() {
+  resetTrend()
+  void session.resetReplay()
+}
+
+function onExitReplay() {
+  resetTrend()
+  session.exitReplay()
+}
+
+function onReplaySeek() {
+  void session.seekReplay()
+}
+
+function tick() {
+  const date = new Date()
+  nowDate.value = date.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).replace(/\//g, '.')
+  nowClock.value = date.toLocaleTimeString('zh-CN', { hour12: false })
+  uptimeTick.value = Date.now()
+}
 
 async function injectAnomaly(id: string) {
   try {
-    await fetch(`http://127.0.0.1:8000/api/analysis/inject-anomaly?sensor_id=${id}`, { method: 'POST' })
+    await apiFetch(`/api/analysis/inject-anomaly?sensor_id=${id}`, { method: 'POST' })
   } catch {}
 }
 
 function resetView() {
-  camera.position.set(150, 80, 200)
-  controls.target.set(0, 15, 0)
-  controls.update()
+  sceneRuntime?.resetView()
 }
 
 function focusSensor(id: string) {
-  const mesh = sensorMeshes[id]
-  if (mesh) {
-    controls.target.copy(mesh.position)
-    controls.update()
-  }
+  sceneRuntime?.focusSensor(id)
 }
 
 // ====== 工具函数 ======
@@ -308,1069 +488,925 @@ function unitName(t: string) {
   return { strain: 'με', displacement: 'mm', acceleration: 'm/s²', temperature: '°C' }[t] || ''
 }
 
-function getLevel(s: Sensor): string {
-  if (s.type === 'strain') {
-    if (s.value > 600) return 'danger'
-    if (s.value > 450) return 'warning'
-    if (s.value > 300) return 'caution'
-  } else if (s.type === 'displacement') {
-    if (s.value > 80) return 'danger'
-    if (s.value > 50) return 'warning'
-    if (s.value > 30) return 'caution'
-  } else if (s.type === 'acceleration') {
-    if (s.value > 5) return 'danger'
-    if (s.value > 3.5) return 'warning'
-    if (s.value > 2) return 'caution'
+function pad2(value: number) {
+  return String(value).padStart(2, '0')
+}
+
+function levelLabel(level: string) {
+  return ({ red: 'ALERT', orange: 'WARN', yellow: 'CAUT', normal: 'OK' } as Record<string, string>)[level] || level.toUpperCase()
+}
+
+function sourceLabel(source: string) {
+  const labels: Record<string, string> = {
+    rule: 'RULE',
+    ai_stalwart: 'STALWART',
+    ai_gan_ae: 'GAN·AE',
+    ai_isolation_forest: 'ISOLATION FOREST',
+    ai_dual_confirm: 'DUAL CONFIRM',
+    ai_feature_arbitration: 'ARBITRATION'
   }
-  return 'normal'
+  return labels[source] || source.toUpperCase()
 }
 
-function levelIcon(lv: string) {
-  return { red: '🔴', orange: '🟠', yellow: '🟡' }[lv] || '🟢'
+function alertTime(timestamp: number | null) {
+  if (!timestamp) return '--:--'
+  return new Date(timestamp * 1000).toLocaleTimeString('zh-CN', { hour12: false })
 }
 
-function getLevelColor(s: Sensor): THREE.Color {
-  return sensorColors[getLevel(s) as keyof typeof sensorColors] || sensorColors.normal
-}
-
-function updateSensorColors() {
-  sensors.value.forEach(s => {
-    const mesh = sensorMeshes[s.sensor_id]
-    if (mesh) {
-      const mat = mesh.material as THREE.MeshStandardMaterial
-      mat.color.copy(getLevelColor(s))
-      mat.emissive.copy(getLevelColor(s)).multiplyScalar(0.3)
-    }
-  })
+function getLevel(s: Sensor): string {
+  if (s.physical_state === 'red') return 'danger'
+  if (s.physical_state === 'orange') return 'warning'
+  if (s.physical_state === 'yellow') return 'caution'
+  if (s.physical_state === 'normal') return 'normal'
+  return 'unknown'
 }
 
 // ====== ECharts 图表 ======
 function initChart() {
-  if (!chartRef.value) return
-  chart = echarts.init(chartRef.value, 'dark')
-  const option = {
-    backgroundColor: 'transparent',
-    grid: { top: 30, right: 15, bottom: 25, left: 45 },
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: 'rgba(22,27,34,0.95)',
-      borderColor: '#30363d',
-      textStyle: { color: '#c9d1d9', fontSize: 11 }
-    },
-    legend: { show: false },
-    xAxis: {
-      type: 'category',
-      data: [],
-      axisLine: { lineStyle: { color: '#30363d' } },
-      axisLabel: { color: '#8b949e', fontSize: 9 },
-      splitLine: { show: false }
-    },
-    yAxis: [
-      {
-        type: 'value',
-        name: '应变/位移',
-        nameTextStyle: { color: '#8b949e', fontSize: 9 },
-        axisLine: { show: false },
-        axisLabel: { color: '#8b949e', fontSize: 9 },
-        splitLine: { lineStyle: { color: '#21262d', type: 'dashed' } }
-      },
-      {
-        type: 'value',
-        name: '加速度',
-        nameTextStyle: { color: '#8b949e', fontSize: 9 },
-        axisLine: { show: false },
-        axisLabel: { color: '#8b949e', fontSize: 9 },
-        splitLine: { show: false }
-      }
-    ],
-    series: [
-      {
-        name: 'S01跨中应变',
-        type: 'line',
-        yAxisIndex: 0,
-        data: [],
-        smooth: true,
-        symbol: 'none',
-        lineStyle: { color: '#58a6ff', width: 2 },
-        areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: 'rgba(88,166,255,0.3)' },
-          { offset: 1, color: 'rgba(88,166,255,0)' }
-        ])}
-      },
-      {
-        name: 'S03塔顶位移',
-        type: 'line',
-        yAxisIndex: 0,
-        data: [],
-        smooth: true,
-        symbol: 'none',
-        lineStyle: { color: '#f778ba', width: 2 }
-      },
-      {
-        name: 'S04拉索振动',
-        type: 'line',
-        yAxisIndex: 1,
-        data: [],
-        smooth: true,
-        symbol: 'none',
-        lineStyle: { color: '#3fb950', width: 2 }
-      }
-    ]
+  if (!chartRef.value || chartRef.value.clientWidth === 0 || chartRef.value.clientHeight === 0) return
+  if (chart && !chart.isDisposed()) {
+    chart.resize()
+    return
   }
-  chart.setOption(option)
+  chart = createMeasurementChart(
+    chartRef.value,
+    measurementTimeline.seriesDefinitions()
+  )
+  applyChartRoles()
+  updateTrendChart()
 }
 
-function updateChartData(sensorList: Sensor[]) {
-  if (!chart) return
-  const now = new Date().toLocaleTimeString('zh-CN', { hour12: false })
-
-  const s01 = sensorList.find(s => s.sensor_id === 'S01')
-  const s03 = sensorList.find(s => s.sensor_id === 'S03')
-  const s04 = sensorList.find(s => s.sensor_id === 'S04')
-
-  if (s01) {
-    historyData.S01.push({ time: now, value: s01.value })
-    if (historyData.S01.length > MAX_POINTS) historyData.S01.shift()
-  }
-  if (s03) {
-    historyData.S03.push({ time: now, value: s03.value })
-    if (historyData.S03.length > MAX_POINTS) historyData.S03.shift()
-  }
-  if (s04) {
-    historyData.S04.push({ time: now, value: s04.value })
-    if (historyData.S04.length > MAX_POINTS) historyData.S04.shift()
-  }
-
-  chart.setOption({
-    xAxis: { data: historyData.S01.map(d => d.time) },
-    series: [
-      { data: historyData.S01.map(d => d.value) },
-      { data: historyData.S03.map(d => d.value) },
-      { data: historyData.S04.map(d => d.value) }
-    ]
-  })
+function applyChartRoles() {
+  if (!chart || chart.isDisposed()) return
+  applyMeasurementRoles(chart, measurementTimeline.seriesDefinitions())
 }
 
-// ====== Three.js 场景构建 ======
-function initThree() {
-  const container = viewerRef.value!
-  const w = container.clientWidth
-  const h = container.clientHeight
+function updateTrendChart() {
+  if (!chart || chart.isDisposed()) return
+  updateMeasurementChart(chart, measurementTimeline.snapshot())
+}
 
-  // 场景
-  scene = new THREE.Scene()
-  scene.background = new THREE.Color(0x0a1628)
-  scene.fog = new THREE.Fog(0x0a1628, 150, 350)
+function appendLiveTrend() {
+  const time = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+  measurementTimeline.appendSensors(sensors.value, time)
+  updateTrendChart()
+}
 
-  // 相机
-  camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 1000)
-  camera.position.set(150, 80, 200)
-
-  // 渲染器
-  renderer = new THREE.WebGLRenderer({ antialias: true })
-  renderer.setSize(w, h)
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-  renderer.shadowMap.enabled = true
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap
-  container.appendChild(renderer.domElement)
-
-  // 控制器
-  controls = new OrbitControls(camera, renderer.domElement)
-  controls.target.set(0, 15, 0)
-  controls.enableDamping = true
-  controls.dampingFactor = 0.08
-  controls.maxPolarAngle = Math.PI / 2.1
-  controls.minDistance = 30
-  controls.maxDistance = 400
-  controls.update()
-
-  // 灯光
-  const ambient = new THREE.AmbientLight(0x404060, 0.6)
-  scene.add(ambient)
-
-  const sun = new THREE.DirectionalLight(0xffffff, 1.2)
-  sun.position.set(50, 80, 60)
-  sun.castShadow = true
-  sun.shadow.mapSize.set(2048, 2048)
-  sun.shadow.camera.left = -100
-  sun.shadow.camera.right = 100
-  sun.shadow.camera.top = 80
-  sun.shadow.camera.bottom = -80
-  scene.add(sun)
-
-  const fill = new THREE.DirectionalLight(0x6688cc, 0.3)
-  fill.position.set(-40, 30, -50)
-  scene.add(fill)
-
-  // 水面
-  const waterGeo = new THREE.PlaneGeometry(400, 200)
-  const waterMat = new THREE.MeshStandardMaterial({
-    color: 0x0d2840,
-    metalness: 0.8,
-    roughness: 0.2,
-    transparent: true,
-    opacity: 0.85
+function appendReplayTrend() {
+  const time = new Date(replayCurrentTs.value * 1000).toLocaleTimeString('zh-CN', {
+    hour12: false
   })
-  const water = new THREE.Mesh(waterGeo, waterMat)
-  water.rotation.x = -Math.PI / 2
-  water.position.y = -2
-  water.receiveShadow = true
-  water.raycast = () => {}  // 水面不参与点击检测
-  scene.add(water)
+  measurementTimeline.appendSnapshot(replaySnapshot.value, time)
+  updateTrendChart()
+}
 
-  // 地面/岸
-  const groundGeo = new THREE.PlaneGeometry(400, 200)
-  const groundMat = new THREE.MeshStandardMaterial({ color: 0x1a2a1a, roughness: 0.9 })
-  const ground = new THREE.Mesh(groundGeo, groundMat)
-  ground.rotation.x = -Math.PI / 2
-  ground.position.y = -2.1
-  ground.receiveShadow = true
-  ground.raycast = () => {}  // 地面不参与点击检测
-  scene.add(ground)
-
-  // ====== 加载桥梁模型 ======
-  // 优先加载glb真实模型，加载失败则回退到程序化生成
-  const gltfLoader = new GLTFLoader()
-  gltfLoader.load(
-    '/models/huihe_bridge.glb',
-    (gltf) => {
-      console.log('✅ 浍河大桥GLB模型加载成功')
-      const model = gltf.scene
-      bridgeModel = model
-
-      // 自动计算模型包围盒，调整大小和位置
-      const box = new THREE.Box3().setFromObject(model)
-      const size = box.getSize(new THREE.Vector3())
-      const center = box.getCenter(new THREE.Vector3())
-
-      // 缩放到合适大小（让桥梁长度约240单位，和原来的程序化桥梁一致）
-      const scale = 240 / size.x
-      model.scale.setScalar(scale)
-
-      // 居中并放到地面上
-      model.position.x = -center.x * scale
-      model.position.y = -box.min.y * scale
-      model.position.z = -center.z * scale
-
-      // 开启阴影
-      model.traverse((child: any) => {
-        if (child.isMesh) {
-          child.castShadow = true
-          child.receiveShadow = true
-          // 给构件命名，方便点击识别
-          if (!child.name || child.name === 'Mesh') {
-            child.name = 'bridge_part'
-          }
-        }
-      })
-
-      scene.add(model)
-
-      // ====== 添加斜拉索（和Revit模型位置对齐）======
-      const cableMat = new THREE.MeshStandardMaterial({
-        color: 0x444444,
-        metalness: 0.8,
-        roughness: 0.3
-      })
-      const towerXs = [-60, 60]
-      towerXs.forEach(tx => {
-        const isLeft = tx < 0
-        // 主跨侧6根
-        for (let i = 0; i < 6; i++) {
-          const deckX = isLeft ? tx - (i+1)*10 : tx + (i+1)*10
-          const towerZ = 20 + 50 - 5 - i*3
-          const start = new THREE.Vector3(tx, towerZ, 0)
-          const end = new THREE.Vector3(deckX, 20, 0)
-          const dir = end.clone().sub(start)
-          const len = dir.length()
-          const cable = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.15, 0.15, len, 8),
-            cableMat
-          )
-          cable.position.copy(start.clone().add(end).multiplyScalar(0.5))
-          cable.quaternion.setFromUnitVectors(
-            new THREE.Vector3(0, 1, 0),
-            dir.normalize()
-          )
-          cable.name = '拉索-' + (isLeft ? 'L' : 'R') + (i+1).toString().padStart(2, '0')
-          cable.castShadow = true
-          model.add(cable)
-        }
-        // 边跨侧6根
-        for (let i = 0; i < 6; i++) {
-          const deckX = isLeft ? tx + (i+1)*10 : tx - (i+1)*10
-          const towerZ = 20 + 50 - 5 - i*3
-          const start = new THREE.Vector3(tx, towerZ, 0)
-          const end = new THREE.Vector3(deckX, 20, 0)
-          const dir = end.clone().sub(start)
-          const len = dir.length()
-          const cable = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.15, 0.15, len, 8),
-            cableMat
-          )
-          cable.position.copy(start.clone().add(end).multiplyScalar(0.5))
-          cable.quaternion.setFromUnitVectors(
-            new THREE.Vector3(0, 1, 0),
-            dir.normalize()
-          )
-          cable.name = '拉索-' + (isLeft ? 'L' : 'R') + (i+7).toString().padStart(2, '0')
-          cable.castShadow = true
-          model.add(cable)
-        }
-      })
-
-      // 调整相机初始位置
-      camera.position.set(150, 80, 200)
-      controls.target.set(0, 15, 0)
-      controls.update()
-    },
-    (progress) => {
-      // 加载进度
-      if (progress.total > 0) {
-        const percent = Math.round(progress.loaded / progress.total * 100)
-        console.log(`模型加载中: ${percent}%`)
-      }
-    },
-    (err) => {
-      console.log('⚠️ GLB模型未找到，使用程序化生成桥梁', err)
-      buildCableStayedBridge()
+function configureTrendForProfile(profile: BridgeSceneProfile | null) {
+  const roles = profile?.measurement_roles || {}
+  measurementTimeline.configure(
+    profile ? `${profile.profile_id}:${profile.revision}` : '',
+    {
+      primary_strain: String(roles.primary_strain || ''),
+      tower_displacement: String(roles.tower_displacement || ''),
+      cable_acceleration: String(roles.cable_acceleration || '')
     }
   )
-
-  // 网格辅助
-  const grid = new THREE.GridHelper(300, 60, 0x1a3a5c, 0x0d2233)
-  grid.position.y = -1.9
-  grid.raycast = () => {}  // 网格不参与点击检测
-  scene.add(grid)
-
-  // 动画循环
-  animate()
-
-  // 窗口大小
-  window.addEventListener('resize', onResize)
-
-  // 点击事件
-  renderer.domElement.addEventListener('click', onCanvasClick)
+  applyChartRoles()
+  updateTrendChart()
+}
+function resizeChart() {
+  if (chart && !chart.isDisposed()) chart.resize()
+  else initChart()
 }
 
-function buildCableStayedBridge() {
-  const bridgeMat = new THREE.MeshStandardMaterial({ color: 0x6b7280, metalness: 0.6, roughness: 0.4 })
-  const deckMat = new THREE.MeshStandardMaterial({ color: 0x4a5568, metalness: 0.5, roughness: 0.5 })
-  const cableMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, metalness: 0.7, roughness: 0.3 })
-  const concreteMat = new THREE.MeshStandardMaterial({ color: 0x78716c, roughness: 0.8 })
-
-  // 尺寸参数
-  const towerH = 50      // 索塔高度
-  const towerW = 4       // 索塔宽度
-  const deckW = 14       // 桥面宽度
-  const deckH = 2.5      // 桥面厚度
-  const span = 120       // 主跨长度
-  const sideSpan = 60    // 边跨长度
-  const totalLen = span + sideSpan * 2  // 总长240
-
-  // ===== 索塔（两座H型索塔）=====
-  for (const x of [-span/2, span/2]) {
-    const towerGroup = new THREE.Group()
-    towerGroup.name = x < 0 ? 'tower_left' : 'tower_right'
-
-    // 两根塔柱
-    for (const z of [-deckW/2 - 1, deckW/2 + 1]) {
-      const leg = new THREE.Mesh(
-        new THREE.BoxGeometry(towerW, towerH, towerW),
-        bridgeMat
-      )
-      leg.position.set(0, towerH/2, z)
-      leg.castShadow = true
-      leg.receiveShadow = true
-      towerGroup.add(leg)
-    }
-    // 上横梁
-    const topBeam = new THREE.Mesh(
-      new THREE.BoxGeometry(towerW * 1.5, 2, deckW + 4),
-      bridgeMat
-    )
-    topBeam.position.set(0, towerH - 3, 0)
-    topBeam.castShadow = true
-    towerGroup.add(topBeam)
-    // 下横梁（桥面处）
-    const botBeam = new THREE.Mesh(
-      new THREE.BoxGeometry(towerW * 1.5, 2, deckW + 4),
-      bridgeMat
-    )
-    botBeam.position.set(0, deckH/2, 0)
-    botBeam.castShadow = true
-    towerGroup.add(botBeam)
-
-    towerGroup.position.set(x, 0, 0)
-    scene.add(towerGroup)
-    partMeshes[towerGroup.name] = towerGroup as unknown as THREE.Mesh
-  }
-
-  // ===== 主梁（桥面）=====
-  const deck = new THREE.Mesh(
-    new THREE.BoxGeometry(totalLen, deckH, deckW),
-    deckMat
-  )
-  deck.position.set(0, deckH/2, 0)
-  deck.castShadow = true
-  deck.receiveShadow = true
-  deck.name = 'deck'
-  scene.add(deck)
-  partMeshes['deck'] = deck
-
-  // 桥面标线
-  const lineMat = new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.6 })
-  for (let i = -totalLen/2 + 5; i < totalLen/2; i += 10) {
-    const line = new THREE.Mesh(
-      new THREE.BoxGeometry(4, 0.05, 0.3),
-      lineMat
-    )
-    line.position.set(i, deckH + 0.03, 0)
-    scene.add(line)
-  }
-
-  // ===== 桥墩 =====
-  for (const x of [-span/2 - sideSpan, -span/2, span/2, span/2 + sideSpan]) {
-    const pier = new THREE.Mesh(
-      new THREE.BoxGeometry(6, 8, deckW + 2),
-      concreteMat
-    )
-    pier.position.set(x, -4, 0)
-    pier.castShadow = true
-    pier.receiveShadow = true
-    scene.add(pier)
-  }
-
-  // ===== 拉索（扇形布置）=====
-  const cableCount = 12  // 每侧每塔6对
-  const cableRadius = 0.15
-  for (const tx of [-span/2, span/2]) {
-    for (let i = 1; i <= cableCount/2; i++) {
-      const ratio = i / (cableCount/2 + 1)
-      // 向跨中方向
-      const anchorX1 = tx + (tx < 0 ? ratio * span/2 : -ratio * span/2)
-      const topY = towerH - 5 - ratio * (towerH - 15)
-      createCable(tx, topY, anchorX1, deckH, cableRadius, cableMat)
-      // 向边跨方向
-      const anchorX2 = tx + (tx < 0 ? -ratio * sideSpan : ratio * sideSpan)
-      createCable(tx, topY, anchorX2, deckH, cableRadius, cableMat)
-    }
-  }
-
-  // ===== 传感器标记 =====
-  createSensors()
-}
-
-function createCable(x1: number, y1: number, x2: number, y2: number, r: number, mat: THREE.Material) {
-  const start = new THREE.Vector3(x1, y1, 0)
-  const end = new THREE.Vector3(x2, y2, 0)
-  const len = start.distanceTo(end)
-  const geo = new THREE.CylinderGeometry(r, r, len, 6)
-  const mesh = new THREE.Mesh(geo, mat)
-  mesh.position.copy(start.clone().add(end).multiplyScalar(0.5))
-  mesh.position.z = 0
-  const dir = end.clone().sub(start).normalize()
-  const axis = new THREE.Vector3(0, 1, 0)
-  mesh.quaternion.setFromUnitVectors(axis, dir)
-  mesh.castShadow = true
-  scene.add(mesh)
-}
-
-function createSensors() {
-  // 8个传感器位置（对应后端simulator的S01-S08）
-  const sensorPositions: Record<string, { x: number; y: number; z: number }> = {
-    S01: { x: 0, y: 4, z: 0 },           // 主跨跨中-应变
-    S02: { x: -30, y: 4, z: 0 },         // 主跨1/4-应变
-    S03: { x: 60, y: 50, z: 0 },         // 索塔顶部-位移（右塔）
-    S04: { x: -45, y: 20, z: 0 },        // 拉索L01-加速度
-    S05: { x: 0, y: 3.5, z: 5 },         // 主跨跨中-挠度
-    S06: { x: 60, y: 2, z: 0 },          // 索塔底部-应变（右塔底）
-    S07: { x: 45, y: 20, z: 0 },         // 拉索L02-加速度
-    S08: { x: 0, y: 5, z: -6 },          // 桥面温度
-  }
-
-  const sensorGeo = new THREE.SphereGeometry(1.2, 16, 16)
-
-  Object.entries(sensorPositions).forEach(([id, pos]) => {
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0x52c41a,
-      emissive: 0x52c41a,
-      emissiveIntensity: 0.3,
-      metalness: 0.3,
-      roughness: 0.5
-    })
-    const mesh = new THREE.Mesh(sensorGeo, mat)
-    mesh.position.set(pos.x, pos.y, pos.z)
-    mesh.castShadow = true
-    mesh.name = `sensor_${id}`
-    scene.add(mesh)
-    sensorMeshes[id] = mesh
-
-    // 传感器脉冲光环
-    const ringGeo = new THREE.RingGeometry(1.5, 2.2, 24)
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0x52c41a,
-      transparent: true,
-      opacity: 0.5,
-      side: THREE.DoubleSide
-    })
-    const ring = new THREE.Mesh(ringGeo, ringMat)
-    ring.position.copy(mesh.position)
-    ring.lookAt(camera.position)
-    ring.name = `ring_${id}`
-    scene.add(ring)
+function mountScene() {
+  const container = viewerRef.value
+  if (!container) return
+  sceneRuntime = new BridgeSceneRuntime({
+    container,
+    onPick: handleScenePick,
+    onViewportResize: resizeChart
   })
+  sceneRuntime.start()
+  sceneRuntime.setPressureOverlayEnabled(pressureOverlayEnabled.value)
+  void loadActiveBridgeModel()
 }
 
-function animate() {
-  animFrame = requestAnimationFrame(animate)
-  controls.update()
-
-  // 传感器脉冲动画
-  const t = Date.now() * 0.003
-  Object.entries(sensorMeshes).forEach(([id, mesh]) => {
-    const ring = scene.getObjectByName(`ring_${id}`) as THREE.Mesh
-    if (ring) {
-      const scale = 1 + Math.sin(t + id.charCodeAt(2)) * 0.3
-      ring.scale.set(scale, scale, 1)
-      ring.lookAt(camera.position)
-      const mat = ring.material as THREE.MeshBasicMaterial
-      const s = sensors.value.find(s => s.sensor_id === id)
-      if (s) {
-        mat.color.copy(getLevelColor(s))
-        if (getLevel(s) === 'danger') {
-          mat.opacity = 0.3 + Math.sin(t * 3) * 0.3
-        } else {
-          mat.opacity = 0.4
-        }
-      }
+async function loadActiveBridgeModel() {
+  let payload: ActiveBridgeModel
+  let profile: BridgeSceneProfile
+  try {
+    const response = await apiFetch('/api/models/active')
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    payload = (await response.json()) as ActiveBridgeModel
+    const profileResponse = await apiFetch(payload.profile_url)
+    if (!profileResponse.ok) {
+      throw new Error(`Scene profile HTTP ${profileResponse.status}`)
     }
-  })
+    profile = (await profileResponse.json()) as BridgeSceneProfile
+    activeModelLabel.value = payload.active?.name || '内置模型'
+    activeModelIsBundled.value = payload.active === null
+    activeProfile.value = profile
+    sceneError.value = ''
+    configureTrendForProfile(profile)
+    applyChartRoles()
+  } catch (error) {
+    console.error('读取激活模型或 Scene Profile 失败', error)
+    sceneError.value = error instanceof Error ? error.message : '无法读取 Scene Profile'
+    activeProfile.value = null
+    return
+  }
 
-  renderer.render(scene, camera)
+  if (!sceneRuntime) return
+  try {
+    await sceneRuntime.loadModel({
+      fileUrl: apiUrl(payload.file_url),
+      label: activeModelLabel.value,
+      addDefaultCables: payload.active === null,
+      profile
+    })
+  } catch (error) {
+    console.error('桥梁模型加载失败', error)
+    sceneError.value = error instanceof Error ? error.message : '模型加载失败'
+    return
+  }
+  sceneRuntime.setSensors(sensors.value)
+  sceneRuntime.setPressureField(pressureField.value)
+  popup.value.show = false
 }
 
-function onResize() {
-  if (!viewerRef.value) return
-  const w = viewerRef.value.clientWidth
-  const h = viewerRef.value.clientHeight
-  camera.aspect = w / h
-  camera.updateProjectionMatrix()
-  renderer.setSize(w, h)
-  if (chart) chart.resize()
+async function onModelActivated() {
+  modelDialogVisible.value = false
+  await loadActiveBridgeModel()
 }
 
-function onCanvasClick(event: MouseEvent) {
-  if (!viewerRef.value) return
-  const viewerEl = viewerRef.value
-  const parentEl = viewerEl.parentElement
-  if (!parentEl) return
-
-  const rect = viewerEl.getBoundingClientRect()
-  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
-  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
-
-  raycaster.setFromCamera(mouse, camera)
-  const allMeshes: THREE.Object3D[] = []
-  Object.values(sensorMeshes).forEach(m => allMeshes.push(m))
-  Object.values(partMeshes).forEach(m => allMeshes.push(m))
-  if (bridgeModel) allMeshes.push(bridgeModel)
-
-  const intersects = raycaster.intersectObjects(allMeshes, true)
-  if (intersects.length > 0) {
-    const obj = intersects[0].object
-    let clickedObj: THREE.Object3D | null = obj
-    let sensorId = ''
-    let partName = ''
-    let partNameZh = ''
-
-    while (clickedObj) {
-      const name = clickedObj.name || ''
-      if (name.startsWith('sensor_')) {
-        sensorId = name.replace('sensor_', '')
-        break
-      }
-      if (['tower_left', 'tower_right', 'deck'].includes(name)) {
-        partName = name
-        break
-      }
-      // 识别Revit导出的中文构件名
-      if (name.includes('索塔')) {
-        partName = 'tower'
-        partNameZh = name.includes('左') ? '🏗️ 左索塔' : '🏗️ 右索塔'
-        break
-      }
-      if (name.includes('主梁') || name.includes('桥面') || name.includes('箱梁')) {
-        partName = 'deck'
-        partNameZh = '🛣️ 主梁/桥面'
-        break
-      }
-      if (name.includes('桥墩')) {
-        partName = 'pier'
-        partNameZh = '🏛️ ' + name
-        break
-      }
-      if (name.includes('承台')) {
-        partName = 'cap'
-        partNameZh = '🧱 ' + name
-        break
-      }
-      if (name.includes('拉索')) {
-        partName = 'cable'
-        partNameZh = '🔗 ' + name
-        break
-      }
-      if (name.includes('传感器')) {
-        // 从中文名提取传感器ID，比如"传感器-S01-应变计"
-        const match = name.match(/S\d+/)
-        if (match) sensorId = match[0]
-        break
-      }
-      clickedObj = clickedObj.parent
-    }
-
-    // 弹窗位置相对于left-panel（弹窗是viewer的兄弟元素）
-    const parentRect = parentEl.getBoundingClientRect()
-    const popupX = event.clientX - parentRect.left + 10
-    const popupY = event.clientY - parentRect.top - 10
-
-    if (sensorId) {
-      const s = sensors.value.find(x => x.sensor_id === sensorId)
-      if (s) {
-        popup.value = {
-          show: true,
-          x: popupX,
-          y: popupY,
-          title: `📡 ${s.name} (${s.sensor_id})`,
-          data: {
-            '传感器类型': typeName(s.type),
-            '当前读数': `${s.value.toFixed(2)} ${unitName(s.type)}`,
-            '健康状态': getLevelText(getLevel(s)),
-            '更新时间': new Date(s.timestamp * 1000).toLocaleTimeString('zh-CN')
-          }
-        }
-      }
-    } else if (partName) {
-      let title = ''
-      let partType = ''
-      let relatedSensors = ''
-
-      if (partNameZh) {
-        title = partNameZh
-      } else {
-        const names: Record<string, string> = {
-          tower_left: '🏗️ 左索塔',
-          tower_right: '🏗️ 右索塔',
-          deck: '🛣️ 主梁/桥面'
-        }
-        title = names[partName] || partName
-      }
-
-      if (partName === 'tower' || partName.startsWith('tower')) {
-        partType = 'H型钢筋混凝土索塔，高50m'
-        relatedSensors = partNameZh?.includes('右') ? 'S03（塔顶位移）、S06（塔底应变）' : 'S04（拉索振动）'
-      } else if (partName === 'deck') {
-        partType = '单箱单室混凝土箱梁，梁高2.5m，宽14m'
-        relatedSensors = 'S01（跨中应变）、S02（1/4跨应变）、S05（跨中挠度）、S08（温度）'
-      } else if (partName === 'pier') {
-        partType = '钢筋混凝土桥墩，直径2.5m'
-        relatedSensors = '无直接监测传感器'
-      } else if (partName === 'cap') {
-        partType = '钢筋混凝土承台，12m×12m×3.5m'
-        relatedSensors = '无直接监测传感器'
-      } else if (partName === 'cable') {
-        partType = '高强度平行钢丝拉索，直径150mm'
-        relatedSensors = 'S04/S07（拉索振动加速度）'
-      } else {
-        partType = '桥梁结构构件'
-        relatedSensors = '/'
-      }
-
-      popup.value = {
-        show: true,
-        x: popupX,
-        y: popupY,
-        title: title,
-        data: {
-          '构件类型': partType,
-          '健康状态': '✅ 正常',
-          '关联传感器': relatedSensors
-        }
-      }
-    }
-  } else {
+function handleScenePick(pick: BridgeScenePick) {
+  if (pick.kind === 'background') {
     popup.value.show = false
+    return
   }
-}
+  const viewerEl = viewerRef.value
+  const parentEl = viewerEl?.parentElement
+  if (!parentEl) return
+  const parentRect = parentEl.getBoundingClientRect()
+  const popupX = pick.clientX - parentRect.left + 10
+  const popupY = pick.clientY - parentRect.top - 10
 
-function getLevelText(level: string): string {
-  return { normal: '✅ 正常', caution: '🟡 注意', warning: '🟠 警告', danger: '🔴 危险' }[level] || '未知'
-}
-
-// ====== 历史回放 ======
-async function loadHistoryRange() {
-  try {
-    const res = await fetch('http://127.0.0.1:8000/api/sensors/history/timerange')
-    const data = await res.json()
-    if (data.has_data) {
-      historyRange.value = { start: data.start, end: data.end, hasData: true }
-      replayCurrentTs.value = data.start
+  if (pick.kind === 'sensor') {
+    const sensor = sensors.value.find((item) => item.sensor_id === pick.sensorId)
+    if (!sensor) return
+    popup.value = {
+      show: true,
+      x: popupX,
+      y: popupY,
+      title: `${sensor.name} / ${sensor.sensor_id}`,
+      data: {
+        '传感器类型': typeName(sensor.type),
+        '当前读数': `${sensor.value.toFixed(2)} ${unitName(sensor.type)}`,
+        '健康状态': getLevelText(getLevel(sensor)),
+        '更新时间': new Date(sensor.timestamp * 1000).toLocaleTimeString('zh-CN')
+      }
     }
-  } catch (e) {
-    console.log('无历史数据')
+    return
   }
-}
 
-function toggleReplay() {
-  if (!historyRange.value.hasData) return
-  if (!replayMode.value) {
-    replayMode.value = true
-    replayPlaying.value = true
-    // 清空图表，准备回放
-    historyData.S01 = []
-    historyData.S03 = []
-    historyData.S04 = []
-    runReplay()
+  let title = ''
+  let partType = ''
+  let relatedSensors = ''
+  if (pick.partNameZh) {
+    title = pick.partNameZh
   } else {
-    replayPlaying.value = !replayPlaying.value
-    if (replayPlaying.value) runReplay()
-    else if (replayTimer) { clearInterval(replayTimer); replayTimer = null }
-  }
-}
-
-function runReplay() {
-  if (replayTimer) clearInterval(replayTimer)
-  replayTimer = window.setInterval(async () => {
-    if (!replayPlaying.value) return
-    // 每次前进 10秒 * 倍速
-    replayCurrentTs.value += 10 * replaySpeed.value
-    if (replayCurrentTs.value >= historyRange.value.end) {
-      replayCurrentTs.value = historyRange.value.end
-      replayPlaying.value = false
-      if (replayTimer) { clearInterval(replayTimer); replayTimer = null }
+    const names: Record<string, string> = {
+      tower_left: '左索塔',
+      tower_right: '右索塔',
+      deck: '主梁 / 桥面'
     }
-    await loadReplaySnapshot()
-  }, 500)
-}
+    title = names[pick.partName] || pick.partName
+  }
 
-async function loadReplaySnapshot() {
-  try {
-    const res = await fetch(`http://127.0.0.1:8000/api/sensors/history/snapshot?ts=${replayCurrentTs.value}`)
-    replaySnapshot.value = await res.json()
-    // 更新传感器显示
-    const snapshotArr = Object.values(replaySnapshot.value) as Sensor[]
-    if (snapshotArr.length) {
-      sensors.value = snapshotArr
-      updateSensorColors()
-      // 更新图表
-      updateReplayChart()
+  if (activeProfile.value?.source !== 'bundled') {
+    partType = '导入模型构件'
+    relatedSensors = '由 Bridge Scene Profile 提供'
+  } else if (pick.partName.startsWith('tower')) {
+    partType = 'H型钢筋混凝土索塔，高50m'
+    relatedSensors = pick.partNameZh?.includes('右')
+      ? 'S03（塔顶位移）、S06（塔底应变）'
+      : 'S04（拉索振动）'
+  } else if (pick.partName === 'deck') {
+    partType = '单箱单室混凝土箱梁，梁高2.5m，宽14m'
+    relatedSensors = 'S01（跨中应变）、S02（1/4跨应变）、S05（跨中挠度）、S08（温度）'
+  } else if (pick.partName === 'pier') {
+    partType = '钢筋混凝土桥墩，直径2.5m'
+    relatedSensors = '无直接监测传感器'
+  } else if (pick.partName === 'cap') {
+    partType = '钢筋混凝土承台，12m×12m×3.5m'
+    relatedSensors = '无直接监测传感器'
+  } else if (pick.partName === 'cable') {
+    partType = '高强度平行钢丝拉索，直径150mm'
+    relatedSensors = 'S04/S07（拉索振动加速度）'
+  } else {
+    partType = '桥梁结构构件'
+    relatedSensors = '/'
+  }
+
+  popup.value = {
+    show: true,
+    x: popupX,
+    y: popupY,
+    title,
+    data: {
+      '构件类型': partType,
+      '健康状态': 'NORMAL / 正常',
+      '关联传感器': relatedSensors
     }
-    // 加载该时间点前1小时内的告警
-    const res2 = await fetch(`http://127.0.0.1:8000/api/sensors/history/alerts?start=${replayCurrentTs.value - 3600}&end=${replayCurrentTs.value}`)
-    const aData = await res2.json()
-    replayAlerts.value = aData.alerts || []
-    alerts.value = replayAlerts.value
-  } catch (e) {
-    console.error('回放加载失败', e)
   }
 }
-
-function updateReplayChart() {
-  if (!chart) return
-  // 取S01/S03/S04在回放时间点的值
-  const s01 = replaySnapshot.value['S01']
-  const s03 = replaySnapshot.value['S03']
-  const s04 = replaySnapshot.value['S04']
-  const time = new Date(replayCurrentTs.value * 1000).toLocaleTimeString('zh-CN', { hour12: false })
-
-  if (s01) {
-    historyData.S01.push({ time, value: s01.value })
-    if (historyData.S01.length > MAX_POINTS) historyData.S01.shift()
-  }
-  if (s03) {
-    historyData.S03.push({ time, value: s03.value })
-    if (historyData.S03.length > MAX_POINTS) historyData.S03.shift()
-  }
-  if (s04) {
-    historyData.S04.push({ time, value: s04.value })
-    if (historyData.S04.length > MAX_POINTS) historyData.S04.shift()
-  }
-  chart.setOption({
-    xAxis: { data: historyData.S01.map(d => d.time) },
-    series: [
-      { data: historyData.S01.map(d => d.value) },
-      { data: historyData.S03.map(d => d.value) },
-      { data: historyData.S04.map(d => d.value) }
-    ]
-  })
-}
-
-function onReplaySeek() {
-  if (replayPlaying.value) return
-  replayMode.value = true
-  loadReplaySnapshot()
-}
-
-function resetReplay() {
-  replayCurrentTs.value = historyRange.value.start
-  historyData.S01 = []
-  historyData.S03 = []
-  historyData.S04 = []
-  loadReplaySnapshot()
-}
-
-function exitReplay() {
-  replayMode.value = false
-  replayPlaying.value = false
-  if (replayTimer) { clearInterval(replayTimer); replayTimer = null }
-  // 关闭旧连接后重新连接实时数据
-  if (ws) { ws.onclose = null; ws.close(); ws = null }
-  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
-  historyData.S01 = []
-  historyData.S03 = []
-  historyData.S04 = []
-  connect()
+function getLevelText(level: string): string {
+  return { normal: 'NORMAL / 正常', caution: 'CAUTION / 注意', warning: 'WARNING / 警告', danger: 'ALERT / 危险' }[level] || 'UNKNOWN / 未知'
 }
 
 // ====== 导出报告 ======
 function exportReport() {
-  window.open('http://127.0.0.1:8000/api/analysis/report?hours=24', '_blank')
+  window.open(apiUrl('/api/analysis/report?hours=24'), '_blank')
 }
 
 // ====== 生命周期 ======
 onMounted(async () => {
   await nextTick()
-  initThree()
+  mountScene()
   initChart()
-  connect()
-  loadHistoryRange()
   tick()
   timer = window.setInterval(tick, 1000)
 })
 
 onUnmounted(() => {
   if (timer) clearInterval(timer)
-  if (reconnectTimer) clearTimeout(reconnectTimer)
-  if (ws) ws.close()
-  cancelAnimationFrame(animFrame)
-  window.removeEventListener('resize', onResize)
-  if (renderer) renderer.dispose()
+  sceneRuntime?.dispose()
+  sceneRuntime = null
   if (chart) chart.dispose()
 })
 </script>
 
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body, #app { width: 100%; height: 100%; overflow: hidden; }
-body { font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif; background: #0d1117; color: #c9d1d9; }
+@font-face { font-family: 'Montserrat'; font-style: normal; font-weight: 300; font-display: swap; src: url('./assets/fonts/Montserrat-Light.woff2') format('woff2'); }
+@font-face { font-family: 'Montserrat'; font-style: normal; font-weight: 400; font-display: swap; src: url('./assets/fonts/Montserrat-Regular.woff2') format('woff2'); }
+@font-face { font-family: 'Montserrat'; font-style: normal; font-weight: 500; font-display: swap; src: url('./assets/fonts/Montserrat-Medium.woff2') format('woff2'); }
+@font-face { font-family: 'Montserrat'; font-style: normal; font-weight: 600; font-display: swap; src: url('./assets/fonts/Montserrat-SemiBold.woff2') format('woff2'); }
+@font-face { font-family: 'Montserrat'; font-style: normal; font-weight: 700; font-display: swap; src: url('./assets/fonts/Montserrat-Bold.woff2') format('woff2'); }
+@font-face { font-family: 'Montserrat'; font-style: normal; font-weight: 800; font-display: swap; src: url('./assets/fonts/Montserrat-ExtraBold.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('./assets/fonts/JetBrainsMono-Regular.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 500; font-display: swap; src: url('./assets/fonts/JetBrainsMono-Medium.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 600; font-display: swap; src: url('./assets/fonts/JetBrainsMono-SemiBold.woff2') format('woff2'); }
 
-.app { display: flex; flex-direction: column; height: 100vh; }
-
-/* 顶部栏 */
-.topbar {
-  height: 50px; background: #161b22; border-bottom: 1px solid #30363d;
-  display: flex; justify-content: space-between; align-items: center; padding: 0 20px; flex-shrink: 0;
+:root {
+  --paper: #e7e5e1;
+  --paper-hi: #f4f3ef;
+  --paper-lo: #d8d5ce;
+  --ink: #111214;
+  --ink-soft: #242427;
+  --mute: #77746d;
+  --faint: #b7b3ab;
+  --line: rgba(17, 18, 20, 0.18);
+  --line-soft: rgba(17, 18, 20, 0.1);
+  --lime: #b9e432;
+  --orange: #ff6a00;
+  --amber: #d9a300;
+  --red: #e23b12;
+  --accent: #b9e432;
+  --signal: #111214;
+  --signal-text: #77746d;
+  --display: 'Montserrat', 'MiSans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --mono: 'JetBrains Mono', 'Cascadia Mono', 'Consolas', monospace;
+  --cjk: 'MiSans', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
 }
-.title { display: flex; align-items: baseline; gap: 10px; }
-.icon { font-size: 22px; }
-.main { font-size: 17px; font-weight: 700; color: #f0f6fc; }
-.sub { font-size: 11px; color: #8b949e; }
-.status-bar { display: flex; align-items: center; gap: 16px; font-size: 12px; }
-.conn { display: flex; align-items: center; gap: 6px; color: #8b949e; }
-.conn .dot { width: 8px; height: 8px; border-radius: 50%; background: #484f58; }
-.conn.on .dot { background: #52c41a; box-shadow: 0 0 6px #52c41a; }
-.time { color: #8b949e; font-family: Consolas, monospace; }
 
-/* 主体 */
-.body { flex: 1; display: flex; overflow: hidden; }
-.left-panel { flex: 58; border-right: 1px solid #30363d; display: flex; flex-direction: column; position: relative; }
-.right-panel { flex: 42; display: flex; flex-direction: column; overflow-y: auto; padding: 12px; gap: 12px; }
-
-.panel-title {
-  padding: 10px 16px; font-size: 14px; font-weight: 600; color: #f0f6fc;
-  border-bottom: 1px solid #30363d; background: #161b22;
-  display: flex; justify-content: space-between; align-items: center;
+* { box-sizing: border-box; }
+html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--display);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
 }
-.view-tip { font-size: 11px; font-weight: 400; color: #8b949e; }
+button, input, select { font: inherit; color: inherit; }
+button { -webkit-tap-highlight-color: transparent; }
+::selection { background: var(--lime); color: var(--ink); }
 
-/* 3D 视图 */
-.viewer { flex: 1; position: relative; min-height: 0; overflow: hidden; z-index: 1; }
-.viewer canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
-
-/* 图例 */
-.legend {
-  position: absolute; top: 50px; right: 16px; z-index: 10;
-  background: rgba(0,0,0,0.5); padding: 10px 14px; border-radius: 8px;
-  display: flex; gap: 12px; font-size: 12px; color: #ccc;
-  backdrop-filter: blur(10px);
-}
-.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
-.legend .g { background: #52c41a; }
-.legend .y { background: #fadb14; }
-.legend .o { background: #fa8c16; }
-.legend .r { background: #ff4d4f; }
-
-/* 历史回放控制条 */
-.replay-bar {
-  background: #161b22;
-  border-top: 1px solid #30363d;
-  padding: 10px 16px;
-  flex-shrink: 0;
+.app {
   position: relative;
-  z-index: 100;
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 448px;
+  grid-template-rows: 88px minmax(0, 1fr) 80px;
+  overflow: hidden;
+  background: var(--paper);
 }
-.replay-controls {
+.app.level-yellow { --accent: var(--amber); --signal: var(--amber); --signal-text: #8a6500; }
+.app.level-orange { --accent: var(--orange); --signal: var(--orange); --signal-text: #c24a00; }
+.app.level-red { --accent: var(--orange); --signal: var(--red); --signal-text: #b12908; }
+
+/* ---------- topbar ---------- */
+.topbar {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 24px;
+  background: var(--paper-hi);
+  border-bottom: 1px solid var(--ink);
+  z-index: 30;
+}
+.brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.brand-mark {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: var(--ink);
+  color: var(--paper);
+}
+.brand-mark::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 5px;
+  height: 5px;
+  background: var(--accent);
+}
+.brand-mark svg { width: 30px; height: 30px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.brand-lockup { display: flex; flex-direction: column; justify-content: center; line-height: 1; padding: 12px 0; white-space: nowrap; }
+.brand-l1 { font-family: var(--display); font-size: 22px; font-weight: 800; letter-spacing: 0.015em; }
+.brand-l2 { margin-top: 5px; color: var(--mute); font-family: var(--mono); font-size: 7.5px; font-weight: 500; letter-spacing: 1.6px; }
+.brand-l3 { display: flex; align-items: baseline; gap: 5px; margin-top: 4px; font-size: 16px; letter-spacing: 0.04em; }
+.brand-l3 span { font-weight: 300; }
+.brand-l3 b { font-weight: 800; }
+
+.topbar-mid {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-.replay-btn {
-  background: #21262d;
-  border: 1px solid #30363d;
-  color: #c9d1d9;
-  padding: 5px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-}
-.replay-btn:hover { background: #30363d; border-color: #58a6ff; }
-.replay-speed {
-  background: #21262d;
-  border: 1px solid #30363d;
-  color: #c9d1d9;
-  padding: 5px 8px;
-  border-radius: 4px;
-  font-size: 13px;
-}
-.replay-time {
-  color: #58a6ff;
-  font-size: 13px;
-  font-family: monospace;
+  gap: 14px;
   margin-left: auto;
+  color: var(--mute);
+  font-family: var(--mono);
+  font-size: 7.5px;
+  letter-spacing: 1.1px;
+  white-space: nowrap;
 }
-.replay-slider {
-  width: 100%;
-  height: 6px;
-  -webkit-appearance: none;
-  background: #21262d;
-  border-radius: 3px;
-  outline: none;
+.topbar-mid i { width: 38px; height: 1px; background: var(--faint); }
+
+.topbar-actions { display: flex; align-items: center; gap: 18px; min-width: 0; }
+.conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--mute);
+  font-family: var(--mono);
+  font-size: 7.5px;
+  letter-spacing: 0.8px;
+  white-space: nowrap;
 }
-.replay-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #58a6ff;
+.conn i { width: 6px; height: 6px; flex: none; background: var(--faint); }
+.conn.on i { background: var(--lime); box-shadow: 0 0 0 3px rgba(185, 228, 50, 0.22); }
+.conn.replay i { background: var(--orange); box-shadow: 0 0 0 3px rgba(255, 106, 0, 0.16); }
+.model-ref {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--mute);
+  font-family: var(--mono);
+  font-size: 7px;
+  letter-spacing: 0.7px;
+}
+.import-btn {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 11px;
+  border: 1px solid var(--ink);
+  background: transparent;
   cursor: pointer;
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  transition: background 140ms, color 140ms;
 }
-.btn.primary { background: #238636; border-color: #238636; color: white; }
-.btn.primary:hover { background: #2ea043; }
-
-/* 统计卡片 */
-.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-.stat-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px; text-align: center; }
-.stat-card .num { font-size: 26px; font-weight: 700; color: #58a6ff; }
-.stat-card .num.red { color: #ff4d4f; }
-.stat-card .lbl { font-size: 12px; color: #8b949e; margin-top: 4px; }
-
-/* 数据面板 */
-.data-panel, .alert-panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; overflow: hidden; }
-.panel-hd {
-  padding: 10px 14px; border-bottom: 1px solid #30363d;
-  display: flex; justify-content: space-between; align-items: center;
-  font-size: 14px; font-weight: 600; color: #f0f6fc;
-}
-.upd { font-size: 11px; font-weight: 400; color: #8b949e; }
-
-.sensor-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 10px; }
-.sensor-card {
-  background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
-  padding: 10px; cursor: pointer; transition: all 0.2s;
-}
-.sensor-card:hover { border-color: #58a6ff; transform: translateY(-1px); }
-.sensor-card.caution { border-color: #fadb14; }
-.sensor-card.warning { border-color: #fa8c16; }
-.sensor-card.danger { border-color: #ff4d4f; animation: pulse 1.5s infinite; }
-.sh { display: flex; justify-content: space-between; margin-bottom: 4px; }
-.sid { font-size: 11px; color: #58a6ff; font-weight: 600; }
-.stype { font-size: 10px; color: #8b949e; background: #21262d; padding: 1px 5px; border-radius: 3px; }
-.sname { font-size: 11px; color: #c9d1d9; margin-bottom: 6px; }
-.sval { font-size: 20px; font-weight: 700; color: #f0f6fc; }
-.sunit { font-size: 10px; color: #8b949e; }
-
-@keyframes pulse {
-  0%,100% { box-shadow: 0 0 0 0 rgba(255,77,79,0.4); }
-  50% { box-shadow: 0 0 0 6px rgba(255,77,79,0); }
+.import-btn svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.2; }
+.import-btn:hover { background: var(--ink); color: var(--paper); }
+.clock { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-family: var(--mono); }
+.clock span { color: var(--mute); font-size: 7.5px; letter-spacing: 0.8px; }
+.clock b {
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 29px;
+  font-weight: 300;
+  line-height: 0.9;
+  letter-spacing: -0.045em;
 }
 
-/* 告警 */
-.alert-list { max-height: 200px; overflow-y: auto; padding: 8px; }
-.alert-item { display: flex; gap: 8px; padding: 8px 10px; margin-bottom: 4px; border-radius: 6px; background: #0d1117; border-left: 3px solid #30363d; }
-.alert-item.red { border-left-color: #ff4d4f; background: rgba(255,77,79,0.05); }
-.alert-item.orange { border-left-color: #fa8c16; background: rgba(250,140,22,0.05); }
-.alert-item.yellow { border-left-color: #fadb14; background: rgba(250,219,20,0.05); }
-.ai-icon { font-size: 16px; flex-shrink: 0; }
-.ai-body { flex: 1; min-width: 0; }
-.ai-msg { font-size: 12px; color: #f0f6fc; }
-.ai-detail { font-size: 10px; color: #8b949e; margin-top: 2px; }
-.no-alert { padding: 30px; text-align: center; color: #8b949e; font-size: 13px; }
-
-.alert-badges { font-size: 11px; font-weight: 400; display: flex; gap: 8px; }
-.alert-badges em { font-style: normal; font-weight: 700; margin-right: 2px; }
-.alert-badges .r { color: #ff4d4f; }
-.alert-badges .o { color: #fa8c16; }
-.alert-badges .y { color: #fadb14; }
-
-.btn-row { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid #30363d; }
-.btn {
-  flex: 1; padding: 8px; background: #21262d; color: #f0f6fc;
-  border: 1px solid #30363d; border-radius: 6px; font-size: 12px;
-  cursor: pointer; transition: all 0.2s;
+/* ---------- stage ---------- */
+.stage {
+  grid-column: 1;
+  grid-row: 2;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--paper);
 }
-.btn:hover { background: #30363d; }
-.btn.danger:hover { border-color: #ff4d4f; color: #ff4d4f; }
-
-/* 图表面板 */
-.chart-panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; overflow: hidden; }
-.chart-container { height: 180px; padding: 0; }
-.chart-legend { font-size: 10px; font-weight: 400; display: flex; gap: 10px; align-items: center; }
-.chart-legend em {
-  display: inline-block; width: 12px; height: 3px; border-radius: 2px;
-  margin-right: 3px; vertical-align: middle;
+.viewer { position: absolute; inset: 0; }
+.viewer canvas { display: block; width: 100%; height: 100%; }
+.scene-error {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 9;
+  width: min(420px, calc(100% - 48px));
+  transform: translate(-50%, -50%);
+  padding: 18px 20px;
+  border: 1px solid var(--red);
+  background: rgba(244, 243, 239, 0.96);
+  box-shadow: 8px 8px 0 rgba(226, 59, 18, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
 }
-.chart-legend .l1 { background: #58a6ff; }
-.chart-legend .l2 { background: #f778ba; }
-.chart-legend .l3 { background: #3fb950; }
+.scene-error span { color: var(--red); font-family: var(--mono); font-size: 7px; letter-spacing: 1px; }
+.scene-error strong { color: var(--ink); font-family: var(--cjk); font-size: 12px; font-weight: 500; line-height: 1.5; }
+.stage-grid {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image:
+    linear-gradient(90deg, rgba(17, 18, 20, 0.06) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(17, 18, 20, 0.06) 1px, transparent 1px);
+  background-size: 76px 76px;
+  -webkit-mask-image: radial-gradient(ellipse at 54% 48%, transparent 0%, transparent 42%, #000 100%);
+  mask-image: radial-gradient(ellipse at 54% 48%, transparent 0%, transparent 42%, #000 100%);
+}
+.stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 55% 44%, transparent 34%, rgba(17, 18, 20, 0.055) 100%),
+    linear-gradient(180deg, rgba(17, 18, 20, 0.025), transparent 18%, transparent 84%, rgba(17, 18, 20, 0.03));
+}
+.corner { position: absolute; width: 17px; height: 17px; z-index: 3; border: 0 solid var(--ink); opacity: 0.45; pointer-events: none; }
+.corner.tl { left: 10px; top: 10px; border-top-width: 1px; border-left-width: 1px; }
+.corner.tr { right: 10px; top: 10px; border-top-width: 1px; border-right-width: 1px; }
+.corner.bl { left: 10px; bottom: 10px; border-bottom-width: 1px; border-left-width: 1px; }
+.corner.br { right: 10px; bottom: 10px; border-bottom-width: 1px; border-right-width: 1px; }
 
-/* 信息弹窗 */
+.rail {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 42px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 22px 0 18px;
+  border-right: 1px solid var(--line);
+  pointer-events: none;
+}
+.rail-index { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: 0.05em; }
+.rail-nodes { display: flex; flex-direction: column; gap: 6px; }
+.rail-nodes span { width: 5px; height: 5px; background: var(--ink); opacity: 0.3; }
+.rail-nodes span.caution { background: var(--amber); opacity: 1; }
+.rail-nodes span.warning { background: var(--orange); opacity: 1; }
+.rail-nodes span.danger { background: var(--red); opacity: 1; }
+.rail-nodes span.unknown { background: var(--faint); opacity: 0.75; }
+.rail-rule { flex: 1; width: 1px; background: var(--line); }
+.rail-caption {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  color: var(--mute);
+  font-family: var(--mono);
+  font-size: 6.5px;
+  letter-spacing: 1.8px;
+  white-space: nowrap;
+}
+
+.stage-title { position: absolute; left: 76px; top: 26px; z-index: 5; pointer-events: none; }
+.stage-kicker { color: var(--mute); font-family: var(--mono); font-size: 7px; letter-spacing: 1.4px; }
+.stage-title h1 { margin: 8px 0 5px; font-family: var(--cjk); font-size: 32px; font-weight: 600; line-height: 1; letter-spacing: 0.08em; }
+.stage-title h1 span { margin-left: 12px; color: var(--mute); font-family: var(--display); font-size: 10px; font-weight: 700; letter-spacing: 2.2px; vertical-align: middle; }
+.stage-sub { color: var(--mute); font-family: var(--mono); font-size: 7.5px; letter-spacing: 1.2px; }
+.stage-readout { display: flex; gap: 14px; margin-top: 13px; }
+.stage-readout span { padding-top: 4px; border-top: 1px solid var(--ink); font-family: var(--mono); font-size: 7px; letter-spacing: 0.6px; }
+
+.stage-tools { position: absolute; right: 22px; top: 22px; z-index: 7; display: flex; align-items: center; gap: 6px; }
+.source-chip { margin-right: 4px; padding-bottom: 3px; border-bottom: 1px solid var(--faint); color: var(--mute); font-family: var(--mono); font-size: 7px; letter-spacing: 0.7px; }
+.tool {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border: 1px solid rgba(17, 18, 20, 0.42);
+  background: rgba(244, 243, 239, 0.6);
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 7px;
+  letter-spacing: 0.7px;
+  transition: background 140ms, color 140ms, border-color 140ms;
+}
+.tool i { width: 5px; height: 5px; background: currentColor; opacity: 0.35; }
+.tool:hover { border-color: var(--ink); background: var(--paper-hi); }
+.tool.active { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+.tool.active i { background: var(--accent); opacity: 1; }
+.view-hint { position: absolute; right: 23px; top: 58px; z-index: 5; color: var(--faint); font-family: var(--mono); font-size: 6.5px; letter-spacing: 0.7px; pointer-events: none; }
+
 .info-popup {
-  position: absolute; z-index: 100; min-width: 200px;
-  background: rgba(22, 27, 34, 0.95); border: 1px solid #30363d;
-  border-radius: 8px; backdrop-filter: blur(10px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-  animation: popupIn 0.2s ease;
-}
-@keyframes popupIn {
-  from { opacity: 0; transform: scale(0.9); }
-  to { opacity: 1; transform: scale(1); }
+  position: absolute;
+  z-index: 20;
+  width: 250px;
+  max-width: calc(100% - 40px);
+  background: var(--paper-hi);
+  border: 1px solid var(--ink);
+  box-shadow: 8px 8px 0 rgba(17, 18, 20, 0.14);
 }
 .popup-hd {
-  padding: 8px 12px; border-bottom: 1px solid #30363d;
-  display: flex; justify-content: space-between; align-items: center;
-  font-size: 13px; font-weight: 600; color: #f0f6fc;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 7.5px;
+  letter-spacing: 0.6px;
 }
-.popup-close {
-  background: none; border: none; color: #8b949e; font-size: 18px;
-  cursor: pointer; padding: 0 4px; line-height: 1;
+.popup-close { border: 0; background: none; color: var(--paper); cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; }
+.popup-body { padding: 7px 9px 9px; }
+.popup-row { display: flex; justify-content: space-between; gap: 14px; padding: 5px 0; border-bottom: 1px dotted var(--line); font-size: 8px; }
+.popup-row:last-child { border-bottom: 0; }
+.pk { color: var(--mute); font-family: var(--cjk); }
+.pv { font-family: var(--mono); font-weight: 500; text-align: right; }
+
+.stage-pressure { position: absolute; left: 76px; bottom: 24px; z-index: 8; width: 380px; }
+.legend {
+  position: absolute;
+  right: 24px;
+  bottom: 22px;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  background: rgba(244, 243, 239, 0.66);
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
+  font-family: var(--mono);
+  font-size: 6.5px;
+  letter-spacing: 0.5px;
 }
-.popup-close:hover { color: #ff4d4f; }
-.popup-body { padding: 8px 12px; }
-.popup-row {
-  display: flex; justify-content: space-between; padding: 4px 0;
-  font-size: 12px; gap: 16px;
+.legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.legend i { width: 5px; height: 5px; background: var(--ink); }
+.legend i.y { background: var(--amber); }
+.legend i.o { background: var(--orange); }
+.legend i.r { background: var(--red); }
+/* ---------- dossier ---------- */
+.dossier {
+  grid-column: 2;
+  grid-row: 2;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--paper-hi);
+  border-left: 1px solid var(--ink);
 }
-.pk { color: #8b949e; }
-.pv { color: #f0f6fc; font-weight: 500; }
+.dossier::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  z-index: 2;
+  background: var(--accent);
+}
+.dossier-tags {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px 0 19px;
+  font-family: var(--mono);
+  font-size: 6.5px;
+  letter-spacing: 0.9px;
+}
+.tag-solid { padding: 2px 6px; background: var(--ink); color: var(--paper); }
+.tag-rule { padding-bottom: 2px; border-bottom: 1px solid var(--faint); color: var(--mute); }
+
+.dossier-state {
+  flex: none;
+  padding: 10px 18px 10px 19px;
+  border-bottom: 1px solid var(--line);
+}
+.micro { color: var(--mute); font-family: var(--mono); font-size: 6.5px; letter-spacing: 1px; }
+.state-value { display: flex; align-items: center; gap: 9px; margin-top: 5px; }
+.state-dot { width: 8px; height: 8px; flex: none; background: var(--signal); box-shadow: 0 0 0 4px color-mix(in srgb, var(--signal) 14%, transparent); }
+.state-value strong { font-family: var(--cjk); font-size: 18px; font-weight: 600; letter-spacing: 0.05em; }
+.state-en { display: block; margin-top: 4px; color: var(--signal-text); font-family: var(--mono); font-size: 7.5px; letter-spacing: 1.15px; }
+
+.stat-grid {
+  flex: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid var(--line);
+}
+.stat { padding: 7px 18px 8px 19px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.stat:nth-child(2n) { border-right: 0; }
+.stat:nth-child(n + 3) { border-bottom: 0; }
+.stat-label { display: block; color: var(--mute); font-family: var(--mono); font-size: 6.4px; letter-spacing: 0.85px; }
+.stat-value { display: block; margin-top: 3px; font-family: var(--mono); font-size: 24px; font-weight: 500; line-height: 1; letter-spacing: -0.035em; }
+.stat-value small { margin-left: 2px; color: var(--faint); font-size: 9px; font-weight: 400; letter-spacing: 0; }
+.stat-zh { display: block; margin-top: 4px; color: var(--mute); font-family: var(--cjk); font-size: 8.5px; }
+.alert-number { color: var(--ink); }
+.level-orange .alert-number, .level-red .alert-number { color: var(--signal); }
+
+.block { display: flex; flex-direction: column; min-height: 0; border-bottom: 1px solid var(--line); }
+.block-head { flex: none; display: flex; align-items: center; gap: 7px; padding: 6px 18px 5px 19px; }
+.block-head .code { padding: 1px 4px; background: var(--ink); color: var(--paper); font-family: var(--mono); font-size: 6px; line-height: 1.5; }
+.block-head h2 { margin: 0; font-family: var(--display); font-size: 8px; font-weight: 700; letter-spacing: 1.05px; }
+.block-head .note { margin-left: auto; color: var(--mute); font-family: var(--cjk); font-size: 8px; }
+
+.sensors-block { flex: 1.25 1 0; }
+.sensor-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: minmax(39px, 1fr); align-content: stretch; overflow: auto; }
+.sensor-grid.sparse { grid-auto-rows: minmax(39px, auto); align-content: start; }
+.sensor-empty { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding: 16px 18px 16px 19px; color: var(--mute); font-family: var(--mono); font-size: 7px; letter-spacing: 0.5px; }
+.sensor-empty i { width: 6px; height: 6px; background: var(--faint); }
+.sensor-cell {
+  position: relative;
+  min-height: 39px;
+  display: grid;
+  grid-template-columns: 5px 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px 0 19px;
+  border: 0;
+  border-top: 1px solid var(--line-soft);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms;
+}
+.sensor-cell:nth-child(2n - 1) { border-right: 1px solid var(--line-soft); }
+.sensor-cell:hover { background: var(--paper); }
+.sensor-cell.danger { background: rgba(226, 59, 18, 0.06); }
+.sensor-cell.danger:hover { background: rgba(226, 59, 18, 0.11); }
+.sensor-dot { width: 5px; height: 5px; background: var(--ink); opacity: 0.35; }
+.sensor-cell.caution .sensor-dot { background: var(--amber); opacity: 1; }
+.sensor-cell.warning .sensor-dot { background: var(--orange); opacity: 1; }
+.sensor-cell.danger .sensor-dot { background: var(--red); opacity: 1; }
+.sensor-cell.unknown { color: var(--mute); }
+.sensor-cell.unknown .sensor-dot { background: var(--faint); opacity: 0.75; }
+.sensor-cell.unknown .sensor-value { color: var(--mute); }
+.sensor-id { color: var(--mute); font-family: var(--mono); font-size: 8px; letter-spacing: 0.2px; }
+.sensor-name { overflow: hidden; color: var(--ink); font-family: var(--cjk); font-size: 9px; white-space: nowrap; text-overflow: ellipsis; }
+.sensor-value { font-family: var(--mono); font-size: 11px; font-weight: 500; text-align: right; white-space: nowrap; }
+.sensor-value em { margin-left: 1px; color: var(--mute); font-size: 7px; font-style: normal; font-weight: 400; }
+
+.chart-block { position: relative; flex: 0 0 154px; }
+.chart { flex: 1; min-height: 0; width: 100%; }
+.chart-empty { position: absolute; left: 19px; right: 18px; top: 26px; bottom: 24px; display: flex; align-items: center; justify-content: center; color: var(--faint); font-family: var(--mono); font-size: 6.5px; letter-spacing: 0.6px; pointer-events: none; }
+.chart-key { flex: none; display: flex; gap: 12px; padding: 0 18px 7px 19px; color: var(--mute); font-family: var(--cjk); font-size: 7.5px; }
+.chart-key span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.chart-key i { display: inline-block; width: 11px; height: 2px; background: var(--ink); }
+.chart-key .s3 i { background: var(--orange); }
+.chart-key .s4 i { background: #8c9e2e; }
+
+.alert-block { flex: 0.85 1 0; }
+.alert-counts { display: flex; align-items: center; gap: 6px; margin-left: auto; font-family: var(--mono); font-size: 6.5px; }
+.alert-counts span { display: inline-flex; align-items: center; gap: 2px; }
+.alert-counts i { width: 4px; height: 4px; background: var(--red); }
+.alert-counts i.o { background: var(--orange); }
+.alert-counts i.y { background: var(--amber); }
+.alert-list { flex: 1; min-height: 0; overflow: auto; }
+.alert-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 42px;
+  align-items: start;
+  gap: 7px;
+  padding: 5px 18px 5px 19px;
+  border-top: 1px solid var(--line-soft);
+}
+.alert-level { margin-top: 1px; padding: 2px 0; background: var(--ink); color: var(--paper); font-family: var(--mono); font-size: 5.8px; letter-spacing: 0.2px; text-align: center; }
+.alert-row.yellow .alert-level { background: var(--amber); color: var(--ink); }
+.alert-row.orange .alert-level { background: var(--orange); color: var(--ink); }
+.alert-row.red .alert-level { background: var(--red); color: var(--paper); }
+.alert-copy { min-width: 0; }
+.alert-title { font-family: var(--cjk); font-size: 9px; font-weight: 600; line-height: 1.25; }
+.alert-title span { margin-left: 4px; color: var(--mute); font-family: var(--mono); font-size: 6px; font-weight: 400; letter-spacing: 0.2px; }
+.alert-msg { display: -webkit-box; overflow: hidden; margin-top: 2px; color: var(--mute); font-family: var(--cjk); font-size: 8px; line-height: 1.35; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
+.alert-row time { padding-top: 2px; color: var(--mute); font-family: var(--mono); font-size: 6.5px; text-align: right; white-space: nowrap; }
+.no-alert { display: flex; align-items: center; gap: 8px; padding: 14px 18px 16px 19px; color: var(--mute); font-family: var(--mono); font-size: 7px; letter-spacing: 0.5px; }
+.no-alert i { width: 6px; height: 6px; background: var(--lime); box-shadow: 0 0 0 3px rgba(185, 228, 50, 0.16); }
+
+.dossier-actions { flex: none; display: grid; grid-template-columns: 1fr 1fr; height: 44px; }
+.action { border: 0; border-right: 1px solid var(--line); background: transparent; cursor: pointer; font-family: var(--mono); font-size: 6.8px; letter-spacing: 0.65px; transition: background 140ms, color 140ms; }
+.action:last-child { border-right: 0; }
+.action:hover { background: var(--ink); color: var(--paper); }
+.action.accent { background: var(--ink); color: var(--paper); }
+.action.accent:hover { background: var(--accent); color: var(--ink); }
+
+/* ---------- transport dock ---------- */
+.dock {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr) 190px;
+  align-items: center;
+  gap: 20px;
+  min-width: 0;
+  padding: 0 24px;
+  background: var(--ink);
+  color: var(--paper);
+  border-top: 1px solid var(--ink);
+}
+.dock-id { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.dock-id span { color: #8b8882; font-family: var(--mono); font-size: 6.5px; letter-spacing: 1.1px; }
+.dock-id b { overflow: hidden; color: var(--paper); font-family: var(--mono); font-size: 9px; font-weight: 500; letter-spacing: 0.5px; white-space: nowrap; text-overflow: ellipsis; }
+.dock-transport { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.transport {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid #3d3d40;
+  background: transparent;
+  color: var(--paper);
+  cursor: pointer;
+  transition: border-color 120ms, color 120ms;
+}
+.transport svg { width: 11px; height: 12px; fill: currentColor; }
+.transport.text svg { width: 12px; height: 12px; }
+.transport:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.transport:disabled { opacity: 0.28; cursor: not-allowed; }
+.timeline { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.timeline-meta { display: flex; justify-content: space-between; gap: 12px; color: #8b8882; font-family: var(--mono); font-size: 6px; letter-spacing: 0.8px; }
+.timeline-meta b { overflow: hidden; color: var(--paper); font-size: 7.5px; font-weight: 500; letter-spacing: 0.35em; white-space: nowrap; text-overflow: ellipsis; }
+.timeline-track { position: relative; height: 14px; }
+.timeline-track::before { content: ''; position: absolute; left: 0; right: 0; top: 6px; height: 1px; background: #3f3f42; }
+.timeline-fill { position: absolute; left: 0; top: 6px; height: 1px; background: var(--accent); }
+.timeline-knob { position: absolute; top: 3px; width: 7px; height: 7px; margin-left: -3px; background: var(--accent); }
+.timeline-track input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.timeline-track input:disabled { cursor: not-allowed; }
+.timeline-track:focus-within::before { background: #6b6b6e; }
+.speed { height: 28px; padding: 0 6px; border: 1px solid #3d3d40; background: transparent; color: var(--paper); font-family: var(--mono); font-size: 7.5px; cursor: pointer; }
+.speed option { background: var(--ink); color: var(--paper); }
+.exit { height: 28px; padding: 0 8px; border: 1px solid var(--orange); background: transparent; color: var(--orange); font-family: var(--mono); font-size: 6.5px; letter-spacing: 0.5px; cursor: pointer; white-space: nowrap; }
+.exit:hover { background: var(--orange); color: var(--ink); }
+.dock-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 0; }
+.frame-time { color: #8b8882; font-family: var(--mono); font-size: 6px; letter-spacing: 0.6px; white-space: nowrap; }
+.frame-time b { color: var(--paper); font-weight: 500; }
+.dock-actions .view-hint { color: #5b5b5f; font-size: 6px; letter-spacing: 0.6px; right: auto; top: auto; position: static; }
+/* ---------- scrollbars / focus / motion ---------- */
+.sensor-grid, .alert-list { scrollbar-width: thin; scrollbar-color: var(--faint) transparent; }
+.sensor-grid::-webkit-scrollbar, .alert-list::-webkit-scrollbar { width: 4px; height: 4px; }
+.sensor-grid::-webkit-scrollbar-thumb, .alert-list::-webkit-scrollbar-thumb { background: var(--faint); }
+.sensor-grid::-webkit-scrollbar-track, .alert-list::-webkit-scrollbar-track { background: transparent; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 1480px) {
+  .topbar-mid { display: none; }
+}
+@media (min-width: 1700px) {
+  .brand-l1 { font-size: 22px; }
+  .brand-l2 { font-size: 8px; }
+  .brand-l3 { font-size: 16px; }
+  .stage-title h1 { font-size: 38px; }
+  .stage-title h1 span { font-size: 11px; }
+  .stage-kicker, .stage-sub { font-size: 8px; }
+  .stage-pressure { width: 420px; }
+  .stat-value { font-size: 27px; }
+  .stat-label { font-size: 6.8px; }
+  .stat-zh { font-size: 9px; }
+  .sensor-name { font-size: 9.5px; }
+  .sensor-value { font-size: 12px; }
+  .legend { font-size: 7px; }
+}
+@media (min-height: 1000px) {
+  .chart-block { flex-basis: 196px; }
+}
+@media (max-width: 1340px) {
+  .app { grid-template-columns: minmax(0, 1fr) 408px; }
+  .clock b { font-size: 24px; }
+  .model-ref { display: none; }
+  .stage-pressure { width: 344px; }
+  .legend { gap: 8px; }
+}
+@media (max-width: 1180px) {
+  .app { grid-template-columns: minmax(0, 1fr) 380px; }
+  .topbar { gap: 14px; padding: 0 18px; }
+  .brand-l2 { display: none; }
+  .brand-lockup { padding: 8px 0; }
+  .brand-l1 { font-size: 18px; }
+  .brand-l3 { font-size: 13px; margin-top: 3px; }
+  .topbar-actions { gap: 12px; }
+  .rail { display: none; }
+  .stage-title { left: 24px; }
+  .stage-pressure { left: 24px; width: 320px; }
+  .stage-title h1 { font-size: 27px; }
+  .stage-title h1 span { display: block; margin: 6px 0 0; }
+  .stage-sub { margin-top: 6px; }
+  .dossier-tags { padding-left: 15px; }
+  .dossier-state, .stat, .sensor-cell, .block-head, .alert-row, .no-alert, .chart-key { padding-left: 15px; }
+  .dock { grid-template-columns: 140px minmax(0, 1fr) 150px; gap: 14px; padding: 0 18px; }
+  .source-chip { display: none; }
+}
+@media (max-width: 1100px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: 72px minmax(0, 1fr) 382px 66px;
+  }
+  .topbar { grid-row: 1; }
+  .stage { grid-row: 2; }
+  .dossier {
+    grid-column: 1;
+    grid-row: 3;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    border-left: 0;
+    border-top: 1px solid var(--ink);
+  }
+  .dossier-tags { grid-column: 1 / -1; grid-row: 1; }
+  .dossier-state { grid-column: 1; grid-row: 2; }
+  .stat-grid { grid-column: 2; grid-row: 2; }
+  .sensors-block { grid-column: 1; grid-row: 3; }
+  .chart-block { display: none; }
+  .alert-block { grid-column: 2; grid-row: 3; }
+  .dossier-actions { grid-column: 1 / -1; grid-row: 4; }
+  .stage-pressure, .legend, .view-hint, .topbar-mid, .model-ref { display: none; }
+  .stage-title { left: 20px; top: 16px; }
+  .stage-title h1 { font-size: 22px; }
+  .stage-title h1 span { font-size: 8px; letter-spacing: 1.6px; }
+  .stage-tools { right: 14px; top: 14px; }
+  .tool { height: 26px; }
+  .dock { grid-row: 4; grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0 14px; }
+  .dock-id, .dock-actions { display: none; }
+  .speed { height: 26px; }
+  .transport { width: 28px; height: 28px; }
+}
+@media (max-height: 860px) and (min-width: 1101px) {
+  .app { grid-template-rows: 80px minmax(0, 1fr) 72px; }
+  .clock b { font-size: 25px; }
+  .dossier-tags { padding-top: 9px; }
+  .dossier-state { padding: 7px 18px 7px 19px; }
+  .state-value { margin-top: 3px; }
+  .state-value strong { font-size: 16px; }
+  .state-en { margin-top: 3px; }
+  .stat { padding: 5px 18px 6px 19px; }
+  .stat-value { font-size: 21px; }
+  .stat-zh { margin-top: 2px; }
+  .chart-block { flex-basis: 124px; }
+  .chart-key { padding-bottom: 4px; }
+  .dossier-actions { height: 40px; }
+  .sensor-cell { min-height: 37px; }
+  .alert-row { padding-top: 4px; padding-bottom: 4px; }
+  .stage-pressure { width: 306px; }
+  .stage-title { top: 20px; }
+  .stage-title h1 { font-size: 28px; }
+  .stage-sub { font-size: 7px; }
+  .dock { grid-template-columns: 150px minmax(0, 1fr) 160px; }
+  .alert-row:nth-child(n + 3) { display: none; }
+}
+@media (max-height: 760px) and (min-width: 1101px) {
+  .app { grid-template-rows: 78px minmax(0, 1fr) 68px; }
+  .stage-pressure { display: none; }
+  .chart-block { flex-basis: 132px; }
+  .dossier-tags { padding-top: 10px; }
+  .dossier-state { padding-top: 7px; padding-bottom: 7px; }
+}
 </style>
